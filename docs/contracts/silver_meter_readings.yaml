@@ -2,6 +2,7 @@
 # Defined in .claude/sdd/features/DEFINE_METER_INGESTION.md (Data Contracts).
 dataset: smart_meter_dev.silver.meter_readings
 kind: table
+object_type: materialized view recomputed over bronze.files_meter_readings and bronze.kafka_meter_readings
 owner: METER_INGESTION
 description: One validated, deduplicated half-hourly energy reading of one household within the study period, from either the file or the Kafka ingestion path.
 grain: one row per household per half-hour reading
@@ -33,11 +34,15 @@ schema:
   - name: _source_ref
     type: string
     nullable: false
-    description: Identifier of the Bronze row, topic/partition/offset for Kafka, file path plus household and raw timestamp for files.
+    description: Identifier of the Bronze row, _topic/_partition/_offset for Kafka, file path plus household and raw timestamp for files.
   - name: _ingested_at
     type: timestamp
     nullable: false
     description: Bronze ingestion time in UTC, copied from Bronze (processing time, never event time).
+  - name: _produced_at
+    type: timestamp
+    nullable: true
+    description: Producer wall clock in UTC, parsed from the produced_at field of the Kafka payload (processing time, never event time); null for rows from the file path.
 scope_filter:
   rule: reading_ts >= study_start AND reading_ts < study_end + 1 day (default 2012-07-01 to 2014-02-28)
   handling: rows outside the study period are left out of Silver and of the quarantine and counted per run; this is a scope transformation, not a quality rule
@@ -67,7 +72,7 @@ quality:
     rule: "_rescued_data IS NULL (file path only)"
     action: warn
 dropped_rows: every row failing a drop rule is written to smart_meter_dev.silver.meter_readings_quarantine with the rule name and _ingested_at
-deduplication: explicit, on (household_id, reading_ts); the row with the earliest _ingested_at, then the smallest _source_ref, wins; removed duplicates are counted per run
+deduplication: explicit, on (household_id, reading_ts), row_number() ordered by _ingested_at then _source_ref; rank 1 (earliest _ingested_at, then smallest _source_ref) wins; removed duplicates are counted per run
 consumers:
   - name: smart_meter_dev.gold.household_daily_consumption
     usage: daily totals, peaks and completeness per household

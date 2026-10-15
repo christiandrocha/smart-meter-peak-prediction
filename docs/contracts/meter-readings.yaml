@@ -34,7 +34,7 @@ value:
       type: string
       format: ISO-8601 UTC
       nullable: false
-      description: Producer wall clock when the message was sent; ingestion clock, never event time.
+      description: Producer wall clock when the message was sent; ingestion clock, never event time. Keeps this name in the payload (the producer's field); Silver exposes it as _produced_at.
 delivery: at-least-once; idempotent producer with acks=all; consumers deduplicate on (household_id, reading_ts)
 partitions: 2
 retention_assumption: short (Aiven free tier); the Bronze table kafka_meter_readings is the reprocessing source, not the topic
@@ -43,7 +43,7 @@ producer:
   usage: replays the stream sample file in event-time order at a configurable speed
 consumers:
   - name: smart_meter_dev.bronze.kafka_meter_readings
-    usage: Structured Streaming with an AvailableNow trigger stores the raw payload with topic, partition, offset and Kafka timestamp
+    usage: Structured Streaming with an AvailableNow trigger stores the raw payload with _topic, _partition, _offset and _kafka_timestamp; Silver exposes produced_at as _produced_at
 changes:
   policy: additive fields only; a breaking change creates a new topic version and an ADR
   version: 1

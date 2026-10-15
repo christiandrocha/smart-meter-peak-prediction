@@ -37,7 +37,7 @@ twice.
 |---|---|---|
 | `PEAK_MODEL` feature (labels, features, training exclusions) | Daily consumption with completeness, household attributes, point-in-time quality facts with stable names | `gold.household_daily_consumption`, `gold.household_data_quality_monthly`, `gold.household_data_quality`, `silver.households` (contracts in `docs/contracts/`) |
 | Data platform operator | One-command deployment, idempotent re-runs, per-rule quality counts, inspectable dropped rows, within Free Edition limits | Asset Bundle `dev` target, daily job, pipeline event log, `silver.meter_readings_quarantine` |
-| Reviewer or auditor | Trace any Silver or dropped row back to its raw record and source | `_source_ref`, `_ingestion_path`, `_ingested_at`; Bronze `_source_file` and topic/partition/offset |
+| Reviewer or auditor | Trace any Silver or dropped row back to its raw record and source | `_source_ref`, `_ingestion_path`, `_ingested_at`; Bronze `_source_file` and `_topic`/`_partition`/`_offset` |
 
 ---
 
@@ -60,7 +60,7 @@ twice.
 - Sampling script and committed plan (seed 42, 60 households, stratified by ACORN group and tariff) producing historical monthly CSVs, one stream CSV, the household file for the sampled households and a manifest with checksums.
 - Local replay producer (Docker) publishing the stream sample to Aiven Kafka topic `meter-readings`.
 - Bronze `files_meter_readings` (incremental file ingestion from a UC Volume), Bronze `kafka_meter_readings` (Structured Streaming, `AvailableNow`) and Bronze `files_households`.
-- Silver `meter_readings` with explicit cross-source deduplication and the quality rules of Q-04, Silver `meter_readings_quarantine` and Silver `households`.
+- Silver `meter_readings` and `meter_readings_quarantine` as materialized views recomputed over Bronze, with explicit cross-source deduplication and the quality rules of Q-04, and Silver `households`.
 - Gold materialized views `household_daily_consumption` and `household_data_quality_monthly`, and the summary view `household_data_quality`.
 - One triggered serverless Lakeflow pipeline for Silver and Gold; Bronze ingestion in job tasks; one daily job deployed from the Asset Bundle (`dev` target), with Kafka secrets in a secret scope.
 - Spikes for A-02, A-03, A-05, A-06, A-09 and A-10 and the ADR recording their results, including the catalog fallback if A-09 fails.
@@ -83,14 +83,14 @@ twice.
 | FR-02 | The system shall split the sample by the cutoff into historical files (`reading_ts < cutoff`, one CSV per month) and one stream file (`reading_ts >= cutoff`), with default cutoff 2013-12-01T00:00:00Z and study period 2012-07-01 to 2014-02-28, and write the household file restricted to the sampled households. | Must |
 | FR-03 | The system shall replay the stream file to topic `meter-readings` per its contract, keyed by `household_id`, in event-time order, at a configurable replay speed, with an idempotent producer and the energy value kept nullable rather than dropped. | Must |
 | FR-04 | The system shall ingest historical reading files from a UC Volume into `bronze.files_meter_readings`, keeping raw strings under renamed columns plus `_rescued_data`, `_source_file` and `_ingested_at`, processing each file once. | Must |
-| FR-05 | The system shall consume topic `meter-readings` on a schedule with an `AvailableNow`-style trigger into `bronze.kafka_meter_readings`, keeping key, raw payload, topic, partition, offset, Kafka timestamp and `_ingested_at`. | Must |
+| FR-05 | The system shall consume topic `meter-readings` on a schedule with an `AvailableNow`-style trigger into `bronze.kafka_meter_readings`, keeping key (`kafka_key`), raw `payload`, `_topic`, `_partition`, `_offset`, `_kafka_timestamp` and `_ingested_at`. | Must |
 | FR-06 | The system shall ingest the household file into `bronze.files_households` and publish `silver.households` with rules QR-13 to QR-15. | Must |
-| FR-07 | The system shall build `silver.meter_readings` from both Bronze reading tables: parse, trim, cast and rename to the naming conventions; leave rows outside the study period out as a counted scope transformation; apply rules QR-01 to QR-08 with the actions of Q-04; and deduplicate explicitly on `(household_id, reading_ts)` so that the first ingested row wins. | Must |
-| FR-08 | The system shall write every row dropped by a Silver drop rule to `silver.meter_readings_quarantine` with its raw values, the first failed rule in precedence order (`rule_name`), every failed rule (`failed_rules`) and `_ingested_at`; per-rule quality metrics count a row under every rule in `failed_rules`. | Must |
+| FR-07 | The system shall build `silver.meter_readings` as a materialized view recomputed over both Bronze reading tables (Bronze stays incremental): parse, trim, cast and rename to the naming conventions; leave rows outside the study period out as a counted scope transformation; apply rules QR-01 to QR-08 with the actions of Q-04; and deduplicate explicitly on `(household_id, reading_ts)` so that the first ingested row wins. | Must |
+| FR-08 | The system shall expose, as the materialized view `silver.meter_readings_quarantine`, every row dropped by a Silver drop rule to `silver.meter_readings_quarantine` with its raw values, the first failed rule in precedence order (`rule_name`), every failed rule (`failed_rules`) and `_ingested_at`; per-rule quality metrics count a row under every rule in `failed_rules`. | Must |
 | FR-09 | The system shall make queryable, for every pipeline update, the count of rows failing each rule, rows quarantined, rows left out by the study-period filter and duplicates removed. | Must |
 | FR-10 | The system shall publish `gold.household_daily_consumption` as a materialized view with daily total, half-hour maximum, reading count and `is_complete_day` (48 readings) per household and UTC day, with rules QR-10 to QR-12. | Must |
-| FR-11 | The system shall publish `gold.household_data_quality_monthly` as a materialized view as a dense table: one row per household in `silver.households` for every study-period month, including months with `observed_readings = 0`, holding `expected_readings`, `observed_readings`, `zero_readings`, `gap_count`, `first_reading_ts` and `last_reading_ts`, where each month's values depend only on readings up to the end of that month. Missing slots in a month are `expected_readings - observed_readings`; `gap_count` is the number of gap events closed in that month. | Must |
-| FR-12 | The system shall publish `gold.household_data_quality`, derived only from the monthly table, with `coverage_ratio_study_period`, `coverage_ratio_active_span`, `zero_share`, `gap_count`, `first_reading_ts` and `last_reading_ts` per household, and no threshold, flag or exclusion decision. | Must |
+| FR-11 | The system shall publish `gold.household_data_quality_monthly` as a materialized view as a dense table: one row for every study-period month per household in the union of `silver.households` and the households with any `silver.meter_readings` row (so orphans appear), carrying the non-null boolean `has_household_record` (true when the household is in `silver.households`), including months with `observed_readings = 0`, including months with `observed_readings = 0`, holding `expected_readings`, `observed_readings`, `zero_readings`, `gap_count`, `first_reading_ts` and `last_reading_ts`, where each month's values depend only on readings up to the end of that month. Missing slots in a month are `expected_readings - observed_readings`; `gap_count` is the number of gap events closed in that month. | Must |
+| FR-12 | The system shall publish `gold.household_data_quality`, derived only from the monthly table, with `coverage_ratio_study_period`, `coverage_ratio_active_span`, `zero_share`, `gap_count`, `first_reading_ts`, `last_reading_ts` and `has_household_record` per household, and no threshold, flag or exclusion decision. | Must |
 | FR-13 | The system shall rebuild every Silver and Gold table from Bronze alone, without reading Kafka or re-landing files. | Must |
 | FR-14 | The system shall deploy from the Databricks Asset Bundle to the `dev` target one daily job that runs file ingestion, Kafka ingestion and one triggered serverless Lakeflow pipeline update for Silver and Gold. | Must |
 | FR-15 | The system shall read Kafka credentials only from a Databricks secret scope (lakehouse) or an ignored local `.env` (producer). | Must |
@@ -108,7 +108,7 @@ twice.
 | NFR-03 | Cost | One daily ingestion run on the seed-42 sample (about 1.68 million readings) finishes in <= 60 minutes wall-clock and is never stopped by the Free Edition daily quota (AC-30). |
 | NFR-04 | Platform limits | Serverless only; at most 5 job tasks can run concurrently; exactly 1 Lakeflow pipeline; streams use `AvailableNow`-style triggers (AC-28). |
 | NFR-05 | Security | 0 credentials, private keys or broker passwords in tracked files, bundle YAML or notebooks (AC-29). |
-| NFR-06 | Time handling | All timestamps are UTC; event time (`reading_ts`, `reading_date`, `reading_month`) and processing time (`_ingested_at`, `produced_at`) are separate columns (AC-19, AC-20). |
+| NFR-06 | Time handling | All timestamps are UTC; event time (`reading_ts`, `reading_date`, `reading_month`) and processing time (`_ingested_at`, `_produced_at`, `_kafka_timestamp`) are separate columns (AC-19, AC-20). |
 | NFR-07 | Observability | Per-rule counts, quarantine counts, scope-filter counts and duplicate counts are queryable for every pipeline update within 5 minutes of the update ending (AC-12). |
 | NFR-08 | Freshness | A reading produced to Kafka is in Silver and Gold at the end of the next daily run, <= 24 h after production (AC-31). |
 | NFR-09 | Recoverability | Because Free Edition accounts may be deleted, the workspace state is rebuildable from the repository, the raw Kaggle files and the secret values alone (AC-27, AC-28). |
@@ -125,13 +125,13 @@ Catalog `smart_meter_dev` (Q-05). Interface tables for `PEAK_MODEL` have contrac
 | Sample files (historical monthly CSVs, stream CSV, household CSV, `manifest.json`) | METER_INGESTION | One row per source reading or household; one manifest entry per output file | `(household_id, reading_ts)`; `household_id`; file path | On plan change | Inline |
 | `meter-readings` (Kafka topic) | METER_INGESTION | One message per half-hourly reading | Message key `household_id`; dedup key `(household_id, reading_ts)` | Replay speed parameter | `docs/contracts/meter-readings.yaml` |
 | `bronze.files_meter_readings` | METER_INGESTION | One row per CSV line ingested | `(_source_file, household_id, reading_ts_raw)` | Daily | Inline |
-| `bronze.kafka_meter_readings` | METER_INGESTION | One row per Kafka message consumed | `(topic, partition, offset)` | Daily | Inline |
+| `bronze.kafka_meter_readings` | METER_INGESTION | One row per Kafka message consumed | `(_topic, _partition, _offset)` | Daily | Inline |
 | `bronze.files_households` | METER_INGESTION | One row per CSV line ingested | `(_source_file, household_id)` | On file arrival | Inline |
-| `silver.meter_readings` | METER_INGESTION | One row per household per half-hour reading | `(household_id, reading_ts)` | Daily, <= 24 h | `docs/contracts/silver_meter_readings.yaml` |
-| `silver.meter_readings_quarantine` | METER_INGESTION | One row per dropped Bronze row | `_source_ref` | Daily, <= 24 h | `docs/contracts/silver_meter_readings_quarantine.yaml` |
+| `silver.meter_readings` (materialized view) | METER_INGESTION | One row per household per half-hour reading | `(household_id, reading_ts)` | Daily, <= 24 h | `docs/contracts/silver_meter_readings.yaml` |
+| `silver.meter_readings_quarantine` (materialized view) | METER_INGESTION | One row per dropped Bronze row | `_source_ref` | Daily, <= 24 h | `docs/contracts/silver_meter_readings_quarantine.yaml` |
 | `silver.households` | METER_INGESTION | One row per sampled household | `household_id` | On file arrival | `docs/contracts/silver_households.yaml` |
 | `gold.household_daily_consumption` (materialized view) | METER_INGESTION | One row per household per UTC day with at least one reading | `(household_id, reading_date)` | Daily, <= 24 h | `docs/contracts/gold_household_daily_consumption.yaml` |
-| `gold.household_data_quality_monthly` (materialized view) | METER_INGESTION | One row per household per UTC month of the study period | `(household_id, reading_month)` | Daily, <= 24 h | `docs/contracts/gold_household_data_quality_monthly.yaml` |
+| `gold.household_data_quality_monthly` (materialized view) | METER_INGESTION | One row per household (in `silver.households` or with any Silver reading) per UTC month of the study period | `(household_id, reading_month)` | Daily, <= 24 h | `docs/contracts/gold_household_data_quality_monthly.yaml` |
 | `gold.household_data_quality` (view) | METER_INGESTION | One row per household | `household_id` | Daily, <= 24 h | `docs/contracts/gold_household_data_quality.yaml` |
 
 ### Inline schemas
@@ -141,9 +141,9 @@ Names follow `docs/conventions/naming.md`. `LCLid` is `household_id` from Bronze
 
 | Table | Columns (type) |
 |---|---|
-| Sample reading files | `household_id`, `reading_ts`, `energy_kwh` as source text (CSV); manifest lists file, rows, SHA-256, per-household coverage and zero share, tariff mix, exclusions with reasons |
+| Sample reading files | Original source header `LCLid`, `tstp`, `energy(kWh/hh)` as source text (CSV), so outputs stay byte-identical to the spike and to the checksums in `config/sample_manifest.json`; renamed to `household_id`, `reading_ts`, `energy_kwh` from Bronze onwards (Q-06); manifest lists file, rows, SHA-256, per-household coverage and zero share, tariff mix, exclusions with reasons |
 | `bronze.files_meter_readings` | `household_id` (string), `reading_ts_raw` (string), `energy_kwh_raw` (string), `_rescued_data` (string), `_source_file` (string), `_ingested_at` (timestamp) |
-| `bronze.kafka_meter_readings` | `kafka_key` (string), `payload` (string), `topic` (string), `partition` (int), `offset` (bigint), `kafka_timestamp` (timestamp), `_ingested_at` (timestamp) |
+| `bronze.kafka_meter_readings` | `kafka_key` (string), `payload` (string), `_topic` (string), `_partition` (int), `_offset` (bigint), `_kafka_timestamp` (timestamp), `_ingested_at` (timestamp) |
 | `bronze.files_households` | `household_id`, `tariff_raw`, `acorn_category_raw`, `acorn_group_raw`, `source_block_raw` (all string), `_rescued_data`, `_source_file` (string), `_ingested_at` (timestamp) |
 
 ### Quality rules (Q-04)
@@ -164,7 +164,7 @@ QR-07, QR-02, QR-03, QR-04, QR-05; `rule_name` in the quarantine is the first fa
 | QR-06 | Silver `meter_readings` | Files rows have `reading_ts < cutoff`; Kafka rows have `reading_ts >= cutoff` | fail | D-09 |
 | QR-07 | Silver input from Kafka | Payload is a JSON object that parses with the `meter-readings` value schema (before the union) | drop to quarantine | Topic contract |
 | QR-08 | Silver input from files | `_rescued_data` is null | warn | Schema drift |
-| QR-09 | Silver `meter_readings` | Deduplicate on `(household_id, reading_ts)`: earliest `_ingested_at` wins, then smallest `_source_ref`; duplicates counted | dedup (counted) | F-09, at-least-once delivery |
+| QR-09 | Silver `meter_readings` | Deduplicate on `(household_id, reading_ts)` with `row_number()` ordered by `_ingested_at`, then `_source_ref`; rank 1 wins (earliest `_ingested_at`, then smallest `_source_ref`); duplicates counted | dedup (counted) | F-09, at-least-once delivery |
 | QR-10 | Gold `household_daily_consumption` | `is_complete_day` (48 readings); incomplete days kept and counted | warn | F-06 |
 | QR-11 | Gold `household_daily_consumption` | `reading_count <= 48` | fail | Impossible after QR-03 and QR-09 |
 | QR-12 | Gold `household_daily_consumption` | Well-formed `household_id` that exists in `silver.households` (orphans kept and counted) | warn | Q-04 |
@@ -192,45 +192,47 @@ label, threshold or exclusion flag exists here (D-18). Changes to these four con
 
 ## Acceptance Criteria
 
-Seed-42 figures come from the brainstorm sampling run and are the expected values until the
-sampling script is committed (A-13).
+Seed-42 figures come from the brainstorm sampling run; the committed `spikes/local/prepare_sample.py`
+with `spikes/local/plan.json` reproduced them exactly on 2026-10-15 (A-13). The selection is pinned in
+`config/sample_households.csv` and the counts and checksums in `config/sample_manifest.json`.
 
 | ID | Given | When | Then |
 |---|---|---|---|
 | AC-01 | The committed plan (seed 42) and the raw Kaggle files | The sampling script runs twice into two empty output folders | Every output file and the manifest have identical SHA-256 checksums in both runs |
-| AC-02 | The seed-42 plan | The sampling script runs | The manifest reports 60 households, 20 per ACORN group, 16 `Std` and 4 `ToU` per group, 0 with `ACORN-U` or `ACORN-`, every selected household with study-period coverage >= 80% and zero share < 90%, and a reason for each excluded candidate; the household file has exactly those 60 households |
+| AC-02 | The seed-42 plan | The sampling script runs | The manifest reports 60 households, 20 per ACORN group, 16 `Std` and 4 `ToU` per group, 0 with `ACORN-U` or `ACORN-`, every selected household with study-period coverage >= 80% and zero share < 90%, and a reason for each excluded candidate; the household file has exactly those 60 households; the set of selected household ids (and the 48 `Std` / 12 `ToU` split) equals `config/sample_households.csv` (source column `LCLid`), and the row counts equal those in `config/sample_manifest.json`. This holds for the sampling code ported into `src/`, not only for the spike script |
 | AC-03 | The seed-42 sample | Output files and manifest are read | Every historical row has `reading_ts < 2013-12-01T00:00:00Z`, every stream row `>= 2013-12-01T00:00:00Z`, 0 keys appear in both, historical rows = 1,432,405 and stream rows = 247,569 |
 | AC-04 | The plan with cutoff 2013-11-01 instead of the default | The sampling script runs with no code change | Every historical row has `reading_ts < 2013-11-01T00:00:00Z`, every stream row `>= 2013-11-01T00:00:00Z`, and historical + stream rows equal the default run's total |
 | AC-05 | All historical sample files in the landing Volume and empty Bronze tables | File ingestion runs | `bronze.files_meter_readings` has exactly the manifest's historical row count (1,432,405 for seed 42), `bronze.files_households` has 60 rows, and 0 rows have null `_source_file` or `_ingested_at` |
 | AC-06 | File ingestion has processed every file | File ingestion runs again with no new file | 0 rows are added to either Bronze file table |
-| AC-07 | The producer has published the stream file once and the consumer starts from an empty checkpoint | Kafka ingestion runs until it stops (`AvailableNow`) | `bronze.kafka_meter_readings` has exactly 247,569 rows, `(topic, partition, offset)` is unique, 0 rows have null `payload`, `topic`, `partition`, `offset`, `kafka_timestamp` or `_ingested_at`, and every payload parses with the topic contract's value schema |
+| AC-07 | The producer has published the stream file once and the consumer starts from an empty checkpoint | Kafka ingestion runs until it stops (`AvailableNow`) | `bronze.kafka_meter_readings` has exactly 247,569 rows, `(_topic, _partition, _offset)` is unique, 0 rows have null `payload`, `_topic`, `_partition`, `_offset`, `_kafka_timestamp` or `_ingested_at`, and every payload parses with the topic contract's value schema |
 | AC-08 | Kafka ingestion has consumed every available message | Kafka ingestion runs again with no new message | 0 rows are added to `bronze.kafka_meter_readings` |
 | AC-09 | Silver built after AC-07 | The producer republishes the whole stream file, then Kafka ingestion and the pipeline run | `bronze.kafka_meter_readings` grows by 247,569 rows; `silver.meter_readings` and `silver.meter_readings_quarantine` row counts and content checksums are unchanged; the update reports 247,569 duplicates removed |
 | AC-10 | The Kafka broker is unreachable (service powered off) | The daily job runs | The Kafka task ends failed within 15 minutes, `bronze.kafka_meter_readings` gains 0 rows and the checkpoint does not advance; after the broker is back, the next run ingests every pending message and AC-07's uniqueness and count checks hold |
 | AC-11 | Both Bronze reading tables loaded and a pipeline update completed | A reconciliation query classifies every Bronze reading row by `_source_ref` | Every Bronze row falls in exactly one class: in `silver.meter_readings`; in `silver.meter_readings_quarantine`; duplicate (its key is in Silver under a different `_source_ref` with an earlier or equal `_ingested_at`); or outside the study period. Unclassified rows = 0 and rows in two classes = 0. For seed 42 without replays: 60 quarantined, 0 outside the period, 0 duplicates, 1,679,914 in Silver (when A-08 holds) |
-| AC-12 | A completed pipeline update | Its per-rule metrics are compared with the tables | For each drop rule, the update's failure count equals the number of quarantine rows added by that update whose `failed_rules` contains the rule; the quarantine rows added equal the rows failing at least one drop rule; scope-filter and duplicate counts are present; all counts are queryable within 5 minutes of the update ending |
+| AC-12 | A completed pipeline update | Its per-rule metrics are compared with the tables | For each drop rule, the update's failure count equals the number of quarantine rows whose `failed_rules` contains the rule among the Bronze rows that update evaluated (all rows on a full refresh); the quarantine rows for those Bronze rows equal the rows failing at least one drop rule; scope-filter and duplicate counts are present; all counts are queryable within 5 minutes of the update ending |
 | AC-13 | `silver.meter_readings` after any update | Key, grid, value and period are queried | 0 duplicate `(household_id, reading_ts)`, 0 rows off the 30-minute grid, 0 rows with `energy_kwh < 0` or null, 0 rows outside the study period, 0 rows whose `_source_ref` is also in the quarantine |
 | AC-14 | Silver built from both paths | Rows around the cutoff are queried | Every row with `reading_ts < 2013-12-01T00:00:00Z` has `_ingestion_path = 'files'` and every other row `'kafka'`; every reading at 2013-11-30T23:30:00Z and 2013-12-01T00:00:00Z present in the sample appears exactly once in Silver |
 | AC-15 | Fixture Bronze rows, one violating each rule QR-01 to QR-08 and QR-10 to QR-15 | The pipeline runs on the fixture | Each drop rule moves exactly its row to the quarantine with that `rule_name` and `_ingested_at`; each warn rule keeps its row and reports 1; each fail rule (QR-01, QR-06, QR-13) fails the update with 0 rows committed by it; QR-11, unreachable through Silver, fails the Gold aggregation when 49 readings for one household-day are fed to it directly. QR-01 fails for a null id, `MAC12345`, `mac000002` and `MAC0000021`; `MAC999999` (well formed, not in households) passes Silver and is reported once by QR-12 |
 | AC-16 | Fixture rows at 2012-06-30T23:30Z and 2012-07-01T00:00Z from files, and at 2014-02-28T23:30Z and 2014-03-01T00:00Z from Kafka | The pipeline runs | The two inner rows are in Silver; the two outer rows are in neither Silver nor quarantine; the update's scope-filter count is 2 |
 | AC-17 | Fixture with the same `(household_id, reading_ts)` from files and from Kafka, with different `_ingested_at`, and a pair with equal `_ingested_at` | The pipeline runs | Silver keeps the row with the earlier `_ingested_at`, and for the tie the smaller `_source_ref`; the update reports 2 duplicates removed; a second run on the same input keeps the same winners |
 | AC-18 | Silver households built from the seed-42 sample | The table is queried | 60 rows, unique `household_id`, `acorn_group` in the 3 valid groups, `tariff` in (`Std`, `ToU`), 20 households per group |
-| AC-19 | The deployed tables and the contract files | Column names and types are listed from Unity Catalog | Every table and column in *Data Contracts* exists with that name and type; 0 columns are named `LCLid`, `tstp` or `energy(kWh/hh)`; processing-time columns start with `_` or are `produced_at` |
+| AC-19 | The deployed tables and the contract files | Column names and types are listed from Unity Catalog | Every table and column in *Data Contracts* exists with that name and type; 0 columns are named `LCLid`, `tstp` or `energy(kWh/hh)`; every processing-time or source-metadata column (`_ingested_at`, `_ingestion_path`, `_source_ref`, `_source_file`, `_rescued_data`, `_topic`, `_partition`, `_offset`, `_kafka_timestamp`, `_produced_at`) starts with `_` with no exceptions; 0 columns in Bronze, Silver or Gold are named `kafka_timestamp`, `topic`, `partition`, `offset` or `produced_at`; `kafka_key` and `payload` keep their names; `produced_at` exists only inside the Kafka payload (topic contract) |
 | AC-20 | Silver readings on the DST change days 2013-03-31 and 2013-10-27 | Readings per household are counted per UTC day | Every household with 48 readings on both neighbouring days has exactly 48 readings on each DST change day (F-10) |
-| AC-21 | `silver.meter_readings` and `gold.household_daily_consumption` | Daily aggregates are recomputed from Silver | `household_daily_consumption` is a materialized view; for every `(household_id, reading_date)` `total_energy_kwh` and `max_energy_kwh` differ from the recomputation by <= 1e-9, `reading_count` is equal, `is_complete_day` is true exactly when `reading_count = 48`; for seed 42 the share of complete household-days is between 98.5% and 99.5% and QR-10's count equals the number of incomplete days |
+| AC-21 | `silver.meter_readings` and `gold.household_daily_consumption` | Daily aggregates are recomputed from Silver | `household_daily_consumption` is a materialized view over the Silver materialized view; for every `(household_id, reading_date)` `total_energy_kwh` and `max_energy_kwh` differ from the recomputation by <= 1e-9, `reading_count` is equal, `is_complete_day` is true exactly when `reading_count = 48`; for seed 42 the share of complete household-days is between 98.5% and 99.5% and QR-10's count equals the number of incomplete days |
 | AC-22 | `silver.meter_readings` and `gold.household_data_quality_monthly` for seed 42 | Monthly facts are recomputed independently from Silver | The materialized view has 1,200 rows (60 households x 20 months, unique key); `expected_readings` is 48 x days in month (1,488 for 31 days, 1,344 for February 2014); `observed_readings`, `zero_readings`, `gap_count`, `first_reading_ts` and `last_reading_ts` equal the recomputation for 100% of rows |
 | AC-23 | A fixture household with leading missing slots, a 1-slot gap and a 3-slot gap inside the same month, a gap spanning a month boundary and trailing missing slots | The monthly table is computed | `gap_count` is 2 in the month of the in-month gaps, 1 in the month of the reading closing the boundary-spanning gap, 0 elsewhere; leading and trailing missing slots count as no gap |
 | AC-24 | The monthly table built from Silver up to the end of month M | Readings dated in month M + 1 or later are appended and the pipeline runs again | Every row for months <= M is unchanged (point-in-time property for PEAK_MODEL Q-14) |
 | AC-25 | `gold.household_data_quality` for seed 42 and a fixture with a 100%-zero household | The view is queried and recomputed from the monthly table | One row per household; every ratio equals the recomputation within 1e-9 using the formulas in *Quality fact definitions*; the fixture household has `zero_share = 1.0`; for seed 42 every `coverage_ratio_study_period` is within 0.001 of the manifest's coverage for that household; the view has no column named like threshold, flag, excluded or label |
-| AC-26 | The pipeline definition deployed | Pipeline and table metadata are read | Exactly one Lakeflow pipeline exists, serverless and triggered; `silver.meter_readings`, `silver.meter_readings_quarantine` and `silver.households` and all Gold objects are produced by it; both Gold tables are materialized views |
+| AC-26 | The pipeline definition deployed | Pipeline and table metadata are read | Exactly one Lakeflow pipeline exists, serverless and triggered; `silver.meter_readings`, `silver.meter_readings_quarantine` and `silver.households` and all Gold objects are produced by it; `silver.meter_readings`, `silver.meter_readings_quarantine` and both Gold tables are materialized views |
 | AC-27 | Bronze loaded and every downstream table built once | Silver and Gold are fully refreshed from Bronze only, with the Kafka service powered off | Row counts and content checksums of all Silver and Gold tables, including the quarantine, equal those before the refresh |
 | AC-28 | A workspace with the `dev` profile and the repository at the feature commit | `databricks bundle validate -t dev` then `databricks bundle deploy -t dev` run | Both exit 0; the daily job and the pipeline exist, named `smart_meter_<purpose>`; no job allows more than 5 concurrent tasks; the daily schedule is defined (paused in development mode); all tables and Volumes are in catalog `smart_meter_dev`, schemas `bronze`, `silver`, `gold`, `ml`, or in the fallback layout with an Accepted ADR in `docs/adr/` that records it |
 | AC-29 | The repository at the feature commit | `pre-commit run --all-files` and a scan of tracked files for the broker host, SASL username and password run | All hooks pass, including `detect-private-key`; the scan finds 0 matches outside `.env.example` placeholders; lakehouse code reads every Kafka credential through a secret scope |
 | AC-30 | The seed-42 sample landed and published | The daily job runs once from Bronze ingestion to the end of the pipeline update | The job run succeeds in <= 60 minutes wall-clock and is not stopped by the Free Edition daily quota |
-| AC-31 | A message produced to `meter-readings` | The next daily run completes | The reading is present in `silver.meter_readings` and reflected in `gold.household_daily_consumption` and `gold.household_data_quality_monthly`, <= 24 h after its `produced_at` |
+| AC-31 | A message produced to `meter-readings` | The next daily run completes | The reading is present in `silver.meter_readings` and reflected in `gold.household_daily_consumption` and `gold.household_data_quality_monthly`, <= 24 h after its `_produced_at` (Silver) |
 | AC-32 | Spikes for A-02, A-03, A-05, A-06, A-09 and A-10 run | `docs/adr/` is read | An ADR on runtime environment constraints records the outcome of each spike and of A-01, and `scripts/check_specs.py` reports 0 errors |
-| AC-33 | A fixture household in `silver.households` with readings in month M - 1 and M + 1 and none in month M | The monthly table is computed | A row exists for month M with `observed_readings = 0`, `zero_readings = 0`, `first_reading_ts` and `last_reading_ts` null, and `expected_readings - observed_readings` equal to all slots of M; the table has exactly households x study months rows, with no missing (household, month) pair |
+| AC-33 | A fixture household in `silver.households` with readings in month M - 1 and M + 1 and none in month M, a fixture household in `silver.households` with no reading at all, and an orphan household with readings but no `silver.households` row | The monthly table is computed | A row exists for month M with `observed_readings = 0`, `zero_readings = 0`, `first_reading_ts` and `last_reading_ts` null, and `expected_readings - observed_readings` equal to all slots of M; the household without readings has a row for every study month with `observed_readings = 0`; the table has exactly (households in the union of `silver.households` and Silver readings) x study months rows, with no missing (household, month) pair |
 | AC-34 | A fixture Bronze row with an off-grid timestamp and energy `Null` (fails QR-03 and QR-04, as in F-02/F-03) | The pipeline runs | Exactly one quarantine row exists for it, with `rule_name = 'QR-03'` and `failed_rules = ['QR-03', 'QR-04']`; the update's failure counts for QR-03 and QR-04 each increase by 1 |
+| AC-35 | A fixture with a known household in `silver.households` with readings and an orphan household (`MAC999999`, well formed, readings in Silver, no `silver.households` row) | The pipeline runs and `gold.household_data_quality_monthly` and `gold.household_data_quality` are queried | Both objects have a non-null boolean column `has_household_record`; the orphan has a row for every study month in the monthly table and one row in the summary view, all with `has_household_record = false`; the known household has `true` in every row; filtering on `has_household_record` returns the same households as a join with `silver.households`; for seed 42 every row has `true` |
 
 ### Traceability (FR to AC)
 
@@ -242,12 +244,12 @@ sampling script is committed (A-13).
 | FR-04 | AC-05, AC-06 |
 | FR-05 | AC-07, AC-08, AC-10 |
 | FR-06 | AC-05, AC-18 |
-| FR-07 | AC-11, AC-13, AC-14, AC-15, AC-16, AC-17, AC-19, AC-20 |
-| FR-08 | AC-11, AC-12, AC-15, AC-34 |
+| FR-07 | AC-11, AC-13, AC-14, AC-15, AC-16, AC-17, AC-19, AC-20, AC-26 |
+| FR-08 | AC-11, AC-12, AC-15, AC-26, AC-34 |
 | FR-09 | AC-12, AC-16, AC-17 |
 | FR-10 | AC-21, AC-26 |
-| FR-11 | AC-22, AC-23, AC-24, AC-26, AC-33 |
-| FR-12 | AC-25 |
+| FR-11 | AC-22, AC-23, AC-24, AC-26, AC-33, AC-35 |
+| FR-12 | AC-25, AC-35 |
 | FR-13 | AC-27 |
 | FR-14 | AC-26, AC-28, AC-30, AC-31 |
 | FR-15 | AC-29 |
@@ -268,14 +270,17 @@ sampling script is committed (A-13).
 | Q-07 | One triggered serverless Lakeflow pipeline for Silver and Gold, run as a task of the daily job; Bronze ingestion in job tasks; explicit cross-source dedup; Gold tables are materialized views; A-10 validated by a pipeline spike | 2026-10-15 |
 | Q-10 | Profiled blocks 0, 11, 17, 49, 69, 82, 100, 104, 110 confirmed | 2026-10-15 |
 | Q-11 | Quality source of truth is `household_data_quality_monthly` at `(household_id, month)`; `household_data_quality` is a summary view derived from it | 2026-10-15 |
+| OD-01 | Silver `meter_readings` and `meter_readings_quarantine` are materialized views recomputed over Bronze; dedup with `row_number()` over `(household_id, reading_ts)` ordered by `_ingested_at`, `_source_ref`; Bronze stays incremental (Auto Loader and Kafka with `AvailableNow`) | 2026-10-15 |
+| Q-12 | Monthly quality household set = union of `silver.households` and households with any Silver reading; `has_household_record` (non-null boolean) in the monthly table and the summary view | 2026-10-15 |
+| Q-13 | Every processing-time or source-metadata column starts with `_`, no exceptions: `_kafka_timestamp`, `_topic`, `_partition`, `_offset`, `_produced_at`; `kafka_key` and `payload` keep their names; `produced_at` stays in the Kafka payload contract | 2026-10-15 |
 | D-01 to D-04, D-06 to D-15, D-17, D-18 | Brainstorm decisions | 2026-10-06 to 2026-10-15 |
 
 ### Open questions for `/design`
 
 | ID | Question |
 |---|---|
-| OD-01 | Cross-source dedup mechanism: AUTO CDC keyed on `(household_id, reading_ts)` with a sequence that makes the first ingested row win, or `dropDuplicatesWithinWatermark`; the choice must satisfy AC-09, AC-17 and AC-27 |
-| OD-02 | How quarantine rows are produced next to expectations in the same pipeline (inverse-rule flow vs a rule-evaluation view feeding both targets) so AC-12 holds |
+| OD-01 | Resolved 2026-10-15 (see *Decided by the user*): Silver as materialized views with `row_number()` dedup; design must show AC-09, AC-17 and AC-27 hold |
+| OD-02 | How quarantine rows are produced next to expectations in the same pipeline (both are now materialized views over Bronze; shared rule-evaluation view vs inverse-rule query) so AC-12 holds |
 | OD-03 | Exact format of `_source_ref` for file rows, and whether Auto Loader file metadata can give a row index |
 | OD-04 | How `gold.household_data_quality` is materialized (persisted view vs materialized view) within the pipeline |
 | OD-05 | How catalog, schemas and Volumes are created given that bundle development mode prefixes bundle-managed resources (setup task vs bundle resources) |
@@ -309,7 +314,7 @@ household rules.
 | A-08 | Assumption | Off-grid timestamps (F-03) are the same rows as the `Null` values (F-02); sets the expected 60 quarantined rows in AC-11 | Pending |
 | A-09 | Assumption | Free Edition allows creating catalog `smart_meter_dev` | Pending, spike 00; fallback decided (Q-05) |
 | A-10 | Assumption | A triggered serverless Lakeflow pipeline runs on Free Edition within the one-pipeline-per-type limit | Pending, spike 04 |
-| A-13 | Assumption | The brainstorm seed-42 figures (1,432,405 / 247,569 rows, 99.1% complete days) are reproduced by the sampling script once committed | Pending; script and plan not yet in the repository |
+| A-13 | Assumption | The brainstorm seed-42 figures (1,432,405 / 247,569 rows, 60 households, blocks 11/17/49/69/82/104, 48 Std / 12 ToU) are reproduced by the sampling script | Validated 2026-10-15: `spikes/local/prepare_sample.py` and `plan.json` re-run reproduced them exactly; selection pinned in `config/sample_households.csv`, counts and checksums in `config/sample_manifest.json` |
 | A-14 | Assumption | `tstp` marks the start of the half hour, so `reading_date` is the UTC date of `reading_ts` | Pending; applied consistently in sampling, Silver and Gold |
 
 ---
@@ -321,8 +326,8 @@ household rules.
 | Problem | 3 | Concrete defects backed by profiling evidence (F-01 to F-13) and a clear consumer need |
 | Users | 2 | The main consumer is the `PEAK_MODEL` feature, whose brainstorm is still Exploring; its needs (Q-14 point-in-time exclusion) are known, but may still change |
 | Scope | 3 | Boundary with `PEAK_MODEL` explicit; out-of-scope items assigned to a feature or release |
-| Acceptance criteria | 3 | 32 measurable criteria covering every FR, including row-level reconciliation, idempotency, quality fixtures and failure paths; all decisions behind them are settled |
-| Constraints | 2 | Platform limits documented and fallbacks decided, but six environment assumptions await spikes (A-02, A-03, A-05, A-06, A-09, A-10) and the sample numbers await A-13 |
+| Acceptance criteria | 3 | 35 measurable criteria covering every FR, including row-level reconciliation, idempotency, quality fixtures and failure paths; all decisions behind them are settled |
+| Constraints | 2 | Platform limits documented and fallbacks decided, but six environment assumptions await spikes (A-02, A-03, A-05, A-06, A-09, A-10); the sample numbers are validated (A-13) |
 | **Total** | **13/15** | Gate: 12 or more |
 
 ---
@@ -330,7 +335,8 @@ household rules.
 ## Self-Review
 
 - **Weak points:**
-  - The numeric expectations in AC-02, AC-03, AC-05, AC-07, AC-11, AC-21 and AC-22 come from a sampling run whose script is not in the repository (A-13); if the committed script differs, those ACs change through `/iterate`.
+  - The numeric expectations in AC-02, AC-03, AC-05, AC-07, AC-11, AC-21 and AC-22 are now backed by the committed spike script (A-13 validated); the code ported into `src/` must keep selecting the pinned households (AC-02).
+  - Silver as materialized views recomputes over all of Bronze; the cost on Free Edition and the meaning of per-update counts under incremental refresh are design risks (AC-12, AC-30). `QR-01` and `QR-06` fail rules on a materialized view need a design answer.
   - The 60 quarantined rows in AC-11 assume A-08 (off-grid rows are the `Null` rows); if not, the quarantine count rises and the Silver count falls accordingly.
   - `coverage_ratio_study_period` can never reach 1: the data ends at 2014-02-28T00:00Z, so 47 slots of the last study day never exist (maximum about 0.998). This is a fact of the source, not a bug, but readers may misread it.
   - The monthly table adds `first_reading_ts` and `last_reading_ts` and the household rules QR-13 to QR-15, which the user decisions did not list explicitly.
@@ -343,3 +349,16 @@ household rules.
 ## Next Step
 
 `/design .claude/sdd/features/DEFINE_METER_INGESTION.md`
+
+---
+
+## Change Log
+
+| Date | What changed | Why | Downstream impact |
+|---|---|---|---|
+| 2026-10-15 | Silver `meter_readings` and `meter_readings_quarantine` are materialized views over Bronze (FR-07, FR-08, scope, data contract table, QR-09 wording, AC-21, AC-26); OD-01 resolved; OD-02 reworded; AC-12 wording adapted to recomputed views | User decision: Silver as MVs with `row_number()` dedup; Bronze stays incremental | DESIGN: remove AUTO CDC / streaming-table Silver, show AC-09, AC-17, AC-27 hold with MVs, answer how QR-01 and QR-06 fail rules and per-update counts work on MVs (AC-12, AC-15), re-check AC-30 runtime |
+| 2026-10-15 | Monthly quality household set = union of `silver.households` and households with Silver readings (FR-11, AC-33); new column `has_household_record` in monthly table and summary view (FR-11, FR-12); new AC-35; traceability updated | User decision: orphans must get quality rows and be filterable without a join | DESIGN: monthly and summary SQL, tests for AC-33 (extra fixtures) and AC-35 |
+| 2026-10-15 | AC-19 has no exceptions; renamed Bronze Kafka columns `topic`, `partition`, `offset`, `kafka_timestamp` to `_topic`, `_partition`, `_offset`, `_kafka_timestamp` (FR-05, key, inline schema, AC-07); Silver gains `_produced_at` (AC-31, NFR-06); `produced_at` stays in the Kafka payload; `_source_ref` definition uses `_topic/_partition/_offset` | User decision on naming | DESIGN: Bronze Kafka schema and `_source_ref` builder, payload parsing to `_produced_at`, AC-19 column-name test (list from Unity Catalog), AC-07 and AC-31 tests |
+| 2026-10-15 | A-13 Validated; AC-02 extended: ported sampling code must select exactly `config/sample_households.csv` and match `config/sample_manifest.json`; AC section intro updated | Spike script and plan committed and re-run, reproducing seed-42 figures | DESIGN: add an AC-02 test comparing the `src/` sampling output with the pinned config files |
+| 2026-10-15 | Contracts: `silver_meter_readings` (MV, `_produced_at`, `_source_ref`), `silver_meter_readings_quarantine` (MV, `_source_ref`), `gold_household_data_quality_monthly` and `gold_household_data_quality` (`has_household_record`, household set); `meter-readings` unchanged except consumer note. All kept at version 1 | Additive per each contract's policy; no consumer is deployed yet and no existing column of a contract file was renamed (the renames are in inline Bronze schemas) | PEAK_MODEL DEFINE should note the new `has_household_record` column and filter on it where orphans matter |
+| 2026-10-15 | Sample reading files keep the original source header `LCLid,tstp,energy(kWh/hh)`; renaming starts in Bronze | Byte-identical outputs to the committed spike and pinned checksums; consistent with Q-06 (rename from Bronze onwards) | None; DESIGN already assumes the original header |

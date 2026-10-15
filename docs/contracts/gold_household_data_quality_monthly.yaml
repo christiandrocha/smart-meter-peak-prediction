@@ -15,7 +15,11 @@ schema:
   - name: household_id
     type: string
     nullable: false
-    description: Household identifier; every household in silver.households or in silver.meter_readings has a row for every study month.
+    description: Household identifier; the household set is the union of silver.households and the households with any silver.meter_readings row, and each has a row for every study month.
+  - name: has_household_record
+    type: boolean
+    nullable: false
+    description: True when household_id exists in silver.households, false for an orphan household that has Silver readings only; lets consumers filter orphans without a join.
   - name: reading_month
     type: date
     nullable: false

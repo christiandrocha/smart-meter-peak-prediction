@@ -14,7 +14,11 @@ schema:
   - name: household_id
     type: string
     nullable: false
-    description: Household identifier.
+    description: Household identifier; same household set as the monthly table (silver.households union households with Silver readings).
+  - name: has_household_record
+    type: boolean
+    nullable: false
+    description: True when household_id exists in silver.households, false for an orphan household; taken from the monthly table (constant per household).
   - name: observed_readings
     type: int
     nullable: false
