@@ -1,0 +1,48 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: pip install -e ".[dev]"
+      - name: Lint
+        run: |
+          ruff check .
+          ruff format --check .
+      - name: Tests
+        run: pytest
+      - name: SDD spec gates
+        run: python scripts/check_specs.py
+
+  bundle-validate:
+    # Validates databricks.yml against the workspace. Needs repository secrets
+    # DATABRICKS_HOST and DATABRICKS_TOKEN (or switch to a service principal with
+    # DATABRICKS_CLIENT_ID / DATABRICKS_CLIENT_SECRET). Without them the job only prints a notice.
+    runs-on: ubuntu-latest
+    env:
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Secrets not configured
+        if: env.DATABRICKS_HOST == ''
+        run: echo "::notice::DATABRICKS_HOST secret not set; bundle validation skipped"
+      - name: Install Databricks CLI
+        if: env.DATABRICKS_HOST != ''
+        uses: databricks/setup-cli@main  # pin to a release tag or commit SHA in your project
+      - name: Validate bundle
+        if: env.DATABRICKS_HOST != ''
+        run: databricks bundle validate -t dev

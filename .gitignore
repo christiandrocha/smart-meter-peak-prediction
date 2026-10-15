@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+
+# Secrets and local config: never commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.jks
+.databrickscfg
+
+# Data: samples and outputs stay out of git (document how to obtain them instead)
+data/
+out/
+*.parquet
+*.csv.gz
+
+# Databricks bundles
+.databricks/
+
+# Personal notes and study material: not part of the project
+notes/
+
+# Editors / OS
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store

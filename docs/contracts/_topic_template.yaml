@@ -1,0 +1,18 @@
+# Kafka topic contract. Copy to docs/contracts/<topic>.yaml.
+dataset: topic-name
+kind: topic
+owner: FEATURE_NAME
+description: One message per <event>.
+key:
+  field: entity_id
+  reason: keeps events of one entity ordered within a partition
+value:
+  format: json
+  schema:
+    - {name: entity_id, type: string, nullable: false}
+    - {name: event_ts, type: string, format: ISO-8601 UTC, nullable: false, description: event time}
+    - {name: value, type: double, nullable: true}
+    - {name: produced_at, type: string, format: ISO-8601 UTC, description: ingestion clock, never event time}
+delivery: at-least-once; consumers deduplicate on (entity_id, event_ts)
+partitions: 2
+retention_assumption: short; Bronze is the reprocessing source

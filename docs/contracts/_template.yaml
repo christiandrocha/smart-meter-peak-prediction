@@ -1,0 +1,32 @@
+# Data contract template. Copy to docs/contracts/<dataset>.yaml.
+# Referenced from DEFINE documents when a dataset is shared across features.
+
+dataset: catalog.schema.table_or_topic   # fully qualified name
+kind: table                              # table | topic | file | api
+owner: FEATURE_NAME                      # feature or team accountable for it
+description: One sentence on what one row or message represents.
+grain: one row per <entity> per <time unit>
+primary_key: [entity_id, event_ts]
+freshness:
+  expected_latency: 1h                   # max delay from event to availability
+  schedule: hourly                       # or continuous, daily...
+schema:
+  - name: entity_id
+    type: string
+    nullable: false
+    description: Business identifier.
+  - name: event_ts
+    type: timestamp
+    nullable: false
+    description: Event time in UTC.
+quality:
+  - rule: event_ts IS NOT NULL
+    action: drop                         # warn | drop | fail
+  - rule: value >= 0
+    action: warn
+consumers:
+  - name: downstream feature, model or report
+    usage: what they read and why
+changes:
+  policy: additive changes allowed; breaking changes need a new version and an ADR
+  version: 1

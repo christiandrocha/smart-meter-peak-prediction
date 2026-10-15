@@ -1,0 +1,12 @@
+{
+  "name": "Smart Meter Peak Prediction",
+  "slug": "smart-meter-peak-prediction",
+  "package": "smart_meter_peak_prediction",
+  "modules": [
+    "databricks",
+    "kafka",
+    "mlflow"
+  ],
+  "license": "mit",
+  "initialized": "2026-10-15"
+}

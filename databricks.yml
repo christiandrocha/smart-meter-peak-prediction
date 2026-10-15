@@ -1,0 +1,23 @@
+# Databricks Asset Bundle. Docs: https://docs.databricks.com/aws/en/dev-tools/bundles/
+bundle:
+  name: smart-meter-peak-prediction
+
+include:
+  - resources/*.yml
+
+variables:
+  catalog:
+    description: Unity Catalog catalog for this deployment
+    default: workspace
+  schema_prefix:
+    description: Prefix for schemas created by this project
+    default: smart_meter_peak_prediction
+
+targets:
+  dev:
+    mode: development
+    default: true
+    # The workspace host comes from DATABRICKS_HOST or the CLI profile, so the same file works
+    # locally and in CI. Pin it here only if one bundle must always target one workspace:
+    # workspace:
+    #   host: https://<your-workspace>.cloud.databricks.com

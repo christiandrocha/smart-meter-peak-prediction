@@ -1,0 +1,48 @@
+[project]
+name = "smart-meter-peak-prediction"
+version = "0.1.0"
+description = "Household-level consumption peak prediction on a Databricks lakehouse, with streaming ingestion and governed ML features"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+    "pre-commit>=3.7",
+    "pyyaml>=6",       # scripts/check_specs.py validates data contracts
+    "pandas>=2.2",     # scripts/profile_data.py and its tests
+]
+profile = [
+    "pandas>=2.2",
+    "pyarrow>=15",     # Parquet input
+]
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "scripts"]
+markers = [
+    "integration: needs a live environment (cloud workspace, broker); skipped in CI",
+]
+addopts = "-m 'not integration'"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["spikes", ".claude"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "PT"]
+ignore = ["S101"]  # assert is how tests and spikes check outcomes
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/*" = ["S603", "S607"]  # trusted local scripts call git and subprocesses
+"**/notebooks/*" = ["F821"]       # Databricks notebooks get spark and dbutils at runtime
