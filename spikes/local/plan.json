@@ -1,0 +1,18 @@
+{
+  "seed": 42,
+  "blocks_per_group": 2,
+  "groups": {
+    "Affluent": [
+      "block_11",
+      "block_17"
+    ],
+    "Comfortable": [
+      "block_49",
+      "block_69"
+    ],
+    "Adversity": [
+      "block_82",
+      "block_104"
+    ]
+  }
+}

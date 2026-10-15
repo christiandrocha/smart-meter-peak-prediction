@@ -1,0 +1,258 @@
+{
+  "seed": 42,
+  "period": {
+    "start": "2012-07-01 00:00:00",
+    "end": "2014-02-28 00:00:00"
+  },
+  "cutoff": "2013-12-01 00:00:00",
+  "rules": {
+    "historical": "tstp < cutoff",
+    "stream": "tstp >= cutoff"
+  },
+  "quality_thresholds": {
+    "max_zero_ratio": 0.9,
+    "min_coverage": 0.8
+  },
+  "households": {
+    "selected": 60,
+    "by_group": {
+      "Affluent": 20,
+      "Comfortable": 20,
+      "Adversity": 20
+    },
+    "by_tariff": {
+      "Std": 48,
+      "ToU": 12
+    },
+    "by_block": {
+      "block_49": 13,
+      "block_82": 12,
+      "block_11": 11,
+      "block_17": 9,
+      "block_104": 8,
+      "block_69": 7
+    },
+    "excluded": [
+      {
+        "LCLid": "MAC002019",
+        "group": "Affluent",
+        "reason": "low coverage (0.70)"
+      },
+      {
+        "LCLid": "MAC001258",
+        "group": "Affluent",
+        "reason": "low coverage (0.67)"
+      },
+      {
+        "LCLid": "MAC002018",
+        "group": "Affluent",
+        "reason": "low coverage (0.35)"
+      },
+      {
+        "LCLid": "MAC004242",
+        "group": "Affluent",
+        "reason": "low coverage (0.38)"
+      },
+      {
+        "LCLid": "MAC001957",
+        "group": "Affluent",
+        "reason": "no readings in period"
+      },
+      {
+        "LCLid": "MAC001987",
+        "group": "Affluent",
+        "reason": "low coverage (0.64)"
+      },
+      {
+        "LCLid": "MAC003926",
+        "group": "Comfortable",
+        "reason": "low coverage (0.78)"
+      },
+      {
+        "LCLid": "MAC004257",
+        "group": "Comfortable",
+        "reason": "low coverage (0.60)"
+      },
+      {
+        "LCLid": "MAC003930",
+        "group": "Comfortable",
+        "reason": "low coverage (0.78)"
+      },
+      {
+        "LCLid": "MAC003925",
+        "group": "Comfortable",
+        "reason": "low coverage (0.78)"
+      },
+      {
+        "LCLid": "MAC003839",
+        "group": "Comfortable",
+        "reason": "low coverage (0.65)"
+      },
+      {
+        "LCLid": "MAC002004",
+        "group": "Comfortable",
+        "reason": "low coverage (0.69)"
+      },
+      {
+        "LCLid": "MAC003867",
+        "group": "Comfortable",
+        "reason": "low coverage (0.78)"
+      },
+      {
+        "LCLid": "MAC004580",
+        "group": "Comfortable",
+        "reason": "low coverage (0.37)"
+      },
+      {
+        "LCLid": "MAC003324",
+        "group": "Comfortable",
+        "reason": "low coverage (0.70)"
+      },
+      {
+        "LCLid": "MAC003629",
+        "group": "Adversity",
+        "reason": "low coverage (0.80)"
+      },
+      {
+        "LCLid": "MAC004486",
+        "group": "Adversity",
+        "reason": "low coverage (0.57)"
+      },
+      {
+        "LCLid": "MAC003345",
+        "group": "Adversity",
+        "reason": "low coverage (0.35)"
+      },
+      {
+        "LCLid": "MAC004433",
+        "group": "Adversity",
+        "reason": "low coverage (0.78)"
+      },
+      {
+        "LCLid": "MAC001921",
+        "group": "Adversity",
+        "reason": "low coverage (0.44)"
+      },
+      {
+        "LCLid": "MAC001959",
+        "group": "Adversity",
+        "reason": "low coverage (0.69)"
+      },
+      {
+        "LCLid": "MAC004435",
+        "group": "Adversity",
+        "reason": "low coverage (0.44)"
+      },
+      {
+        "LCLid": "MAC003346",
+        "group": "Adversity",
+        "reason": "low coverage (0.14)"
+      },
+      {
+        "LCLid": "MAC001908",
+        "group": "Adversity",
+        "reason": "low coverage (0.56)"
+      },
+      {
+        "LCLid": "MAC005287",
+        "group": "Adversity",
+        "reason": "low coverage (0.77)"
+      },
+      {
+        "LCLid": "MAC000607",
+        "group": "Adversity",
+        "reason": "low coverage (0.41)"
+      },
+      {
+        "LCLid": "MAC001968",
+        "group": "Adversity",
+        "reason": "low coverage (0.79)"
+      }
+    ]
+  },
+  "counts": {
+    "total_rows": 1679974,
+    "historical_rows": 1432405,
+    "historical_non_numeric_rows": 60,
+    "stream_rows": 247569,
+    "stream_non_numeric_rows": 0
+  },
+  "files": {
+    "historical": {
+      "readings_2012-07.csv": {
+        "rows": 70742,
+        "sha256": "426f5ada749f14b69e87a9f60d64ec0c2ea79f8fdd9a9fda853328d9637b0235"
+      },
+      "readings_2012-08.csv": {
+        "rows": 72891,
+        "sha256": "fe38c1d25bbbfb3f5c6eeb27fe2c0ede8f07e29f88fa12e79db631ba4427e1b1"
+      },
+      "readings_2012-09.csv": {
+        "rows": 70769,
+        "sha256": "90c6a293da381f6f69813472e9208aa04a782de80a235dd8d832f2301a0328a2"
+      },
+      "readings_2012-10.csv": {
+        "rows": 81608,
+        "sha256": "ed112d011e3fc6572e9219131edbe74eaee67156dadb0da94254294a7dff9c32"
+      },
+      "readings_2012-11.csv": {
+        "rows": 86395,
+        "sha256": "da2ecc93b8c8eeba6f8200494b4549da0c07bace40403f8bf139fb903702546d"
+      },
+      "readings_2012-12.csv": {
+        "rows": 89129,
+        "sha256": "bb60b8ff3ff5ece7a1daaa6e4ad73fefc4e4f51f7de1d70b4708b3b76b126934"
+      },
+      "readings_2013-01.csv": {
+        "rows": 89263,
+        "sha256": "2a33a303c194bce5d4b8b2b3480d4d2e0cd6310af85eb988570ccf8a00180bcb"
+      },
+      "readings_2013-02.csv": {
+        "rows": 80626,
+        "sha256": "354f2444f1134b94272a8b430814265dd7b2ded81549ddbe7af3e8a64e2d828b"
+      },
+      "readings_2013-03.csv": {
+        "rows": 89268,
+        "sha256": "330e1f4656566caa5cae89d16d3c30eb6b2959582b02f623777599331feb2d8d"
+      },
+      "readings_2013-04.csv": {
+        "rows": 86379,
+        "sha256": "1b4a7cbff8d7a59c681fd12833008e758109ba2c85ff9a24bcfd44915d398f31"
+      },
+      "readings_2013-05.csv": {
+        "rows": 89226,
+        "sha256": "09d2cbef5a3661f17eb4c315fae2f6ba7b8dd1c012014f3e395a9fc44a93bbb4"
+      },
+      "readings_2013-06.csv": {
+        "rows": 86386,
+        "sha256": "e557af9cba9c5acc73873180228deaa6430104ece58e54727217cf3374b84d16"
+      },
+      "readings_2013-07.csv": {
+        "rows": 89267,
+        "sha256": "5bfe6145af25c2f3506416d507aecbd8a2c94b899c7bde0e3582131b99977e21"
+      },
+      "readings_2013-08.csv": {
+        "rows": 89276,
+        "sha256": "95638b4052c2c3c6c96b645cf99af8dd67c33edf64cdc1d610ef222c5caeb5eb"
+      },
+      "readings_2013-09.csv": {
+        "rows": 86346,
+        "sha256": "cf7a99b1b41ca8dc7fbc75fd6dbdcd4690be4033c40df2118e46226b3aea1eaf"
+      },
+      "readings_2013-10.csv": {
+        "rows": 89260,
+        "sha256": "d4a78418c3ba37b9dbecf0e302315bb14c353961bfcc337ff64ec25ef0074e9a"
+      },
+      "readings_2013-11.csv": {
+        "rows": 85574,
+        "sha256": "dd32e039cd0eae5208924c28a668a256322e37749db1803c050dc6bbb7eb8dd2"
+      }
+    },
+    "stream": {
+      "readings_stream.csv": {
+        "rows": 247569,
+        "sha256": "49d5ef9d02c32ef9a3f1295fe7c2442a1b6ee6156de6b410dfdfbcd740d7a5f3"
+      }
+    }
+  }
+}
