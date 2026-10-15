@@ -1,0 +1,78 @@
+# Data contract: Silver meter readings, the single table where file and Kafka readings converge.
+# Defined in .claude/sdd/features/DEFINE_METER_INGESTION.md (Data Contracts).
+dataset: smart_meter_dev.silver.meter_readings
+kind: table
+owner: METER_INGESTION
+description: One validated, deduplicated half-hourly energy reading of one household within the study period, from either the file or the Kafka ingestion path.
+grain: one row per household per half-hour reading
+primary_key: [household_id, reading_ts]
+freshness:
+  expected_latency: 24h
+  schedule: daily
+schema:
+  - name: household_id
+    type: string
+    nullable: false
+    description: Household identifier (source column LCLid), matching ^MAC[0-9]{6}$, e.g. MAC000002.
+  - name: reading_ts
+    type: timestamp
+    nullable: false
+    description: Event time in UTC on the 30-minute grid (source column tstp), treated as the start of the half hour.
+  - name: reading_date
+    type: date
+    nullable: false
+    description: UTC calendar date of reading_ts.
+  - name: energy_kwh
+    type: double
+    nullable: false
+    description: Energy in kWh over the half hour (source column energy(kWh/hh)), trimmed and cast, never negative.
+  - name: _ingestion_path
+    type: string
+    nullable: false
+    description: files or kafka, the Bronze table the row came from.
+  - name: _source_ref
+    type: string
+    nullable: false
+    description: Identifier of the Bronze row, topic/partition/offset for Kafka, file path plus household and raw timestamp for files.
+  - name: _ingested_at
+    type: timestamp
+    nullable: false
+    description: Bronze ingestion time in UTC, copied from Bronze (processing time, never event time).
+scope_filter:
+  rule: reading_ts >= study_start AND reading_ts < study_end + 1 day (default 2012-07-01 to 2014-02-28)
+  handling: rows outside the study period are left out of Silver and of the quarantine and counted per run; this is a scope transformation, not a quality rule
+quality:
+  - id: QR-01
+    rule: "household_id IS NOT NULL AND household_id RLIKE '^MAC[0-9]{6}$'"
+    action: fail
+  - id: QR-02
+    rule: "reading_ts IS NOT NULL (the raw timestamp parses)"
+    action: drop
+  - id: QR-03
+    rule: "minute(reading_ts) IN (0, 30) AND second(reading_ts) = 0"
+    action: drop
+  - id: QR-04
+    rule: "energy_kwh IS NOT NULL (the trimmed raw value parses as a number)"
+    action: drop
+  - id: QR-05
+    rule: "energy_kwh >= 0"
+    action: drop
+  - id: QR-06
+    rule: "(_ingestion_path = 'files' AND reading_ts < cutoff) OR (_ingestion_path = 'kafka' AND reading_ts >= cutoff), cutoff default 2013-12-01T00:00:00Z"
+    action: fail
+  - id: QR-07
+    rule: "Kafka payload is a JSON object that parses with the meter-readings value schema (evaluated before the union)"
+    action: drop
+  - id: QR-08
+    rule: "_rescued_data IS NULL (file path only)"
+    action: warn
+dropped_rows: every row failing a drop rule is written to smart_meter_dev.silver.meter_readings_quarantine with the rule name and _ingested_at
+deduplication: explicit, on (household_id, reading_ts); the row with the earliest _ingested_at, then the smallest _source_ref, wins; removed duplicates are counted per run
+consumers:
+  - name: smart_meter_dev.gold.household_daily_consumption
+    usage: daily totals, peaks and completeness per household
+  - name: smart_meter_dev.gold.household_data_quality_monthly
+    usage: monthly coverage, zero and gap facts per household
+changes:
+  policy: additive changes allowed; breaking changes need a new version and an ADR and go through /iterate on METER_INGESTION and PEAK_MODEL
+  version: 1

@@ -1,0 +1,60 @@
+# Data contract: whole-period data quality summary per household, derived from the monthly table.
+# Defined in .claude/sdd/features/DEFINE_METER_INGESTION.md (Data Contracts, Q-11). Interface to PEAK_MODEL.
+dataset: smart_meter_dev.gold.household_data_quality
+kind: table
+object_type: view derived from gold.household_data_quality_monthly
+owner: METER_INGESTION
+description: Data quality facts of one household over the whole study period; facts only, no threshold and no exclusion flag. Covers the whole period, so it is not point-in-time safe for training exclusions.
+grain: one row per household
+primary_key: [household_id]
+freshness:
+  expected_latency: 24h
+  schedule: daily
+schema:
+  - name: household_id
+    type: string
+    nullable: false
+    description: Household identifier.
+  - name: observed_readings
+    type: int
+    nullable: false
+    description: Sum of observed_readings over all study months.
+  - name: expected_readings
+    type: int
+    nullable: false
+    description: Sum of expected_readings over all study months (29,184 for the default study period).
+  - name: coverage_ratio_study_period
+    type: double
+    nullable: false
+    description: observed_readings / expected_readings, between 0 and 1.
+  - name: coverage_ratio_active_span
+    type: double
+    nullable: true
+    description: observed_readings / number of half-hour slots from first_reading_ts to last_reading_ts inclusive; null when the household has no reading.
+  - name: zero_share
+    type: double
+    nullable: true
+    description: Sum of zero_readings / observed_readings; null when the household has no reading.
+  - name: gap_count
+    type: int
+    nullable: false
+    description: Sum of gap_count over all study months.
+  - name: first_reading_ts
+    type: timestamp
+    nullable: true
+    description: Earliest Silver reading_ts of the household in the study period.
+  - name: last_reading_ts
+    type: timestamp
+    nullable: true
+    description: Latest Silver reading_ts of the household in the study period.
+quality:
+  - rule: "coverage_ratio_study_period BETWEEN 0 AND 1"
+    action: fail
+  - rule: "zero_share IS NULL OR zero_share BETWEEN 0 AND 1"
+    action: fail
+consumers:
+  - name: PEAK_MODEL
+    usage: descriptive reporting of household quality; training exclusions use the monthly table instead
+changes:
+  policy: additive changes allowed; breaking changes need a new version, an ADR and /iterate on both features
+  version: 1

@@ -1,0 +1,54 @@
+# Data contract: static household dimension (v0.1; SCD Type 2 from CDC is planned for v0.2).
+# Defined in .claude/sdd/features/DEFINE_METER_INGESTION.md (Data Contracts). Interface to PEAK_MODEL.
+dataset: smart_meter_dev.silver.households
+kind: table
+owner: METER_INGESTION
+description: One sampled household with its tariff and ACORN classification from informations_households.csv.
+grain: one row per sampled household
+primary_key: [household_id]
+freshness:
+  expected_latency: 24h
+  schedule: on file arrival, checked daily
+schema:
+  - name: household_id
+    type: string
+    nullable: false
+    description: Household identifier (source column LCLid).
+  - name: tariff
+    type: string
+    nullable: false
+    description: Std or ToU (source column stdorToU).
+  - name: acorn_category
+    type: string
+    nullable: false
+    description: ACORN category, e.g. ACORN-E (source column Acorn).
+  - name: acorn_group
+    type: string
+    nullable: false
+    description: Affluent, Comfortable or Adversity (source column Acorn_grouped).
+  - name: source_block
+    type: string
+    nullable: false
+    description: Source block file of the household, e.g. block_11 (source column file).
+  - name: _ingested_at
+    type: timestamp
+    nullable: false
+    description: Bronze ingestion time in UTC.
+quality:
+  - id: QR-13
+    rule: "household_id IS NOT NULL AND household_id is unique"
+    action: fail
+  - id: QR-14
+    rule: "acorn_group IN ('Affluent', 'Comfortable', 'Adversity')"
+    action: warn
+  - id: QR-15
+    rule: "tariff IN ('Std', 'ToU')"
+    action: warn
+consumers:
+  - name: PEAK_MODEL
+    usage: static household attributes (acorn_group, tariff) for features and per-group metrics
+  - name: smart_meter_dev.gold.household_daily_consumption
+    usage: orphan check (QR-12)
+changes:
+  policy: additive changes allowed; breaking changes need a new version, an ADR and /iterate on both features
+  version: 1
