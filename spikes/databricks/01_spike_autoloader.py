@@ -101,4 +101,7 @@ print("A-02:", "PASS" if all(checks.values()) else "FAIL")
 
 spark.sql(f"DROP TABLE IF EXISTS {TABLE}")
 dbutils.fs.rm(CHECKPOINT, True)
-assert all(checks.values()), "A-02 failed: see the checks above; use the ADR 0001 fallback"
+result = {"expected": expected, "run1": after_first, "run2": after_second, "rescued": rescued,
+          "null_metadata": null_meta, "checks": checks}
+assert all(checks.values()), f"A-02 failed: {result}; use the ADR 0001 fallback"
+dbutils.notebook.exit(str(result))  # prints are not returned by the Jobs API

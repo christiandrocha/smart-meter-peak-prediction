@@ -125,4 +125,6 @@ print("DA-05:", "PASS" if all(checks.values()) else "FAIL", f"(time to failure {
 
 # Cleanup of the scratch objects of spikes 02 and 03 (run after power-on).
 # spark.sql(f"DROP TABLE IF EXISTS {TABLE}"); dbutils.fs.rm(CHECKPOINT, True)
-assert all(checks.values()), "DA-05 failed: rely on the task timeout_seconds (ADR 0001 fallback)"
+result = {"seconds": round(elapsed), "error": error, "checks": checks}
+assert all(checks.values()), f"DA-05 failed: {result}; rely on the task timeout_seconds"
+dbutils.notebook.exit(str(result))  # prints are not returned by the Jobs API

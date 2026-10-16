@@ -150,12 +150,17 @@ try:
     )
     time.sleep(20)
     q.stop()
+    a05 = "accepted"
     print("A-05 processingTime: ACCEPTED (not used by the design; record it)")
 except Exception as exc:  # noqa: BLE001
+    a05 = "rejected: " + redact(str(exc)).splitlines()[0][:200]
     print("A-05 processingTime: REJECTED ->", type(exc).__name__, redact(str(exc)).splitlines()[0][:200])
 
 # COMMAND ----------
 
 # Keep the scratch table and checkpoint: spike 03 reuses them to show the checkpoint is unchanged.
 # Remove both after spike 03:  DROP TABLE <TABLE>;  dbutils.fs.rm(CHECKPOINT, True)
-assert ok, "A-03 / A-05 failed: see the output above and ADR 0001"
+result = {"rows": rows, "null_metadata": null_cols, "duplicate_offsets": dup_offsets,
+          "seconds": round(elapsed), "a05_processing_time": a05}
+assert ok, f"A-03 / A-05 failed: {result}; see ADR 0001"
+dbutils.notebook.exit(str(result))  # prints are not returned by the Jobs API
