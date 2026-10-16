@@ -28,11 +28,12 @@ tasks (`availableNow`), and Bronze is the only replay source.
 
 One triggered serverless Lakeflow pipeline recomputes Silver and Gold as materialized views from
 Bronze on every update:
-- A private evaluation view parses every Bronze reading once, lists its failed rules and
-  deduplicates with `row_number()`.
-- `silver.meter_readings` and `silver.meter_readings_quarantine` filter the evaluation view.
-- Per-rule, scope and duplicate counts are warn expectations on the evaluation view, read from
-  the published event log.
+- A published evaluation table, `silver.meter_readings_evaluated` (ops dataset, DA-01 fallback),
+  parses every Bronze reading once, lists its failed rules and deduplicates with `row_number()`.
+- `silver.meter_readings` and `silver.meter_readings_quarantine` filter the evaluation table.
+- Per-rule, scope and duplicate counts are table totals computed by `metrics.py` from the
+  `failed_rules`, `is_out_of_scope` and `is_duplicate` columns of the evaluation table. The same
+  rules also run as warn expectations, which only add observability in the published event log.
 
 Delivery is one feature in three pull requests. PR 1 is a gate that validates the environment
 before the lakehouse code is built.
@@ -73,7 +74,7 @@ before the lakehouse code is built.
  Pipeline smart_meter_silver_gold  v   (python: pipelines/meter_pipeline.py, sql: pipelines/household_data_quality.sql)
  +---------------------------------------------------------------------------------------------------+
  |  bronze.files_meter_readings --(batch read)--+                                                     |
- |  bronze.kafka_meter_readings --(batch read)--+--> [private MV] meter_readings_evaluated            |
+ |  bronze.kafka_meter_readings --(batch read)--+--> silver.meter_readings_evaluated (MV, ops)        |
  |      parse, failed_rules, scope, row_number() over (household_id, reading_ts)                      |
  |      order by (_ingested_at, _source_ref), source_ref_row_count                                    |
  |      expectations: QR-01, QR-06, INV-01 fail; counters QR-02..05, QR-07, QR-08, SF-01, QR-09 warn   |
@@ -89,7 +90,8 @@ before the lakehouse code is built.
  |   gold.household_data_quality_monthly (MV, dense union household set x months, range checks fail)  |
  |        --> gold.household_data_quality (persisted VIEW, SQL file)                                   |
  |              --> [private MV] household_data_quality_check (ratio checks fail)                     |
- |  event log published to <cat>.<silver>.pipeline_event_log  (per-update counts, OD-06)              |
+ |  event log published to <cat>.<silver>.pipeline_event_log  (run observability, OD-06)              |
+ |  counts: metrics.py over silver.meter_readings_evaluated (table totals, not the event log)         |
  +---------------------------------------------------------------------------------------------------+
                                    |
                          PEAK_MODEL reads gold.* and silver.households (contracts)
@@ -107,11 +109,11 @@ before the lakehouse code is built.
 | Settings (`src/.../config.py`) | One typed settings object (catalog, schema names, Volumes, study period, cutoff, topic, secret scope) built from job parameters or pipeline configuration; fully qualified names for main and fallback layouts | Python | FR-16, FR-17 |
 | Rule catalog (`src/.../rules.py`) | Single definition of SF-01, QR-01 to QR-15, INV-01 and contract checks: id, expectation name, SQL, action, dataset | Python, Spark SQL strings | FR-07, FR-08, FR-09, NFR-07 |
 | Bronze ingestion library (`src/.../bronze.py`) + notebooks `ingest_files`, `ingest_kafka` | Auto Loader and Kafka `availableNow` streams, Bronze projections (source header to Bronze names, `_`-prefixed Kafka metadata), Kafka options with SASL_SSL and bounded timeouts | Auto Loader, Spark Kafka source | FR-04, FR-05, FR-06, FR-15, NFR-02, NFR-04, NFR-06 |
-| Setup notebook (`notebooks/setup_catalog.py`) | Idempotent creation of catalog, schemas, Volumes and Bronze tables (explicit DDL, append-only) | Spark SQL | FR-17, NFR-09 |
+| Setup notebook (`notebooks/setup_catalog.py`) | Idempotent creation of catalog, schemas, Volumes and Bronze tables (explicit DDL, append-only). Run once by hand between the two first-time deploys (DA-06), and as the first job task afterwards | Spark SQL | FR-17, NFR-09 |
 | Silver library (`src/.../silver.py`) | Parsing, `_source_ref`, rule evaluation (`failed_rules`, `rule_name`, scope), `row_number()` dedup, Silver, quarantine and household projections | PySpark | FR-06, FR-07, FR-08, FR-13, NFR-06 |
 | Gold library (`src/.../gold.py`) | Daily aggregation, orphan check, study months, dense monthly quality with gaps and `has_household_record` | PySpark | FR-10, FR-11 |
 | Pipeline sources (`pipelines/meter_pipeline.py`, `pipelines/household_data_quality.sql`) | Thin wiring of materialized views and expectations from the rule catalog; persisted summary view | Lakeflow Declarative Pipelines (Python `dlt`, SQL) | FR-07 to FR-13, NFR-04 |
-| Metrics and reconciliation (`src/.../metrics.py`) | SQL for per-update counts from the event log, AC-11 reconciliation, order-independent table checksums | Spark SQL / Databricks SQL | FR-09, NFR-07 |
+| Metrics and reconciliation (`src/.../metrics.py`) | SQL for rule, scope and duplicate counts as table totals over `silver.meter_readings_evaluated` (and, for QR-10, QR-12, QR-14, QR-15, over the published Gold and household tables), AC-11 reconciliation, order-independent table checksums; an optional event-log query for run observability | Spark SQL / Databricks SQL | FR-09, NFR-07 |
 | Bundle (`databricks.yml`, `resources/*.yml`) | Variables, `dev` target, daily job, pipeline with configuration and event log | Databricks Asset Bundles | FR-14, FR-16, FR-17, NFR-04 |
 | Tests (`tests/`) | Unit tests on local Spark with a pipeline harness; local-data tests on the raw files; integration tests on the dev workspace | pytest, pyspark, pandas, databricks-sdk | All AC |
 | Runbook (`docs/runbooks/meter_ingestion.md`) | Secrets, sample generation and upload, produce, deploy, run, verify, recover, full refresh, prod naming | Markdown | NFR-08, NFR-09 |
@@ -137,7 +139,7 @@ at start (DA-07).
 | `smart_meter_dev.bronze.files_meter_readings` | bronze | One row per CSV line | `(_source_file, household_id, reading_ts_raw)` | None; `delta.appendOnly = true` | `household_id`, `reading_ts_raw`, `energy_kwh_raw` (raw untrimmed text, renamed from source header `LCLid`, `tstp`, `energy(kWh/hh)`), `_rescued_data`, `_source_file`, `_ingested_at` |
 | `smart_meter_dev.bronze.files_households` | bronze | One row per CSV line | `(_source_file, household_id)` | None; append-only | `household_id`, `tariff_raw`, `acorn_category_raw`, `acorn_group_raw`, `source_block_raw` (from `LCLid`, `stdorToU`, `Acorn`, `Acorn_grouped`, `file`), `_rescued_data`, `_source_file`, `_ingested_at` |
 | `smart_meter_dev.bronze.kafka_meter_readings` | bronze | One row per Kafka message | `(_topic, _partition, _offset)` | None; append-only | `kafka_key`, `payload`, `_topic`, `_partition`, `_offset`, `_kafka_timestamp`, `_ingested_at` (DEFINE inline schema). `produced_at` stays only inside the raw `payload` |
-| `meter_readings_evaluated` (private MV) | silver (internal) | One row per Bronze reading row | `_source_ref` | None | Parsed and raw columns, `payload_ok`, `failed_rules`, `rule_name`, `is_out_of_scope`, `dedup_rank`, `is_duplicate`, `is_silver`, `source_ref_row_count`; carries all reading expectations |
+| `smart_meter_dev.silver.meter_readings_evaluated` | silver (ops) | One row per Bronze reading row | `_source_ref` | None | Materialized view, published (DA-01 fallback). Source of the rule, scope and duplicate counts. Columns: `_source_ref`, `_ingestion_path`, `_ingested_at`, `household_id`, `household_id_raw`, `reading_ts_raw`, `energy_kwh_raw`, `reading_ts`, `energy_kwh`, `reading_date`, `_produced_at`, `payload`, `_rescued_data`, `payload_ok`, `failed_rules` (array of string, never null), `rule_name`, `is_out_of_scope`, `dedup_rank`, `is_duplicate`, `is_silver`, `source_ref_row_count`. Not a PEAK_MODEL input. Contract `silver_meter_readings_evaluated.yaml` (manifest 30a). Carries all reading expectations |
 | `smart_meter_dev.silver.meter_readings` | silver | One row per household per half hour | `(household_id, reading_ts)` | Liquid clustering `(household_id, reading_date)` | Materialized view of `is_silver` rows; includes `_produced_at` parsed from the payload (null for file rows); contract `silver_meter_readings.yaml` |
 | `smart_meter_dev.silver.meter_readings_quarantine` | silver | One row per dropped Bronze row | `_source_ref` | None | Materialized view of rows with failed drop rules; no `_produced_at` column; contract `silver_meter_readings_quarantine.yaml` |
 | `households_checked` (private MV) | silver (internal) | One row per Bronze household row | - | None | Trimmed values plus `key_row_count` for QR-13 |
@@ -147,7 +149,7 @@ at start (DA-07).
 | `smart_meter_dev.gold.household_data_quality_monthly` | gold | One row per household per study month (dense) | `(household_id, reading_month)` | Liquid clustering `(household_id)` | Materialized view; household set = `silver.households` union households with any Silver reading; non-null `has_household_record` |
 | `smart_meter_dev.gold.household_data_quality` | gold | One row per household | `household_id` | - | Persisted view (`CREATE VIEW` in the pipeline SQL file), derived only from the monthly table; carries `has_household_record` |
 | `household_data_quality_check` (private MV) | gold (internal) | One row per household | `household_id` | None | Reads the view; carries its contract checks |
-| `smart_meter_dev.silver.pipeline_event_log` | silver (ops) | One row per pipeline event | `id` | Managed by the platform | Published with the pipeline `event_log` setting; source of per-update counts |
+| `smart_meter_dev.silver.pipeline_event_log` | silver (ops) | One row per pipeline event | `id` | Managed by the platform | Published with the pipeline `event_log` setting; run observability only (warn counter metrics, fail-rule errors, refresh events). Not the source of any AC count; platform-managed, so it has no data contract |
 | `smart_meter_dev.ml` | ml | - | - | - | Empty schema for PEAK_MODEL |
 
 ### Column derivations (Silver evaluation)
@@ -197,22 +199,35 @@ Routing works as follows:
 Examples: a row whose timestamp does not parse and whose energy is `Null` fails QR-02 and QR-04.
 A row off the grid with `Null` energy fails QR-03 and QR-04 (AC-34).
 
-**Counts per update (AC-12).** The expectation counts of an update cover exactly the Bronze rows
-that the update evaluated in `meter_readings_evaluated`. With the recompute design that is every
-Bronze row, on a normal update and on a full refresh alike. So, after each update:
-- the count for each drop rule equals the quarantine rows whose `failed_rules` contain it;
-- the SF-01 count equals the rows outside the study period;
-- the QR-09 count equals all duplicates.
+**Counts (AC-12, DA-01 fallback).** Spike 04 showed that the event log carries expectation
+metrics only for updates that actually refreshed a dataset: an update with no new input wrote no
+metrics for the evaluation MV (ADR 0001, DA-01 partial). So the counts are not read from the event
+log. They are **table totals over the current state** of `silver.meter_readings_evaluated`, which
+is recomputed from all of Bronze whenever it refreshes and is unchanged when it is skipped as up
+to date. `metrics.py` computes, with one query:
+- per drop rule R: the rows where `array_contains(failed_rules, R)` (a row failing two rules is
+  counted under both);
+- SF-01: the rows where `is_out_of_scope`;
+- QR-09: the rows where `is_duplicate`;
+- the evaluated row count: `count(*)`, which must equal the rows of both Bronze reading tables.
 
-For an input that only adds duplicates or one new failing row, the change from the previous
-update equals that input (AC-09, AC-17, AC-34). If the platform refreshes the MV incrementally,
-it evaluates only the changed rows, and the counts then cover those rows. That still matches
-AC-12's "Bronze rows that update evaluated", but the totals no longer equal the whole tables.
-Spike 04 records which behaviour Free Edition shows (DA-01). The integration test reads the
-evaluated row count from the event log (`num_output_rows` of the flow) to know which case applies.
+After any update, the table totals satisfy:
+- the count for each drop rule equals the quarantine rows whose `failed_rules` contain it;
+- the quarantine rows equal the evaluated rows with `size(failed_rules) > 0`;
+- the SF-01 count equals the rows outside the study period;
+- the QR-09 count equals all duplicates, and `is_silver` rows equal `silver.meter_readings`.
+
+There is no per-update delta in the data. Where an AC compares an input with its effect (AC-09,
+AC-17, AC-34), the test takes the totals before and after the input and checks the difference, or
+checks the totals on a fixture. A full refresh gives the same totals as a normal update, because
+both recompute from Bronze (AC-27). The counts for QR-10, QR-12, QR-14 and QR-15 follow the same
+rule: `metrics.py` computes them from the published tables (`gold.household_daily_consumption`,
+`silver.households`, and the households of `gold.household_daily_consumption` that are absent from
+`silver.households`), not from the event log. The warn counter expectations stay on the datasets
+for observability in the event log, but no AC depends on them.
 
 **Fail rules on materialized views (QR-01, QR-06, INV-01, QR-13, QR-11 and the contract
-checks).** These are `expect_or_fail` on the dataset that computes them. `meter_readings_evaluated`
+checks).** These are `expect_or_fail` on the dataset that computes them. `silver.meter_readings_evaluated`
 and `households_checked` sit upstream of every published reading and household view. A violation
 fails the flow and the update, and the downstream MVs are not refreshed in that update. Because an
 MV refresh is atomic, the published tables keep their previous contents, so "0 rows committed by
@@ -243,11 +258,14 @@ Data quality rules:
 
 Expectation names follow the form `<rule id in lower case>_<short description>` (for example
 `qr_03_on_30_min_grid`), so event log rows map to rule ids by prefix. A "counter" is a warn
-expectation whose failures are, by construction, the rows routed by that rule.
+expectation whose failures are, by construction, the rows routed by that rule. Counters are kept
+for observability in the event log (they report only for updates that refreshed the dataset);
+the counts used by the ACs come from `metrics.py` over `silver.meter_readings_evaluated`. In the
+table below, `meter_readings_evaluated` means `silver.meter_readings_evaluated`.
 
 | Rule | Object | Action (`warn` / `drop` / `fail`) | Source finding |
 |---|---|---|---|
-| SF-01 study period (`NOT is_out_of_scope`), counter `sf_01_in_study_period` | `meter_readings_evaluated` | `drop` as scope transformation: row excluded from Silver and quarantine, counted per update | D-08, F-07 |
+| SF-01 study period (`NOT is_out_of_scope`), counter `sf_01_in_study_period` | `meter_readings_evaluated` | `drop` as scope transformation: row excluded from Silver and quarantine, counted as the `is_out_of_scope` total | D-08, F-07 |
 | QR-01 `NOT payload_ok OR (household_id IS NOT NULL AND household_id RLIKE '^MAC[0-9]{6}$')` | `meter_readings_evaluated` | `fail` | Q-04 |
 | QR-02 timestamp parses, counter `NOT array_contains(failed_rules, 'QR-02')` | `meter_readings_evaluated` | `drop` to quarantine | F-04 |
 | QR-03 on 30-minute grid, counter on `'QR-03'` | `meter_readings_evaluated` | `drop` to quarantine | F-03 |
@@ -256,7 +274,7 @@ expectation whose failures are, by construction, the rows routed by that rule.
 | QR-06 `NOT payload_ok OR reading_ts IS NULL OR (_ingestion_path = 'files' AND reading_ts < cutoff) OR (_ingestion_path = 'kafka' AND reading_ts >= cutoff)` | `meter_readings_evaluated` | `fail` | D-09 |
 | QR-07 payload parses with the topic value schema, counter on `'QR-07'` | `meter_readings_evaluated` | `drop` to quarantine | Topic contract |
 | QR-08 `_rescued_data IS NULL` | `meter_readings_evaluated` | `warn` | Schema drift |
-| QR-09 `NOT is_duplicate`, counter `qr_09_first_ingested_wins` | `meter_readings_evaluated` | `drop` as deduplication: loser excluded from Silver and quarantine, counted per update | F-09, at-least-once delivery |
+| QR-09 `NOT is_duplicate`, counter `qr_09_first_ingested_wins` | `meter_readings_evaluated` | `drop` as deduplication: loser excluded from Silver and quarantine, counted as the `is_duplicate` total | F-09, at-least-once delivery |
 | INV-01 `source_ref_row_count = 1` | `meter_readings_evaluated` | `fail` | Primary key of quarantine and Silver contracts (design invariant) |
 | Quarantine `rule_name IN ('QR-02','QR-03','QR-04','QR-05','QR-07')` | `silver.meter_readings_quarantine` | `fail` | Quarantine contract |
 | QR-10 `is_complete_day` | `gold.household_daily_consumption` | `warn` | F-06 |
@@ -276,11 +294,11 @@ expectation whose failures are, by construction, the rows routed by that rule.
 | ID | Decision | Rationale |
 |---|---|---|
 | OD-01 | Silver is materialized views over Bronze. In the private MV `meter_readings_evaluated`, `row_number()` over `(household_id, reading_ts)`, ordered by `(_ingested_at, _source_ref)` among valid in-scope rows, keeps rank 1. Losers are counted by `qr_09_first_ingested_wins` (ADR 0005, user decision 2026-10-15) | Implements QR-09 literally, ties included, and is deterministic for any input order (AC-17). Every update is a recompute from Bronze, so full refresh and incremental updates agree (AC-27). Replays always rank after the originals (AC-09). Trade-off: Silver is recomputed on every update instead of incrementally, which is accepted at about 1.7 M rows. Revisit trigger: when the pipeline refresh exceeds 15 minutes or Bronze exceeds 50 M rows, move Silver to a streaming table with AUTO CDC |
-| OD-02 | The private MV `meter_readings_evaluated` computes `failed_rules` once. The quarantine and Silver MVs filter it. Each drop rule has one counter expectation on the same MV, testing `array_contains(failed_rules, ...)` (ADR 0004) | Counts and quarantine rows derive from the same column of the same refresh, so AC-12 and AC-34 hold by construction. DA-01 (MV expectation metrics in the event log on Free Edition) is checked in spike 04, with a fallback |
+| OD-02 | The MV `silver.meter_readings_evaluated`, published to Unity Catalog as an ops table (DA-01 fallback applied), computes `failed_rules` once. The quarantine and Silver MVs filter it. `metrics.py` counts per rule, scope and duplicates from its `failed_rules`, `is_out_of_scope` and `is_duplicate` columns. Each drop rule keeps one counter expectation on the same MV, testing `array_contains(failed_rules, ...)`, for event-log observability only (ADR 0004). Schema `silver` because it is a Silver-stage intermediate that shares the pipeline default schema, the Silver contract set and the Silver lineage, and it needs no new schema or setup DDL; the name carries no layer suffix, and the contract marks it `ops` (not for PEAK_MODEL) | Counts and quarantine rows derive from the same column of the same refresh, so AC-12 and AC-34 hold by construction, and the totals do not depend on whether the platform skipped an update (DA-01 partial, spike 04: no metrics for an unchanged update). Cost: a second copy of the Bronze rows (about 1.7 M rows, with `payload`) is stored and visible in the catalog |
 | OD-03 | Files: `files:<_source_file>#<raw household_id>#<reading_ts_raw>`. Kafka: `kafka:<topic>/<partition>/<offset padded to 20>`, built from the values of `_topic`, `_partition` and `_offset`. Uniqueness is enforced by INV-01 | Auto Loader `_metadata` exposes file path, name, size, block and modification time, but no CSV row index. The raw key is unique per file (F-09). Padding makes string order equal offset order |
 | OD-04 | Persisted view via `CREATE VIEW` in `pipelines/household_data_quality.sql`, with its contract checks on a private MV that reads it | Matches the contract (`object_type: view`), and 60 rows need no storage. `CREATE VIEW` is supported in pipelines that use the default publishing mode (Databricks pipeline SQL reference). Fallback: a materialized view, through `/iterate` (DA-02) |
-| OD-05 | An idempotent setup notebook runs as the first job task. Names come from bundle variables, and the Bronze tables are created by explicit DDL (ADR 0003) | Development mode prefixes bundle-managed resource names, which would break the contract names. The same code serves the fallback layout, and `bundle destroy` keeps data |
-| OD-06 | The pipeline `event_log` setting publishes the event log to `<catalog>.<silver_schema>.pipeline_event_log`. `metrics.py` provides the per-update query: the sum of `failed_records` per expectation, grouped by `origin.update_id` | Native and per update, with no processing-time columns in data tables (AC-27). Fallback: the hidden default event log table (DA-03) |
+| OD-05 | An idempotent setup notebook runs as the first job task, and once by hand on a fresh workspace between two deploys (DA-06). Names come from bundle variables, and the Bronze tables are created by explicit DDL (ADR 0003) | Development mode prefixes bundle-managed resource names, which would break the contract names. The same code serves the fallback layout, and `bundle destroy` keeps data |
+| OD-06 | Revised 2026-10-16 (DA-01 partial). Counts are table totals computed by `metrics.py` from `silver.meter_readings_evaluated` (OD-02) and the published Gold and household tables. The pipeline `event_log` setting still publishes the event log to `<catalog>.<silver_schema>.pipeline_event_log` (DA-03 passed), as run observability: warn counter metrics and refresh events for updates that refreshed a dataset, fail-rule errors for diagnosing an aborted update, and update timing. `metrics.py` may expose one optional query (sum of `failed_records` per expectation by `origin.update_id`), documented as present only for updates that refreshed the dataset. No AC test asserts on it | Spike 04: an update with no new input wrote no expectation metrics, so per-update event-log counts are unreliable as a source of truth. Table totals keep the data tables free of processing-time columns (AC-27) and are testable at any time, with no 5-minute window. Fallback for the event log: the hidden default event log table (DA-03) |
 
 ### Assumption dependencies
 
@@ -295,11 +313,11 @@ expectation whose failures are, by construction, the rows routed by that rule.
 | A-10 | Triggered serverless pipeline | 6 to 8 | None inside the scope (would reopen Q-07) |
 | A-13 | Seed-42 figures | Resolved: `spikes/local/prepare_sample.py` reproduces them; pinned in `config/sample_households.csv` and `config/sample_manifest.json` | - |
 | A-14 | `reading_date` = UTC date of `reading_ts` | None possible | Accepted, documented in ADR 0001 |
-| DA-01 | OD-02, OD-06, AC-09, AC-12, AC-16, AC-17, AC-34: MV expectations report per-rule metrics in the event log on Free Edition and count a row under every failed expectation. Spike 04 also records whether a refresh evaluates all rows or only changed rows | 6 to 8 | Publish the evaluation MV as a UC table, and compute counts in `metrics.py` from its `failed_rules`, `is_out_of_scope` and `is_duplicate` |
+| DA-01 | OD-02, OD-06, AC-09, AC-12, AC-16, AC-17, AC-34: MV expectations report per-rule metrics in the event log on Free Edition and count a row under every failed expectation. Spike 04 also records whether a refresh evaluates all rows or only changed rows | 6 to 8 | Partial (2026-10-16, ADR 0001). Held: per-rule `failed_records` appear in the published event log, a row failing two rules is counted under both, and the duplicate is counted once under `qr_09_first_ingested_wins`. Failed: a second update with no new input wrote no expectation metrics and no `num_output_rows` (most likely skipped as up to date), so per-update counts exist only for updates that refreshed the MV. **Fallback applied:** `silver.meter_readings_evaluated` is published as a UC table, and `metrics.py` computes rule, scope and duplicate counts from its `failed_rules`, `is_out_of_scope` and `is_duplicate` columns as table totals (OD-02, OD-06). The event log is kept for observability only |
 | DA-02, DA-03, DA-07, DA-08 | Multi-schema publishing, private datasets and `CREATE VIEW`; event log publication; UTC; imports | 6 to 8 | ADR 0001 |
 | DA-05 | AC-10 timing | 5 | Task timeout 840 s |
 | DA-10 | AC-30 with a full recompute of Silver and Gold | 6 to 8 (timing over 1.7 M synthetic rows) | Streaming Silver with AUTO CDC through `/iterate` (ADR 0005 revisit trigger) |
-| DA-06 | First deploy order | 2 | Run the setup notebook once, then deploy again |
+| DA-06 | First deploy order | 2 | Failed on 2026-10-16 (ADR 0001): `bundle deploy` syncs the files, then terraform stops with `Catalog 'smart_meter_dev' does not exist.` The fallback applies: on a fresh workspace, (1) `databricks bundle deploy -t dev` (syncs files; pipeline creation fails), (2) run `notebooks/setup_catalog.py` once from the synced files, (3) `databricks bundle deploy -t dev` again. Later deploys are a single deploy. The `setup_catalog` job task cannot help on the first deploy, because terraform creates the pipeline in the same apply, before any job run |
 | DA-09 | Secret scope on Free Edition | 4 | None (would block the Kafka path) |
 
 ### Bundle and job layout
@@ -474,7 +492,7 @@ or below about 25 files. The BUILD_REPORT has one file for the whole feature and
 | PR | Scope | Manifest entries | Files |
 |---|---|---|---|
 | PR 1 (gate) | Spikes, ADR results, sampling port, plan, producer and their tests | 1 to 23 | 22, plus up to 5 conditional ADR updates (entry 11) |
-| PR 2a | Library modules, summary SQL, CI Java, unit tests | 24 to 42 | 19 |
+| PR 2a | Library modules, summary SQL, CI Java, unit tests | 24 to 42, plus 30a | 20 |
 | PR 2b | Notebooks, pipeline, bundle, wiring and bundle tests | 43 to 52 | 10 (one of them a deletion) |
 | PR 3 | Integration tests, runbook, README; integration and manual evidence | 53 to 60 | 8 |
 
@@ -512,7 +530,7 @@ Existing inputs, read by the build and not created or modified by it:
 | 3 | 1 | `spikes/databricks/01_spike_autoloader.py` | Create | A-02: Auto Loader CSV from a Volume with `availableNow`. The read schema uses the source header names, including `energy(kWh/hh)`, with `_rescued_data` and `_metadata.file_path`; renames before writing. A second run ingests 0 rows (AC-05, AC-06, AC-32) | pipeline-builder | 2 |
 | 4 | 1 | `spikes/databricks/02_spike_kafka_consume.py` | Create | A-03, A-05, DA-09 (A-06 read from the Aiven console): read secrets from the scope, SASL_SSL SCRAM with an inline PEM CA, `availableNow` into a scratch table with `_`-prefixed metadata (AC-07, AC-29, AC-32) | streaming-engineer | 2 |
 | 5 | 1 | `spikes/databricks/03_spike_kafka_unreachable.py` | Create | DA-05: with the service powered off, measure time to failure with the planned timeouts; the checkpoint stays unchanged (AC-10, AC-32) | streaming-engineer | 4 |
-| 6 | 1 | `spikes/databricks/04_spike_lakeflow_pipeline/pipeline.py` | Create | A-10, DA-01, DA-02, DA-07, DA-08. Private MV with `row_number()` dedup and warn counters, including a row that fails two counters. Event log reports per-rule metrics for MV expectations on Free Edition, and a second update with no new input reports the same totals. `expect_or_fail` aborts with 0 rows committed and downstream MVs keep their contents. Fully qualified names in two schemas, `sys.path` import, session time zone. Also times one update over a synthetic Bronze of 1.7 M rows, to check early that a full recompute fits AC-30 (AC-12, AC-15, AC-26, AC-30, AC-34) | pipeline-builder | 2 |
+| 6 | 1 | `spikes/databricks/04_spike_lakeflow_pipeline/pipeline.py` | Create | A-10, DA-01, DA-02, DA-07, DA-08. Private MV with `row_number()` dedup and warn counters, including a row that fails two counters. Event log reports per-rule metrics for MV expectations on Free Edition (held); the check that a second update with no new input reports the same totals failed (DA-01 partial, ADR 0001), which led to the table-totals fallback. `expect_or_fail` aborts with 0 rows committed and downstream MVs keep their contents. Fully qualified names in two schemas, `sys.path` import, session time zone. Also times one update over a synthetic Bronze of 1.7 M rows, to check early that a full recompute fits AC-30 (AC-12, AC-15, AC-26, AC-30, AC-34) | pipeline-builder | 2 |
 | 7 | 1 | `spikes/databricks/04_spike_lakeflow_pipeline/summary_view.sql` | Create | DA-02: `CREATE VIEW` published to UC from a pipeline SQL file (AC-25, AC-26) | pipeline-builder | 6 |
 | 8 | 1 | `spikes/databricks/04_spike_lakeflow_pipeline/run_spike.py` | Create | Creates the spike pipeline with `event_log` publication (DA-03) through databricks-sdk, runs two updates, asserts the outcomes, prints PASS/FAIL, then deletes the pipeline, since only one pipeline per type is allowed (AC-12, AC-32) | pipeline-builder | 6, 7 |
 | 9 | 1 | `docs/adr/0001-runtime-environment-constraints.md` | Update | Record every spike result and applied fallback; the user moves it to Accepted (AC-32) | build-agent | 1 to 8 |
@@ -536,23 +554,24 @@ Existing inputs, read by the build and not created or modified by it:
 | 27 | 2a | `pkg/bronze.py` | Create | Source-header CSV read schemas and Bronze renames; projections with `_metadata.file_path`, `current_timestamp()` and `_`-prefixed Kafka metadata; Auto Loader reader; Kafka options builder; `availableNow` writer with checkpoint (AC-05 to AC-08, AC-10, AC-19, AC-29) | streaming-engineer | 25 |
 | 28 | 2a | `pkg/silver.py` | Create | Parse expressions, `_source_ref`, rule evaluation, `row_number()` dedup, INV-01 count, Silver, quarantine and household projections (AC-09, AC-11, AC-13 to AC-18, AC-20, AC-27, AC-34) | pipeline-builder | 26 |
 | 29 | 2a | `pkg/gold.py` | Create | Daily aggregation, orphan check, study months, dense monthly quality with gaps and `has_household_record` (AC-21 to AC-24, AC-33, AC-35) | pipeline-builder | 28 |
-| 30 | 2a | `pkg/metrics.py` | Create | SQL builders: per-update expectation counts from the event log, AC-11 reconciliation, order-independent checksums (`count(*)`, `sum(cast(xxhash64(...) AS DECIMAL(38,0)))`) (AC-11, AC-12, AC-27) | pipeline-builder | 26, 28 |
+| 30 | 2a | `pkg/metrics.py` | Create | SQL builders: rule, scope and duplicate counts as table totals over `silver.meter_readings_evaluated` (`array_contains(failed_rules, R)`, `is_out_of_scope`, `is_duplicate`, `count(*)`), QR-10/12/14/15 counts over the published tables, AC-11 reconciliation, order-independent checksums (`count(*)`, `sum(cast(xxhash64(...) AS DECIMAL(38,0)))`), plus one optional event-log observability query (AC-09, AC-11, AC-12, AC-16, AC-17, AC-27, AC-34) | pipeline-builder | 26, 28 |
+| 30a | 2a | `docs/contracts/silver_meter_readings_evaluated.yaml` | Create | `kind: table` contract for the published evaluation MV (`object_type: materialized view`, owner METER_INGESTION, `primary_key: [_source_ref]`, columns of the Data Model row, consumer: metrics and reconciliation, marked ops and not for PEAK_MODEL). `check_specs.py` validates it (AC-12, AC-19) | build-agent | 28 |
 | 31 | 2a | `pipelines/household_data_quality.sql` | Create | `CREATE VIEW` of the summary from the monthly table, with configuration substitution for names and `has_household_record` (AC-25, AC-35) | pipeline-builder | 29 |
 | 32 | 2a | `tests/conftest.py` | Create | Session `spark` fixture: `local[2]`, `spark.sql.session.timeZone=UTC`, 2 shuffle partitions | build-agent | 12 |
 | 33 | 2a | `tests/support/builders.py` | Create | Builders for Bronze file, Kafka and household rows; rule, DST and gap fixtures | build-agent | 32 |
-| 34 | 2a | `tests/support/harness.py` | Create | Local pipeline harness: runs the `silver.py` and `gold.py` functions in pipeline order over Bronze DataFrame snapshots and applies the rule catalog (warn counts, drop routing, fail raises `ExpectationFailed`). Each "update" recomputes from the given Bronze snapshot, as the MVs do | build-agent | 26, 28, 29, 33 |
+| 34 | 2a | `tests/support/harness.py` | Create | Local pipeline harness: runs the `silver.py` and `gold.py` functions in pipeline order over Bronze DataFrame snapshots and applies the rule catalog (drop routing, fail raises `ExpectationFailed`). It exposes the evaluation DataFrame, which tests pass to the `metrics.py` count SQL; the warn expectations are also evaluated, for the wiring and catalog checks only. Each "update" recomputes from the given Bronze snapshot, as the MVs do | build-agent | 26, 28, 29, 33 |
 | 35 | 2a | `tests/test_bronze.py` | Create | Projections, naming and Kafka options (AC-05, AC-07, AC-10, AC-19, AC-29) | streaming-engineer | 27 |
 | 36 | 2a | `tests/test_silver_readings.py` | Create | Rules, quarantine, scope, cutoff, reconciliation, counts (AC-11 to AC-16, AC-34) | pipeline-builder | 34 |
 | 37 | 2a | `tests/test_silver_dedup.py` | Create | Ranking, ties, replays, determinism under input order (AC-09, AC-11, AC-17, AC-27) | pipeline-builder | 34 |
 | 38 | 2a | `tests/test_silver_households.py` | Create | Household projection and QR-13 to QR-15 (AC-15, AC-18) | pipeline-builder | 34 |
 | 39 | 2a | `tests/test_gold_daily.py` | Create | Daily aggregates, QR-10 to QR-12, DST days (AC-15, AC-20, AC-21) | pipeline-builder | 34 |
 | 40 | 2a | `tests/test_gold_quality.py` | Create | Monthly facts, gaps, point in time, dense rows, union household set, summary SQL (AC-22 to AC-25, AC-33, AC-35) | pipeline-builder | 31, 34 |
-| 41 | 2a | `tests/test_contract_schemas.py` | Create | Library output schemas equal the contract YAML names and types; naming rule without exceptions (AC-19) | build-agent | 27, 28, 29 |
+| 41 | 2a | `tests/test_contract_schemas.py` | Create | Library output schemas (including the evaluation table, contract 30a) equal the contract YAML names and types; naming rule without exceptions (AC-19) | build-agent | 27, 28, 29 |
 | 42 | 2a | `tests/test_secrets_hygiene.py` | Create | Scans `git ls-files` for the broker host, SASL user and password (values from the local environment when set) and for generic credential patterns (AC-29) | build-agent | - |
 | 43 | 2b | `notebooks/setup_catalog.py` | Create | Idempotent `CREATE CATALOG/SCHEMA/VOLUME/TABLE IF NOT EXISTS`, with Bronze DDL and `delta.appendOnly` (AC-19, AC-28) | pipeline-builder | 25, 27 |
 | 44 | 2b | `notebooks/ingest_files.py` | Create | Auto Loader `availableNow` streams for readings, then households, each with its own checkpoint (AC-05, AC-06) | pipeline-builder | 27, 43 |
 | 45 | 2b | `notebooks/ingest_kafka.py` | Create | Secrets from the scope; Kafka `availableNow` stream into Bronze; never prints options (AC-07, AC-08, AC-10, AC-29) | streaming-engineer | 27, 43 |
-| 46 | 2b | `pipelines/meter_pipeline.py` | Create | Thin wiring: settings from configuration, UTC assertion, private and published MVs, all expectations from `rules.py` (AC-11 to AC-18, AC-20 to AC-24, AC-26, AC-27, AC-33 to AC-35) | pipeline-builder | 26, 28, 29, 31 |
+| 46 | 2b | `pipelines/meter_pipeline.py` | Create | Thin wiring: settings from configuration, UTC assertion, published MVs (including `silver.meter_readings_evaluated`, by fully qualified name, no `private=True`) and private check MVs, all expectations from `rules.py` (AC-11 to AC-18, AC-20 to AC-24, AC-26, AC-27, AC-33 to AC-35) | pipeline-builder | 26, 28, 29, 31 |
 | 47 | 2b | `resources/jobs.yml` | Delete | Remove the template example job | pipeline-builder | - |
 | 48 | 2b | `resources/smart_meter_silver_gold.pipeline.yml` | Create | Serverless, triggered pipeline with configuration, event log publication and libraries (AC-26, AC-28) | pipeline-builder | 31, 46 |
 | 49 | 2b | `databricks.yml` | Update | Bundle variables for layout, period, cutoff, topic, mechanism and scope; `dev` target; `prod` documented in comments only (AC-04, AC-28) | pipeline-builder | 48 |
@@ -565,7 +584,7 @@ Existing inputs, read by the build and not created or modified by it:
 | 56 | 3 | `tests/integration/test_gold_tables.py` | Create | AC-21, AC-22, AC-25, AC-26, AC-31, AC-35 | pipeline-builder | 53 |
 | 57 | 3 | `tests/integration/test_reprocessing.py` | Create | Two-step snapshot tests for AC-09, AC-24, AC-27 | pipeline-builder | 53 |
 | 58 | 3 | `tests/integration/test_deployment.py` | Create | AC-28 and AC-30 through the jobs, pipelines and tables APIs | pipeline-builder | 53 |
-| 59 | 3 | `docs/runbooks/meter_ingestion.md` | Create | Runbook covering (AC-09, AC-10, AC-27, AC-28): secret scope setup; sample generation and upload; Aiven power-on; producer run; deploy (including `prod` without name prefix); job run; evidence order for integration tests; broker outage; full refresh; Bronze reset | build-agent | 50, 58 |
+| 59 | 3 | `docs/runbooks/meter_ingestion.md` | Create | Runbook covering (AC-09, AC-10, AC-27, AC-28): secret scope setup; sample generation and upload; Aiven power-on; producer run; deploy (first-deploy order of DA-06: deploy, run `setup_catalog.py` from the synced files, deploy again; including `prod` without name prefix); job run; evidence order for integration tests; broker outage; full refresh; Bronze reset | build-agent | 50, 58 |
 | 60 | 3 | `README.md` | Update | Architecture summary, quick start, links to the runbook, contracts and ADRs | build-agent | 59 |
 
 ---
@@ -581,8 +600,10 @@ Every acceptance criterion from DEFINE appears here. Levels:
 
 Every test name contains its AC id (golden rule 3). Integration tests that need a before and an
 after state store a snapshot in `out/evidence/` in a `*_before` test and compare it in the
-`*_after` test. The runbook gives the order. Counts reported "by the update" cover the Bronze rows that
-update evaluated (see *Column derivations*).
+`*_after` test. The runbook gives the order. Rule, scope and duplicate counts are table totals
+from `metrics.py` over `silver.meter_readings_evaluated` (see *Column derivations*, DA-01
+fallback). An AC that compares an input with its effect compares totals before and after, or
+totals on a fixture. No test reads counts from the event log.
 
 | AC | Test type | Test location | How it proves the criterion |
 |---|---|---|---|
@@ -603,17 +624,17 @@ update evaluated (see *Column derivations*).
 | AC-07 | Unit | `tests/test_bronze.py::test_ac07_kafka_projection_keeps_raw_payload_and_offsets` | The Kafka projection yields exactly `kafka_key`, `payload`, `_topic`, `_partition`, `_offset`, `_kafka_timestamp` and `_ingested_at` (no `produced_at` outside the payload) |
 | AC-07 | Integration | `tests/integration/test_bronze_ingestion.py::test_ac07_kafka_bronze_count_uniqueness_and_payload_parse` | 247,569 rows; `(_topic, _partition, _offset)` unique; 0 nulls; every payload has `payload_ok` |
 | AC-08 | Integration | `tests/integration/test_bronze_ingestion.py::test_ac08_rerun_kafka_ingestion_adds_no_rows` | Rerun task `ingest_kafka` with no new message; the count is unchanged |
-| AC-09 | Unit | `tests/test_silver_dedup.py::test_ac09_replayed_messages_counted_as_duplicates_and_silver_unchanged` | Harness: the Bronze snapshot gains every Kafka row again with a later `_ingested_at`. Silver and quarantine checksums are equal, and the QR-09 count rises by the number of replayed rows |
-| AC-09 | Integration | `tests/integration/test_reprocessing.py::test_ac09_before_replay_snapshot` and `::test_ac09_after_replay_silver_unchanged` | Bronze Kafka grows by 247,569; Silver and quarantine counts and checksums are unchanged; the event log reports 247,569 for `qr_09_first_ingested_wins` |
+| AC-09 | Unit | `tests/test_silver_dedup.py::test_ac09_replayed_messages_counted_as_duplicates_and_silver_unchanged` | Harness: the Bronze snapshot gains every Kafka row again with a later `_ingested_at`. Silver and quarantine checksums are equal, and the QR-09 total from `metrics.py` (`is_duplicate` rows of the evaluation output) rises by the number of replayed rows |
+| AC-09 | Integration | `tests/integration/test_reprocessing.py::test_ac09_before_replay_snapshot` and `::test_ac09_after_replay_silver_unchanged` | The `_before` test stores the QR-09 total (rows with `is_duplicate` in `silver.meter_readings_evaluated`) and the Silver and quarantine counts and checksums. After the replay and a pipeline update, Bronze Kafka has grown by 247,569; Silver and quarantine counts and checksums are unchanged; the QR-09 total is higher by 247,569 (247,569 for a seed-42 run with no earlier duplicates) |
 | AC-10 | Unit | `tests/test_bronze.py::test_ac10_kafka_options_bound_broker_timeouts` | The options contain the request and API timeouts and the retry count |
 | AC-10 | Unit | `tests/test_bundle_config.py::test_ac10_kafka_task_fails_within_15_minutes` | `ingest_kafka` has `timeout_seconds <= 900` and `max_retries = 0`; the pipeline task depends on it |
 | AC-10 | Manual / evidence | Runbook "Broker outage" + `tests/integration/test_bronze_ingestion.py::test_ac10_failed_kafka_run_left_bronze_and_checkpoint_unchanged` | Power off Aiven and run the job: the task fails within 15 min, and the Bronze count and checkpoint offsets are unchanged. After power-on, the next run passes the AC-07 checks |
 | AC-11 | Unit | `tests/test_silver_readings.py::test_ac11_every_bronze_row_classified_exactly_once` | Harness on a mixed fixture: the reconciliation SQL from `metrics.py` returns 0 unclassified and 0 double-classified rows |
 | AC-11 | Unit | `tests/test_silver_dedup.py::test_ac11_source_ref_unique_per_bronze_row` | `_source_ref` follows the specified formats and is unique; INV-01 fails on a duplicated CSV line |
 | AC-11 | Integration | `tests/integration/test_silver_tables.py::test_ac11_reconciliation_classifies_every_bronze_row` | Seed 42: 60 quarantined (or the A-08 result), 0 outside the period, 0 duplicates, 1,679,914 in Silver, 0 unclassified |
-| AC-12 | Unit | `tests/test_silver_readings.py::test_ac12_rule_counts_equal_quarantine_failed_rules_per_update` | Harness over two updates (normal and full refresh). For the Bronze rows each update evaluated (all of them), the per-rule counts equal the quarantine rows whose `failed_rules` contain the rule, and the quarantine rows equal the rows failing at least one drop rule. Scope and duplicate counts are present |
-| AC-12 | Unit | `tests/test_pipeline_wiring.py::test_ac12_pipeline_expectations_match_rule_catalog` | Every counter and fail expectation of `rules.py` is attached to `meter_readings_evaluated` with the stated action |
-| AC-12 | Integration | `tests/integration/test_silver_tables.py::test_ac12_update_rule_counts_match_quarantine_rows` | Latest update and a full refresh: the event log's evaluated row count for `meter_readings_evaluated` equals the Bronze rows that update evaluated. Per-rule failure counts equal the quarantine rows for those Bronze rows, exploded by `failed_rules`. Scope and duplicate counts are present. The query is issued within 5 minutes of the update ending |
+| AC-12 | Unit | `tests/test_silver_readings.py::test_ac12_rule_counts_equal_quarantine_failed_rules_per_update` (name kept) | Harness over two updates (normal and full refresh). After each, the table totals from `metrics.py` over the evaluation output satisfy: the evaluated row count equals the Bronze rows; per-rule counts equal the quarantine rows whose `failed_rules` contain the rule; the quarantine rows equal the rows failing at least one drop rule; scope and duplicate totals are present. Both updates give equal totals |
+| AC-12 | Unit | `tests/test_pipeline_wiring.py::test_ac12_pipeline_expectations_match_rule_catalog` | Every counter and fail expectation of `rules.py` is attached to `silver.meter_readings_evaluated` with the stated action, and that dataset is declared published (fully qualified name, not private) |
+| AC-12 | Integration | `tests/integration/test_silver_tables.py::test_ac12_update_rule_counts_match_quarantine_rows` (name kept) | On the current state after the latest update, and again after a full refresh: `count(*)` of `silver.meter_readings_evaluated` equals the rows of both Bronze reading tables. Per-rule totals from `metrics.py` equal the rows of `silver.meter_readings_quarantine` exploded by `failed_rules`. The `is_out_of_scope` and `is_duplicate` totals are present, and `is_silver` rows equal `silver.meter_readings`. No time window applies, because the totals are table state (event log not read) |
 | AC-13 | Unit | `tests/test_silver_readings.py::test_ac13_silver_invariants_hold_on_mixed_fixture` | Silver has no duplicate keys and no off-grid, negative, null-energy, out-of-period or quarantined-ref rows |
 | AC-13 | Integration | `tests/integration/test_silver_tables.py::test_ac13_silver_invariants` | The same five queries on the deployed table |
 | AC-14 | Unit | `tests/test_silver_readings.py::test_ac14_cutoff_boundary_rows_appear_once_with_correct_path` | Rows at 2013-11-30T23:30Z (files) and 2013-12-01T00:00Z (Kafka) appear once, with the right path |
@@ -625,19 +646,19 @@ update evaluated (see *Column derivations*).
 | AC-15 | Unit | `tests/test_gold_daily.py::test_ac15_qr10_and_qr12_warn_counts` | The incomplete day is reported once; `MAC999999` is reported once by QR-12 |
 | AC-15 | Unit | `tests/test_gold_daily.py::test_ac15_qr11_fails_on_49_readings_for_one_day` | 49 readings fed directly to the daily aggregation fail QR-11 |
 | AC-15 | Unit | `tests/test_silver_households.py::test_ac15_household_rules_qr13_fail_qr14_qr15_warn` | A duplicate id fails; an invalid group and an invalid tariff are counted once each and kept |
-| AC-15 | Manual / evidence | Spike 04 output recorded in ADR 0001 (`spikes/databricks/04_spike_lakeflow_pipeline/run_spike.py`) | Proves on the platform that `expect_or_fail` aborts with 0 rows committed, and that MV counters behave as the harness assumes (DA-01) |
-| AC-16 | Unit | `tests/test_silver_readings.py::test_ac16_study_period_boundaries_and_scope_count` | 2012-07-01T00:00Z and 2014-02-28T23:30Z are in Silver; the two outer rows are nowhere; SF-01 count 2 |
-| AC-17 | Unit | `tests/test_silver_dedup.py::test_ac17_earlier_ingested_at_wins_and_tie_uses_smaller_source_ref` | A cross-path pair with different `_ingested_at` and a tie pair give the expected rank-1 rows; QR-09 count 2 |
+| AC-15 | Manual / evidence | Spike 04 output recorded in ADR 0001 (`spikes/databricks/04_spike_lakeflow_pipeline/run_spike.py`) | Proves on the platform that `expect_or_fail` aborts with 0 rows committed. Counters report per rule and double-count a row failing two rules, but not for an update that skips the refresh (DA-01 partial), which is why the AC counts come from the evaluation table |
+| AC-16 | Unit | `tests/test_silver_readings.py::test_ac16_study_period_boundaries_and_scope_count` | 2012-07-01T00:00Z and 2014-02-28T23:30Z are in Silver; the two outer rows are nowhere; the SF-01 total (`is_out_of_scope` rows, from `metrics.py`) is 2 |
+| AC-17 | Unit | `tests/test_silver_dedup.py::test_ac17_earlier_ingested_at_wins_and_tie_uses_smaller_source_ref` | A cross-path pair with different `_ingested_at` and a tie pair give the expected rank-1 rows; the QR-09 total (`is_duplicate` rows, from `metrics.py`) is 2 |
 | AC-17 | Unit | `tests/test_silver_dedup.py::test_ac17_rerun_keeps_same_winners` | A second run, a run with reversed union order and a run with different partitioning give identical Silver |
 | AC-18 | Unit | `tests/test_silver_households.py::test_ac18_households_are_typed_and_renamed` | Contract columns from the source-header file, trimmed values, `_ingested_at` copied |
 | AC-18 | Integration | `tests/integration/test_silver_tables.py::test_ac18_silver_households_seed42` | 60 unique rows, valid groups and tariffs, 20 per group |
 | AC-19 | Unit | `tests/test_contract_schemas.py::test_ac19_output_schemas_match_contracts` | Library outputs (Bronze projections, Silver, quarantine, Gold) equal each contract's names and types |
 | AC-19 | Unit | `tests/test_contract_schemas.py::test_ac19_no_source_column_names_and_processing_columns_prefixed` | No `LCLid`, `tstp` or `energy(kWh/hh)` in any table. Every processing-time or transport-metadata column starts with `_`, with no exceptions (`_kafka_timestamp`, `_topic`, `_partition`, `_offset`, `_produced_at`) |
-| AC-19 | Integration | `tests/integration/test_silver_tables.py::test_ac19_deployed_columns_match_contracts` | `information_schema.columns` equals the contracts and the inline Bronze schemas, with the same naming rule |
+| AC-19 | Integration | `tests/integration/test_silver_tables.py::test_ac19_deployed_columns_match_contracts` | `information_schema.columns` equals the contracts (including `silver_meter_readings_evaluated.yaml`) and the inline Bronze schemas, with the same naming rule |
 | AC-20 | Unit | `tests/test_gold_daily.py::test_ac20_dst_change_days_have_48_utc_readings` | A fixture with source text across 2013-03-31 and 2013-10-27 has 48 readings per UTC day after parsing |
 | AC-20 | Integration | `tests/integration/test_silver_tables.py::test_ac20_dst_days_have_48_readings` | Households with 48 readings on both neighbouring days have 48 on each DST day |
 | AC-21 | Unit | `tests/test_gold_daily.py::test_ac21_daily_aggregates_match_recomputation` | Totals and maxima within 1e-9, counts equal, flag exact |
-| AC-21 | Integration | `tests/integration/test_gold_tables.py::test_ac21_daily_consumption_matches_silver_recomputation` | MV type and recomputation; complete-day share between 98.5% and 99.5%; QR-10 count equals the incomplete days |
+| AC-21 | Integration | `tests/integration/test_gold_tables.py::test_ac21_daily_consumption_matches_silver_recomputation` | MV type and recomputation; complete-day share between 98.5% and 99.5%; the QR-10 total from `metrics.py` (days with `is_complete_day = false`) equals the incomplete days |
 | AC-22 | Unit | `tests/test_gold_quality.py::test_ac22_expected_readings_per_month` | 1,488 for 31-day months, 1,344 for February 2014, 29,184 in total |
 | AC-22 | Unit | `tests/test_gold_quality.py::test_ac22_monthly_facts_match_recomputation` | An independent pandas recomputation equals the Spark output |
 | AC-22 | Integration | `tests/integration/test_gold_tables.py::test_ac22_monthly_quality_matches_independent_recomputation` | 1,200 rows, unique key, SQL recomputation equal for 100% of rows |
@@ -649,13 +670,13 @@ update evaluated (see *Column derivations*).
 | AC-25 | Integration | `tests/integration/test_gold_tables.py::test_ac25_summary_matches_monthly_and_manifest` | One row per household; the recomputation is equal; coverage is within 0.001 of the manifest's `coverage_study_period` |
 | AC-26 | Unit | `tests/test_pipeline_wiring.py::test_ac26_pipeline_defines_all_silver_and_gold_objects` | The fake `dlt` records the Silver, quarantine, households and Gold datasets. `silver.meter_readings`, `silver.meter_readings_quarantine` and both Gold tables are declared as MVs (batch `@dlt.table` over batch reads), with no streaming reads |
 | AC-26 | Unit | `tests/test_bundle_config.py::test_ac26_single_serverless_triggered_pipeline` | One pipeline resource, `serverless: true`, `continuous: false` |
-| AC-26 | Integration | `tests/integration/test_gold_tables.py::test_ac26_pipeline_and_table_metadata` | Exactly one pipeline in the workspace; the tables report this pipeline id; both Silver reading tables and both Gold tables have type `MATERIALIZED_VIEW` |
+| AC-26 | Integration | `tests/integration/test_gold_tables.py::test_ac26_pipeline_and_table_metadata` | Exactly one pipeline in the workspace; the tables report this pipeline id; `silver.meter_readings_evaluated`, both Silver reading tables and both Gold tables have type `MATERIALIZED_VIEW` |
 | AC-27 | Unit | `tests/test_silver_dedup.py::test_ac27_rebuild_is_identical_for_any_input_order` | The harness recomputes from the same Bronze with shuffled row order and repartitioning; Silver, quarantine and Gold checksums are identical |
 | AC-27 | Integration | `tests/integration/test_reprocessing.py::test_ac27_before_full_refresh_snapshot` and `::test_ac27_after_full_refresh_checksums_equal` | Kafka service off; pipeline full refresh; counts and checksums of all Silver and Gold objects are equal |
 | AC-28 | Unit | `tests/test_bundle_config.py::test_ac28_job_and_pipeline_names_and_schedule` | Names are exactly `smart_meter_ingestion` and `smart_meter_silver_gold`; schedule present |
 | AC-28 | Unit | `tests/test_bundle_config.py::test_ac28_no_more_than_five_concurrent_tasks` | The maximum width of the task DAG is <= 5 |
 | AC-28 | Unit | `tests/test_bundle_config.py::test_ac28_layout_variables_match_sample_plan` | Catalog and schema defaults are as in Q-05; period and cutoff equal `config/sample_plan.json` |
-| AC-28 | Integration | `tests/integration/test_deployment.py::test_ac28_deployed_job_pipeline_and_catalog_layout` | After `bundle validate` and `bundle deploy` (manual; exit codes in the evidence), the deployed names, with `^\[dev [^\]]+\] ` stripped, equal the base names exactly. The schedule is paused, and the objects are in the catalog layout, or in the fallback layout recorded in an Accepted ADR 0003 |
+| AC-28 | Integration | `tests/integration/test_deployment.py::test_ac28_deployed_job_pipeline_and_catalog_layout` | After `bundle validate` and the first-deploy sequence of DA-06 (deploy, setup notebook, deploy; manual; exit codes in the evidence, with the first deploy expected to fail on a fresh workspace and the second to succeed), the deployed names, with `^\[dev [^\]]+\] ` stripped, equal the base names exactly. The schedule is paused, and the objects are in the catalog layout, or in the fallback layout recorded in an Accepted ADR 0003 |
 | AC-29 | Unit | `tests/test_secrets_hygiene.py::test_ac29_tracked_files_contain_no_kafka_credentials` | No broker host, SASL user or password values (from the local `.env` when present) and no credential patterns in tracked files outside `.env.example` |
 | AC-29 | Unit | `tests/test_bundle_config.py::test_ac29_bundle_reads_kafka_credentials_from_secret_scope` | The bundle YAML holds only the scope name; `ingest_kafka` reads every credential with `dbutils.secrets.get` |
 | AC-29 | Unit | `tests/test_producer.py::test_ac29_producer_reads_credentials_from_environment_only` | The producer config is built from environment variables only |
@@ -668,8 +689,8 @@ update evaluated (see *Column derivations*).
 | AC-32 | Unit | `tests/test_runtime_adr.py::test_ac32_check_specs_reports_no_errors` | `check_specs.run(root)` returns 0 errors |
 | AC-33 | Unit | `tests/test_gold_quality.py::test_ac33_month_without_readings_has_dense_row` | The row for month M has 0 observed, 0 zero, null timestamps and missing slots equal to all slots |
 | AC-33 | Unit | `tests/test_gold_quality.py::test_ac33_household_without_readings_and_orphan_are_dense` | A `silver.households` household with no reading has a row for every study month with `observed_readings = 0`. An orphan with readings also has every month. Total rows = (union of households) x study months, with no missing pair |
-| AC-34 | Unit | `tests/test_silver_readings.py::test_ac34_row_failing_qr03_and_qr04_has_one_quarantine_row_counted_twice` | One quarantine row with `rule_name = 'QR-03'` and `failed_rules = ['QR-03', 'QR-04']`; both counters +1 against the previous update |
-| AC-34 | Integration | `tests/integration/test_silver_tables.py::test_ac34_seed42_offgrid_null_rows_counted_under_both_rules` | The seed-42 off-grid `Null` rows are counted under QR-03 and QR-04 in the event log and quarantined once each (when A-08 holds) |
+| AC-34 | Unit | `tests/test_silver_readings.py::test_ac34_row_failing_qr03_and_qr04_has_one_quarantine_row_counted_twice` | One quarantine row with `rule_name = 'QR-03'` and `failed_rules = ['QR-03', 'QR-04']`; the QR-03 and QR-04 totals from `metrics.py` are each 1 higher than on the same fixture without that row, and the quarantine holds the row once |
+| AC-34 | Integration | `tests/integration/test_silver_tables.py::test_ac34_seed42_offgrid_null_rows_counted_under_both_rules` | The seed-42 off-grid `Null` rows are counted under QR-03 and QR-04 in the `metrics.py` totals over `silver.meter_readings_evaluated` and quarantined once each (when A-08 holds) |
 | AC-35 | Unit | `tests/test_gold_quality.py::test_ac35_orphan_false_known_household_true` | The orphan `MAC999999` (readings in Silver, no `silver.households` row) has a row for every study month and one summary row, all with `has_household_record = false`. The known household is `true` in every row. The column is non-null in both objects, and filtering on it returns the same households as a join with `silver.households` |
 | AC-35 | Integration | `tests/integration/test_gold_tables.py::test_ac35_seed42_has_household_record_all_true` | For seed 42, every monthly and summary row has `has_household_record = true`; the filter result equals the join with `silver.households` |
 
@@ -679,9 +700,9 @@ update evaluated (see *Column derivations*).
 
 | Concern | Approach |
 |---|---|
-| Deployment | `databricks bundle validate -t dev`, then `databricks bundle deploy -t dev`. Development mode adds the display prefix, pauses the schedule and sets the pipeline to `development: true`. The first deploy follows the order of DA-06. CI validates the bundle when the repository secrets exist. The spike pipeline is deleted before the bundle pipeline is deployed. The runbook notes that a `prod` target (production mode) deploys without the name prefix |
+| Deployment | `databricks bundle validate -t dev`, then `databricks bundle deploy -t dev`. Development mode adds the display prefix, pauses the schedule and sets the pipeline to `development: true`. On a fresh workspace the first deploy takes three steps (DA-06): deploy (files sync, pipeline creation fails because the catalog is absent), run `notebooks/setup_catalog.py` once from the synced bundle files (`.bundle/<name>/dev/files`; idempotent), deploy again; later deploys are a single deploy. The `setup_catalog` job task keeps the catalog in place for reruns and the fallback layout, but cannot help on the first deploy. CI runs `bundle validate` only (never `deploy`), so it does not depend on the catalog. CI validates the bundle when the repository secrets exist. The spike pipeline is deleted before the bundle pipeline is deployed. The runbook notes that a `prod` target (production mode) deploys without the name prefix |
 | Scheduling and retries | Daily at 06:00 UTC, paused in development mode; run on demand with `databricks bundle run -t dev smart_meter_ingestion`. `max_concurrent_runs: 1`. Retries: setup 1, files 1 (idempotent through the checkpoint), Kafka 0 (AC-10; the next daily run is the retry), pipeline 0 (fail rules must not be retried blindly). Timeouts: 600 / 1800 / 840 / 2700 s; job 3600 s |
-| Monitoring and alerting | Failure email to the deploying user. Per-update rule, scope and duplicate counts come from `pipeline_event_log` through `metrics.py` (NFR-07). The quarantine table supports row inspection. Trend monitoring is v0.3 (out of scope) |
+| Monitoring and alerting | Failure email to the deploying user. Rule, scope and duplicate counts are table totals from `silver.meter_readings_evaluated` through `metrics.py` (NFR-07), queryable at any time after an update. `pipeline_event_log` adds run observability (counter metrics for updates that refreshed a dataset, fail-rule errors, timing). The quarantine table supports row inspection. Trend monitoring is v0.3 (out of scope) |
 | Secrets | Scope `smart_meter` with keys `kafka-bootstrap-servers`, `kafka-sasl-username`, `kafka-sasl-password` and `kafka-ca-pem`, created with `databricks secrets create-scope` and `put-secret` (runbook). The producer uses the git-ignored `.env`. Nothing goes in YAML, code or notebooks, and the options are never printed (ADR 0002) |
 | Cost | Bronze ingestion is incremental. Every pipeline update recomputes Silver and Gold over all of Bronze: about 1.7 M rows, or 1.9 M after one full replay, with two window passes and a few aggregations. Expected in minutes on serverless; AC-30 leaves 2700 s for the pipeline task inside the 3600 s job, and spike 04 measures it first. Spikes run once. Target <= 60 min per run (AC-30); the job timeout stops runaway runs before the quota does. Revisit trigger: refresh > 15 min or Bronze > 50 M rows (ADR 0005) |
 | Backfill / reprocessing | Every update recomputes Silver and Gold from Bronze; a full refresh does the same explicitly (FR-13, ADR 0006). New historical files land under a new name, and Auto Loader picks them up. Kafka replay comes from Bronze, never from the topic. A Bronze reset (drop the table and its checkpoint) is followed by a pipeline update. Changing the study period or cutoff needs only a redeploy and a pipeline update |
@@ -693,8 +714,8 @@ update evaluated (see *Column derivations*).
 | Risk or trade-off | Impact | Mitigation |
 |---|---|---|
 | Silver and Gold are recomputed on every update instead of incrementally | Refresh time grows linearly with Bronze | Accepted at about 1.7 M rows. Revisit trigger in ADR 0005: refresh > 15 min or Bronze > 50 M rows means moving to a streaming table with AUTO CDC |
-| "Per update" counts cover the Bronze rows the update evaluated (AC-12), which with a full recompute means all rows | Readers may expect deltas | Defined in *Column derivations*; tests compare totals and also the change between updates |
-| MVs may be refreshed incrementally by the platform, and expectation metrics may then cover only changed rows | Counts would not equal table totals | Spike 04 checks a second update with no new input (DA-01). The tests read the evaluated row count from the event log. Fallback: publish the evaluation MV and count from it in `metrics.py` |
+| Counts are table totals over the current evaluation state, not per-update deltas (AC-12, DA-01 fallback) | Readers may expect deltas | Defined in *Column derivations*; tests compare totals, and compare totals before and after an input where an AC concerns an effect |
+| The platform skips the refresh of an MV with no new input, so the event log has no expectation metrics for that update (DA-01 partial, spike 04) | Event-log counts exist only for updates that refreshed the MV, and cannot back NFR-07 or AC-12 | Applied: `silver.meter_readings_evaluated` is published and `metrics.py` counts from its `failed_rules`, `is_out_of_scope` and `is_duplicate` columns. The event log and the warn counters stay as observability only. Cost: one more stored copy of the Bronze rows (about 1.7 M), visible in the catalog and excluded from PEAK_MODEL inputs by its ops marking |
 | Fixture ACs (AC-15, AC-16, AC-17, AC-23, AC-33, AC-34, AC-35) are proven by a local harness | The harness could diverge from Lakeflow semantics | Same rule catalog and functions in both. The wiring test uses a fake `dlt`. Spike 04 proves the platform semantics, and the seed-42 integration tests cover the same code paths |
 | A spike fails (A-02, A-03, A-09, A-10, DA-01 to DA-09) | Rework | The PR 1 gate triggers `/iterate` before PR 2. The fallbacks in ADR 0001 are configuration-level; a failure of A-10 reopens Q-07 |
 | The source header `energy(kWh/hh)` in the Auto Loader read schema | Rescue or name matching could misbehave | Spike 01 tests exactly this; the fallback is a positional read |
@@ -713,9 +734,9 @@ update evaluated (see *Column derivations*).
     (`LCLid,tstp,energy(kWh/hh)`), and this design keeps it so that the outputs stay
     byte-identical. Renaming happens in Bronze, which matches Q-06. That DEFINE row needs a
     one-line `/iterate`.
-  - If Free Edition refreshes the evaluation MV incrementally, per-update counts cover only the
-    changed rows. AC-12 allows this, but AC-09, AC-16 and AC-17 read more naturally as totals.
-    Spike 04 decides which interpretation the tests apply.
+  - Spike 04 showed that an update with no new input writes no expectation metrics, so counts are
+    now table totals from the published evaluation table. DEFINE was aligned on 2026-10-16
+    (AC-12, NFR-07, SF-01 and QR-09 speak of table totals, with no time window).
   - Fixture-based ACs run against a local harness, and spike 04 is the only on-platform proof of
     expectation semantics.
   - The sampling selection uses the spike's coverage denominator (29,137 slots), while AC-25
@@ -730,6 +751,15 @@ update evaluated (see *Column derivations*).
 - **Next improvement:** Build PR 1, run spikes 00 to 04 and A-08, and record the results in ADR
   0001. Run the `local_data` tests against the pinned config files. Then pass the PR 1 gate (or
   run `/iterate`) before PR 2a.
+
+---
+
+## Change Log
+
+| Date | Change | Why | Downstream impact |
+|---|---|---|---|
+| 2026-10-16 | DA-06 recorded as failed and its fallback applied: the first deploy on a fresh workspace is (1) `bundle deploy -t dev` (files sync, pipeline creation fails), (2) run `notebooks/setup_catalog.py` once from the synced files, (3) `bundle deploy -t dev` again; later deploys are a single deploy. Updated the Components row for the setup notebook, OD-05, the DA-06 row, the AC-28 evidence, the Operational Concerns deployment row and the runbook manifest entry (59). The `setup_catalog` job task stays and notes that it cannot help on the first deploy. A-09 passed, so the main layout stays | Spike 00 (2026-10-16, ADR 0001): terraform creates the pipeline in the same apply and fails with `Catalog 'smart_meter_dev' does not exist.`; the files were synced before the error | Manifest 59 (runbook) and 58 (AC-28 evidence); README deploy notes; ADR 0003 text; no code or architecture change; BUILD_REPORT must record the three-step deploy as evidence |
+| 2026-10-16 | DA-01 recorded as partial and its fallback applied: `meter_readings_evaluated` is published as `silver.meter_readings_evaluated` (ops table, contract `silver_meter_readings_evaluated.yaml`, new manifest entry 30a), and `metrics.py` computes rule, scope and duplicate counts as table totals from its `failed_rules`, `is_out_of_scope` and `is_duplicate` columns (QR-10, QR-12, QR-14, QR-15 counts from the published tables). Counter expectations stay as event-log observability only; the published event log stays for observability (OD-06 revised). Updated Overview, architecture, Components, Data Model, *Counts*, rule table notes, OD-02, OD-06, DA-01 row, manifest 6, 30, 34, 41, 46, delivery plan (PR 2a is 20 files), test strategy rows AC-09, AC-12, AC-16, AC-17, AC-19, AC-21, AC-26, AC-34, monitoring and risks. AC IDs and test names unchanged; AC-09, AC-12 and AC-34 are re-expressed as table totals (before/after totals instead of "the event log reports") | Spike 04 (2026-10-16, ADR 0001): per-rule `failed_records` and double counting held, but an update with no new input wrote no expectation metrics and no `num_output_rows`, most likely because the refresh was skipped, so event-log counts exist only for updates that refreshed the MV | Manifest 30 (`metrics.py`), new 30a (contract), 28 and 46 (publish the evaluation table, fully qualified), 34, 36, 37, 51, 55, 57 (totals instead of event log); ADR 0004 text; ADR 0005 wording ("private"); DEFINE AC-12, NFR-07, SF-01, QR-09 wording ("per update", "within 5 minutes") needs `/iterate`; BUILD_REPORT must record the DA-01 outcome and the AC-12 re-expression |
 
 ---
 
