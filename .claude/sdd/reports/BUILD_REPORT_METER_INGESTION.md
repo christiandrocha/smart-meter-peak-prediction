@@ -17,7 +17,7 @@ Allowed status values: `In Progress`, `Blocked`, `Complete`.
 
 ## Summary
 
-This report covers **PR 1 (manifest entries 1 to 23)**. The local sampling port, CLI, producer, Docker files, plan, pyproject and `.env.example` changes, A-08 check and their tests are done and verified against `data/raw`. On 2026-10-16 the Databricks spikes 00, 01 and 04 and the DA-06 deploy test were run on the `dev` workspace and recorded in ADR 0001: A-02, A-09, A-10, DA-02, DA-03, DA-07, DA-08 and DA-10 pass, AC-15 is shown on the platform, DA-06 fails and DA-01 is partial. Both went through `/iterate` on 2026-10-16: DA-06 changes the first deploy to three steps; DA-01 publishes `silver.meter_readings_evaluated` and makes `metrics.py` count rules, scope and duplicates as table totals from it (new manifest entry 30a for its contract; PR 2a is now 20 files). The Kafka spikes 02 and 03 (A-03, A-05, A-06, DA-05, DA-09) are not run yet: they need the secret scope, a powered-on Aiven service and messages on the topic. PR 2a, 2b and 3 are not started.
+This report covers **PR 1 (manifest entries 1 to 23)**. The local sampling port, CLI, producer, Docker files, plan, pyproject and `.env.example` changes, A-08 check and their tests are done and verified against `data/raw`. On 2026-10-16 the Databricks spikes 00, 01 and 04 and the DA-06 deploy test were run on the `dev` workspace and recorded in ADR 0001: A-02, A-09, A-10, DA-02, DA-03, DA-07, DA-08 and DA-10 pass, AC-15 is shown on the platform, DA-06 fails and DA-01 is partial. Both went through `/iterate` on 2026-10-16: DA-06 changes the first deploy to three steps; DA-01 publishes `silver.meter_readings_evaluated` and makes `metrics.py` count rules, scope and duplicates as table totals from it (new manifest entry 30a for its contract; PR 2a is now 20 files). The Kafka spikes 02 and 03 ran the same day: A-03, A-05, A-06, DA-05 and DA-09 pass, so every row of ADR 0001 now has a result. PR 2a, 2b and 3 are not started.
 
 ---
 
@@ -30,8 +30,8 @@ State legend: done, written-not-run, partial, not started.
 | 1 | PR 1 | spikes/local/a08_offgrid_null_cooccurrence.py | Created | done: Ran on data/raw: A-08 PASS (see AC-11) |
 | 2 | PR 1 | spikes/databricks/00_setup_catalog.py | Created | done: Run 2026-10-16 as a one-off serverless job (SUCCESS). A-09 Pass, verified by listing schemas and Volumes. DA-06 manual deploy test run before it: Fail |
 | 3 | PR 1 | spikes/databricks/01_spike_autoloader.py | Created | done: Run 2026-10-16 (SUCCESS). A-02 Pass: 143,633 rows on run 1, 0 on run 2, no rescued data |
-| 4 | PR 1 | spikes/databricks/02_spike_kafka_consume.py | Created | written-not-run: uploaded to the workspace; waits for the secret scope, Aiven power-on and messages on the topic |
-| 5 | PR 1 | spikes/databricks/03_spike_kafka_unreachable.py | Created | written-not-run: uploaded; runs after spike 02 with the broker powered off |
+| 4 | PR 1 | spikes/databricks/02_spike_kafka_consume.py | Created | done: Run 2026-10-16 (SUCCESS). 1,000 events read with SCRAM-SHA-256 and an inline PEM CA; `processingTime` rejected; secrets readable |
+| 5 | PR 1 | spikes/databricks/03_spike_kafka_unreachable.py | Created | done: Run 2026-10-16 with the service off. The query failed at once (DNS); the failure escaped the notebook `try`, so the checkpoint and table were checked directly: unchanged |
 | 6 | PR 1 | spikes/databricks/04_spike_lakeflow_pipeline/pipeline.py | Created | done: Ran in the spike pipeline on 2026-10-16 without changes |
 | 7 | PR 1 | spikes/databricks/04_spike_lakeflow_pipeline/summary_view.sql | Created | done: Published as `gold.spike_summary` (`VIEW`) |
 | 8 | PR 1 | spikes/databricks/04_spike_lakeflow_pipeline/run_spike.py | Created | done: Run 2026-10-16 with `--profile dev`; 12 of 13 checks pass (DA-01 update 2 fails); pipeline deleted afterwards |
@@ -67,10 +67,10 @@ Evidence collected for PR 1. "Not started" means the criterion belongs to a late
 | AC-04 | Pass (PR 1 scope) | test_ac04_* (unit, 2 tests) and local_data test_ac04_seed42_cutoff_2013_11_01_preserves_total pass. Bundle-variable half (AC-28) is PR 2b |
 | AC-05 | Not started | PR 2a/2b/3 (Bronze projections and integration) |
 | AC-06 | Not started | PR 3 (integration) |
-| AC-07 | Partial | Producer half passes: test_ac07_* in tests/test_producer.py (event matches the topic contract, Null energy becomes null with no row dropped, ordering, keys, delivery errors). Bronze projection and integration tests are PR 2a/3. Kafka consumption is spike 02 (written, not run) |
+| AC-07 | Partial | Producer half passes: test_ac07_* in tests/test_producer.py (event matches the topic contract, Null energy becomes null with no row dropped, ordering, keys, delivery errors). Bronze projection and integration tests are PR 2a/3. Spike 02: the producer published 1,000 events to Aiven and the Spark Kafka source read all 1,000 with topic, partition, offset and timestamp, no duplicates |
 | AC-08 | Not started | PR 3 (integration) |
 | AC-09 | Not started | PR 2a/3 (harness and integration) |
-| AC-10 | Not run | Spike 03 written and uploaded, not run. User command: see Pending on the user. Unit/bundle tests are PR 2a/2b |
+| AC-10 | Partial | Spike 03: with the broker off the Kafka read fails at once (`No resolvable bootstrap urls`), run time 61 s; checkpoint (batch 0 only) and table (1,000 rows) unchanged. Unit/bundle tests are PR 2a/2b |
 | AC-11 | Partial | A-08 PASS on data/raw (`.venv/bin/python spikes/local/a08_offgrid_null_cooccurrence.py`): 9 blocks, 13,059,525 rows, 450 off-grid = 450 non-numeric = 450 in both; seed-42 sample in the study period: 1,679,974 rows, 60 off-grid, 60 non-numeric, 60 in both. So 60 quarantined and 1,679,914 in Silver hold. Reconciliation tests are PR 2a/3 |
 | AC-12 | Not started | PR 2a/2b/3. Spike 04: DA-01 partial (no metrics on an update without new input). After `/iterate`, AC-12 checks table totals of `silver.meter_readings_evaluated` after the latest update and after a full refresh; the 5-minute event-log window is dropped |
 | AC-13 | Not started | PR 2a/3 |
@@ -92,7 +92,7 @@ Evidence collected for PR 1. "Not started" means the criterion belongs to a late
 | AC-29 | Partial | Producer half passes: test_ac29_* in tests/test_producer.py (credentials from the environment only, errors name variables not values, no literal credentials). `.dockerignore` excludes .env, data, *.pem. Hygiene scan, bundle and `pre-commit run --all-files` are PR 2a/2b and not yet run. Spike notebooks read secrets with dbutils.secrets.get and redact error text |
 | AC-30 | Partial | Spike 04: one update over 1,680,000 synthetic rows completed in 63 s (budget 2700 s). Bundle and integration tests are PR 2b/3 |
 | AC-31 | Partial | Producer sets `produced_at` as the UTC wall clock in ISO-8601 (test_ac31_produced_at_is_utc_wall_clock_not_event_time passes). End-to-end check is PR 3 |
-| AC-32 | Partial | test_ac32_check_specs_reports_no_errors passes. test_ac32_runtime_adr_records_every_spike_outcome still FAILS: ADR 0001 has Pending for A-03, A-05, A-06, DA-05 and DA-09 (Kafka spikes) |
+| AC-32 | Partial | test_ac32_check_specs_reports_no_errors passes. test_ac32_runtime_adr_records_every_spike_outcome passes: every row of ADR 0001 has a result |
 | AC-33 | Not started | PR 2a |
 | AC-34 | Not started | PR 2a/3 (A-08 holds, see AC-11) |
 | AC-35 | Not started | PR 2a/3 |
@@ -115,6 +115,9 @@ Evidence collected for PR 1. "Not started" means the criterion belongs to a late
 | DA-06 | Throwaway bundle (pipeline in `smart_meter_dev.silver`), `databricks bundle deploy -t dev -p dev` with the catalog absent | Fail: `cannot create pipeline: Catalog 'smart_meter_dev' does not exist.`; files synced first; destroyed afterwards |
 | Spike 00 | `databricks jobs submit` (serverless notebook task) | SUCCESS; `smart_meter_dev` with `bronze`, `silver`, `gold`, `ml` and Volumes `landing`, `checkpoints` listed |
 | Spike 01 | `databricks jobs submit`, two seed-42 files in `landing/_spike/readings` | SUCCESS: expected 143,633, run 1 143,633, run 2 143,633, rescued 0, null metadata 0 |
+| Producer | `.venv/bin/python -m smart_meter_peak_prediction.producer --limit 1000` (credentials from `.env`) | Published 1,000 events, after topic creation |
+| Spike 02 | `databricks jobs submit` | SUCCESS: rows 1000, null metadata 0, duplicate offsets 0, 59 s; `processingTime` rejected (`INFINITE_STREAMING_TRIGGER_NOT_SUPPORTED`) |
+| Spike 03 | `databricks jobs submit`, Aiven off | Task failed after 61 s with `ConfigException: No resolvable bootstrap urls`; checkpoint and table inspected directly: unchanged |
 | Spike 04 | `.venv/bin/python spikes/databricks/04_spike_lakeflow_pipeline/run_spike.py --profile dev --warehouse-id <id>` | Exit 1 (one FAIL): A-10 105 s; DA-03 31 rows; DA-01 counters (1, 1, 1) on update 1, none on update 2; DA-02, DA-07, DA-08 pass; AC-15 abort; DA-10 63 s; pipeline deleted |
 
 ---
@@ -139,7 +142,7 @@ Evidence collected for PR 1. "Not started" means the criterion belongs to a late
 |---|---|---|---|
 | I-01 | DEFINE row A-08 was thought to be `Pending` | Closed | The DEFINE already records A-08 as validated (Change Log 2026-10-15) |
 | I-02 | DEFINE inline schema lists the sample reading files as `household_id, reading_ts, energy_kwh`; the code and pinned checksums use the source header | Low | One-line `/iterate` (already noted in the DESIGN Self-Review) |
-| I-03 | `tests/test_runtime_adr.py` fails, so CI is red on the PR 1 branch until ADR 0001 is filled | Medium | Run the spikes and record results; or open PR 1 as draft |
+| I-03 | `tests/test_runtime_adr.py` failed until ADR 0001 was filled | Closed | All spike results recorded 2026-10-16 |
 | I-04 | `coverage_study_period` in the manifest counts distinct on-grid timestamps with finite non-negative energy over 29,184 slots; the DESIGN does not define "observed" exactly | Low | Confirm during PR 2a when AC-25 compares Gold with the manifest |
 | I-05 | Spike 04 uses SDK and Lakeflow calls that were not exercised (`private=True`, `FileLibrary`, `EventLogSpec`, `workspace.upload` with `RAW`) | Closed | Ran on 2026-10-16 without code changes |
 | I-07 | Code-reviewer self-review of PR 1: 1 High (wrong `/Workspace` prefix for `spike.src_path` in run_spike.py) and several Medium/Low items fixed (stale-file cleanup in `build_sample`, DA-08/DA-01 assertions, event-log cleanup, upload wrapper, producer row validation, Dockerfile `--user` note). Full gate before Complete still pending | Low | Re-run the code-reviewer before Complete |
@@ -147,6 +150,8 @@ Evidence collected for PR 1. "Not started" means the criterion belongs to a late
 | I-08 | DA-06 failed: deploy cannot create the pipeline before the catalog exists | Closed | `/iterate` on DESIGN and ADR 0003 (2026-10-16): deploy, run `setup_catalog.py`, deploy. `notebooks/setup_catalog.py` (entry 43) must also run by hand, with default catalog and schema values |
 | I-09 | DA-01 partial: an update with no new input writes no expectation metrics | Closed | `/iterate` on DESIGN and ADR 0004 (2026-10-16): evaluation table published, counts are table totals in `metrics.py`, event log kept for observability only |
 | I-11 | DEFINE worded AC-12, NFR-07, SF-01 and QR-09 as per-update counts within 5 minutes of the update | Closed | `/iterate` on DEFINE (2026-10-16): FR-09, NFR-07, SF-01, QR-09, AC-09, AC-12, AC-16, AC-17, AC-34 restated as table totals; OD-02 and OD-06 resolved |
+| I-13 | Topic `meter-readings` did not exist and Aiven does not auto-create topics | Closed | Created 2026-10-16 through the Kafka admin API with 2 partitions as in the contract (broker default 3 replicas). The runbook (entry 59) must include topic creation |
+| I-14 | Spike 03: a stream failure surfaces at notebook-cell level ("Some streams terminated before this command could finish!") and is not caught by `try` around `awaitTermination` | Medium | The Kafka task in PR 2a must not rely on catching the exception in Python; let the task fail and use task `timeout_seconds` and retries |
 | I-12 | ADR 0005 still called the evaluation MV private and mentioned a per-update duplicate count | Closed | ADR 0005 updated 2026-10-16: published evaluation MV, `is_duplicate` table total, event log for observability |
 | I-10 | The workspace holds an unrelated pipeline (`elt-uber-eats-analytics`, idle) | Low | Spike 04 ran alongside it. Check the one-pipeline-per-type limit again when the bundle pipeline is deployed |
 
@@ -154,26 +159,22 @@ Evidence collected for PR 1. "Not started" means the criterion belongs to a late
 
 ## Pending on the user
 
-Done on 2026-10-16: auth (`dev` profile), local `.env`, sample upload, DA-06 test, spikes 00, 01 and 04.
+Done on 2026-10-16: auth (`dev` profile), `.env`, secret scope, Aiven SASL mechanism, topic, sample upload, DA-06 test and spikes 00 to 04.
 
-1. Secret scope `smart_meter` with keys `kafka-bootstrap-servers`, `kafka-sasl-username`, `kafka-sasl-password`, `kafka-ca-pem` (commands in the header of spike 02).
-2. Aiven: power on the service and read the SASL mechanism offered in the console (A-06).
-3. Put messages on the topic: `set -a; . ./.env; set +a; .venv/bin/python -m smart_meter_peak_prediction.producer --limit 1000 --input data/sample/seed42/stream/readings_stream.csv`.
-4. Run spike 02, then power the broker off and run spike 03 (both uploaded to `/Workspace/Users/<user>/smart_meter_spikes/`). Record A-03, A-05, DA-05 and DA-09 in ADR 0001.
-5. Build the producer image: `docker build -f docker/producer/Dockerfile -t smart-meter-producer .`
-6. If A-03 or DA-09 fails, run `/iterate` on the DESIGN before PR 2a.
+1. Power the Aiven service back on when the Kafka path is needed again.
+2. Build the producer image: `docker build -f docker/producer/Dockerfile -t smart-meter-producer .`
 
 ---
 
 ## Self-Review
 
-- **Weak points:** The Kafka path (spikes 02 and 03) is unproven, and the producer has never reached a broker. The DA-01 cause (refresh skipped on an update with no new input) is inferred: spike 04 drops its event log on cleanup, so the update 2 events were not inspected. The ADR 0001 test stays red until the Kafka spikes are recorded.
-- **Risks:** A failed A-03 or DA-09 would block the Kafka path; DA-09 has no fallback that keeps NFR-05. The DA-01 change alters count semantics (table totals instead of per-update counts), which may reach DEFINE wording.
+- **Weak points:** The producer has only published 1,000 events; a full replay of 247,569 has not run. The DA-01 cause (refresh skipped on an update with no new input) is inferred: spike 04 drops its event log on cleanup, so the update 2 events were not inspected.
+- **Risks:** The DA-01 change alters count semantics (table totals instead of per-update counts); DEFINE and DESIGN are aligned, but PR 2a must implement the new contract first. Aiven powers off after inactivity, so integration runs need it on.
 - **What I would do differently:** Run the spike 04 pipeline code in a dry check against a fake `dlt` before handing it over, and give the ADR test a distinct state for "spike not yet run" so CI can stay green on the PR 1 branch without skipping.
-- **Next improvement:** Run the Kafka spikes, then start PR 2a.
+- **Next improvement:** Start PR 2a.
 
 ---
 
 ## Next Step
 
-Run spikes 02 and 03 and record them in ADR 0001. Then `/build` PR 2a. (`/ship METER_INGESTION` only after PR 3.)
+`/build` PR 2a. (`/ship METER_INGESTION` only after PR 3.)
