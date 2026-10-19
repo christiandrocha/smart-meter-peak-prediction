@@ -128,15 +128,15 @@ Final status after PR 3. **Local** is the unit, local-data, wiring and bundle ev
 | AC-06 | Pass (idempotent writer, unit) | Not run | `test_bronze_ingestion.py::test_ac06_rerun_file_ingestion_adds_no_rows`, step B (reruns `ingest_files`) |
 | AC-07 | Pass | Not run | `test_bronze_ingestion.py::test_ac07_kafka_bronze_count_uniqueness_and_payload_parse`, step C (needs Aiven on) |
 | AC-08 | Pass (unit) | Not run | `test_bronze_ingestion.py::test_ac08_rerun_kafka_ingestion_adds_no_rows`, step C (needs Aiven on) |
-| AC-09 | Pass for the earlier wording; wording changed 2026-10-19 (invalid-message clause), rebuild pending | Not run | `test_reprocessing.py::test_ac09_before_replay_snapshot`, `::test_ac09_after_replay_silver_unchanged`, step F (second replay). New unit tests to add: `test_silver_dedup.py::test_ac09_replayed_invalid_messages_not_quarantined_again`, `::test_ac09_dedup_key_is_per_path_and_offset_independent` |
+| AC-09 | Pass (rebuilt 2026-10-19: unit `test_ac09_replayed_messages_counted_as_duplicates_and_silver_unchanged`, `test_ac09_replayed_invalid_messages_not_quarantined_again`, `test_ac09_dedup_key_is_per_path_and_offset_independent`; local data `test_ac09_seed42_quarantine_has_distinct_dedup_keys_and_no_duplicates`) | Not run | `test_reprocessing.py::test_ac09_before_replay_snapshot`, `::test_ac09_after_replay_silver_unchanged` (now also compares per-rule totals and `quarantine_duplicates`), step F (second replay) |
 | AC-10 | Pass (options, bundle, AST guard) | Not run | `test_bronze_ingestion.py::test_ac10_before_outage_snapshot`, `::test_ac10_failed_kafka_run_left_bronze_and_checkpoint_unchanged`, step D (Aiven off). Spike 03 evidence stands |
-| AC-11 | Pass for the earlier wording; wording changed 2026-10-19 (class quarantine duplicate), rebuild pending (unit, seed-42 local data) | Not run | `test_silver_tables.py::test_ac11_reconciliation_classifies_every_bronze_row`, step C |
-| AC-12 | Pass for the earlier wording; wording changed 2026-10-19 (per-rule totals exclude quarantine duplicates), rebuild pending (unit, wiring) | Not run | `test_silver_tables.py::test_ac12_update_rule_counts_match_quarantine_rows` (step C), `test_reprocessing.py::test_ac12_totals_consistent_after_full_refresh` (step G) |
+| AC-11 | Pass (rebuilt 2026-10-19: unit `test_ac11_every_bronze_row_classified_exactly_once` with the replayed QR-07 row and the fifth class, 0 unclassified, 0 double-classified; `test_ac11_source_ref_unique_per_bronze_row`; seed 42 local data: 1,679,974 rows, 60 quarantined, 0 outside the period, 0 duplicates, 0 quarantine duplicates, 1,679,914 in Silver) | Not run | `test_silver_tables.py::test_ac11_reconciliation_classifies_every_bronze_row` (now asserts `is_quarantine_duplicate = 0`), step C |
+| AC-12 | Pass (rebuilt 2026-10-19: unit `test_ac12_rule_counts_equal_quarantine_failed_rules_per_update` over two updates, with the replayed invalid row; `test_ac12_rule_counts_sql_covers_every_drop_rule_scope_and_duplicates`; wiring `test_ac12_*`) | Not run | `test_silver_tables.py::test_ac12_update_rule_counts_match_quarantine_rows` (helper now checks `_dedup_key` unique in the quarantine and `qr_09` = valid duplicates + `quarantine_duplicates`) (step C), `test_reprocessing.py::test_ac12_totals_consistent_after_full_refresh` (step G) |
 | AC-13 | Pass | Not run | `test_silver_tables.py::test_ac13_silver_invariants`, step C |
 | AC-14 | Pass | Not run | `test_silver_tables.py::test_ac14_cutoff_rows_once_with_ingestion_path`, step C |
 | AC-15 | Pass (unit x7 groups, wired fail rule, spike 04 on the platform) | n/a | none: the DESIGN assigns the platform proof to spike 04 (`expect_or_fail` aborts with 0 rows committed) |
 | AC-16 | Pass | n/a | none in the DESIGN (fixture AC) |
-| AC-17 | Pass for the earlier wording; reworded 2026-10-19 (I-21 closed), re-check the fixture pairs against the new text | n/a | none in the DESIGN (fixture AC): `test_silver_dedup.py::test_ac17_earlier_ingested_at_wins_and_tie_uses_smaller_source_ref`, `::test_ac17_rerun_keeps_same_winners` |
+| AC-17 | Pass (re-checked against the new wording 2026-10-19: `test_ac17_earlier_ingested_at_wins_and_tie_uses_smaller_source_ref` has the files pair with the earlier row on the larger `_source_ref` and the Kafka tie pair; `test_ac17_rerun_keeps_same_winners` now also runs the pair fixture again, reversed and with 5 partitions: same winners, duplicate total 2) | n/a | none in the DESIGN (fixture AC) |
 | AC-18 | Pass | Not run | `test_silver_tables.py::test_ac18_silver_households_seed42`, step C |
 | AC-19 | Pass | Not run | `test_silver_tables.py::test_ac19_deployed_columns_match_contracts`, step C |
 | AC-20 | Pass | Not run | `test_silver_tables.py::test_ac20_dst_days_have_48_readings` (2 cases), step C |
@@ -156,7 +156,7 @@ Final status after PR 3. **Local** is the unit, local-data, wiring and bundle ev
 | AC-34 | Pass | Not run | `test_silver_tables.py::test_ac34_seed42_offgrid_null_rows_counted_under_both_rules`, step C |
 | AC-35 | Pass | Not run | `test_gold_tables.py::test_ac35_seed42_has_household_record_all_true`, step C |
 
-Summary: 35 ACs. Local result was `Pass` for all 35 before `/iterate` 2026-10-19. That iterate changed the wording of AC-09, AC-11, AC-12 and AC-17, so these four are `Pass` only for the earlier wording until the rebuild (I-15) is done and the unit tests are rerun; the other 31 are unchanged. 25 ACs also need live evidence and are `Not run`: AC-05 to AC-14, AC-18 to AC-22, AC-24 to AC-31, AC-34, AC-35. The other 10 have no live test in the DESIGN: AC-01 to AC-04, AC-15 (spike 04), AC-16, AC-17, AC-23, AC-32, AC-33.
+Summary: 35 ACs. Local result is `Pass` for all 35. The `/iterate` of 2026-10-19 changed the wording of AC-09, AC-11, AC-12 and AC-17; the rebuild (I-15) is done and their local evidence is `Pass` for the new wording (see *Iterate rebuild 2026-10-19*). 25 ACs also need live evidence and are `Not run`: AC-05 to AC-14, AC-18 to AC-22, AC-24 to AC-31, AC-34, AC-35. The other 10 have no live test in the DESIGN: AC-01 to AC-04, AC-15 (spike 04), AC-16, AC-17, AC-23, AC-32, AC-33.
 
 ---
 
@@ -200,6 +200,12 @@ Summary: 35 ACs. Local result was `Pass` for all 35 before `/iterate` 2026-10-19
 | PR 3 bundle | `databricks bundle validate -t dev -p dev` (read-only) | `Validation OK!` (User and Path shown, not repeated here). No deploy, no job run, no Kafka |
 | PR 3 review | code-reviewer subagent | 2 High, 6 Medium, 9 Low. Both High fixed (job fixture lists with `expand_tasks`; AC-30 and AC-31 select only successful full four-task runs, because the AC-06 and AC-08 reruns are partial `only=` runs). Fixed Medium: UTC accepts `Etc/UTC`, AC-10 accepts `TIMEDOUT`, AC-28 also checks Volumes, Bronze tables and the raw name, README no longer shows a whole-directory command, runbook wording and producer env file (no Databricks keys), AC-25 manifest note. Fixed Low: `payload_ok IS NOT TRUE`, vacuous asserts, stray parentheses. Not changed (Low): tautological QR-10 and expected_readings comparisons, AC-18 literals, DESIGN-id parsing in the layout test, AC-26 wording (DESIGN fix at `/ship`). Medium AC-26 wording is the recorded deviation |
 | PR 3 integration | not run | by instruction: no workspace calls, Aiven off. Commands under *Pending on the user* |
+| Rebuild lint | `.venv/bin/ruff check . && .venv/bin/ruff format --check .` (ruff 0.17.0) | All checks passed; 69 files already formatted |
+| Rebuild tests | `JAVA_HOME=~/.local/jdk17 .venv/bin/pytest` | 199 passed, 47 deselected (33 integration, 14 local_data); includes the 6 `test_contract_schemas.py` tests that failed before the rebuild |
+| Rebuild local data | `.venv/bin/pytest -m local_data` | 14 passed (about 158 s). Seed 42: 1,679,974 evaluated rows, 60 quarantined with 60 distinct `_dedup_key` (all `files:key:`), 0 quarantine duplicates, 0 duplicates, 0 outside the period, 1,679,914 in Silver, 0 unclassified |
+| Rebuild specs | `.venv/bin/python scripts/check_specs.py` | 19 document(s) checked, 0 error(s), 0 warning(s) |
+| Rebuild hooks | `pre-commit run --all-files` (ruff 0.6.9 pinned) | all 9 hooks passed; the hook rewrote one list comprehension to a generator, which ruff 0.17 also accepts |
+| Rebuild integration | not run | by instruction; queries for AC-09, AC-11, AC-12 updated, collection checked by `test_integration_layout.py` |
 
 ---
 
@@ -253,7 +259,7 @@ Summary: 35 ACs. Local result was `Pass` for all 35 before `/iterate` 2026-10-19
 | I-14 | Spike 03: a stream failure surfaces at notebook-cell level ("Some streams terminated before this command could finish!") and is not caught by `try` around `awaitTermination` | Closed (PR 2b) | The Kafka task in PR 2a must not rely on catching the exception in Python; let the task fail and use task `timeout_seconds` and retries. PR 2a: `bronze.run_available_now` has no try/except, guarded by an AST test. The notebooks (PR 2b) must follow it. PR 2b: none of the three notebooks nor the pipeline has a try/except, and the AST guard `test_ac10_notebooks_and_pipeline_have_no_try_except` covers them |
 | I-12 | ADR 0005 still called the evaluation MV private and mentioned a per-update duplicate count | Closed | ADR 0005 updated 2026-10-16: published evaluation MV, `is_duplicate` table total, event log for observability |
 | I-10 | The workspace holds an unrelated pipeline (`elt-uber-eats-analytics`, idle) | Low | Spike 04 ran alongside it. Check the one-pipeline-per-type limit again when the bundle pipeline is deployed |
-| I-15 | A replayed invalid Kafka message is a new Bronze row that fails the same rule and was quarantined again; only valid rows were deduplicated (QR-09). AC-09 held for seed 42 only because the stream has no invalid message, which contradicted NFR-02 | Resolved by /iterate 2026-10-19, pending build | Reopened by the user the same day (reverses "accepted as is"). New behaviour: dropped rows are deduplicated by `_dedup_key` (path prefix plus raw business key, or a SHA-256 of the raw payload or record when no key can be read), earliest `_ingested_at` then smallest `_source_ref` wins, repeats are counted in `is_duplicate` (and in `is_quarantine_duplicate`), are not quarantined again and raise no per-rule total (DEFINE QR-09 b, FR-08, AC-09, AC-11, AC-12; DESIGN Column derivations). The existing test `tests/test_silver_dedup.py` that documents re-quarantine (docstring "quarantined again", around line 79) must be rewritten as `test_ac09_replayed_invalid_messages_not_quarantined_again`. Code, contracts check and integration queries to rebuild: see the Change Log below |
+| I-15 | A replayed invalid Kafka message is a new Bronze row that fails the same rule and was quarantined again; only valid rows were deduplicated (QR-09). AC-09 held for seed 42 only because the stream has no invalid message, which contradicted NFR-02 | Closed (rebuilt 2026-10-19) | Reopened by the user the same day (reverses "accepted as is"). New behaviour: dropped rows are deduplicated by `_dedup_key` (path prefix plus raw business key, or a SHA-256 of the raw payload or record when no key can be read), earliest `_ingested_at` then smallest `_source_ref` wins, repeats are counted in `is_duplicate` (and in `is_quarantine_duplicate`), are not quarantined again and raise no per-rule total (DEFINE QR-09 b, FR-08, AC-09, AC-11, AC-12; DESIGN Column derivations). The existing test `tests/test_silver_dedup.py` that documents re-quarantine (docstring "quarantined again", around line 79) was rewritten as `test_ac09_replayed_invalid_messages_not_quarantined_again`. Code, contracts check and integration queries to rebuild: see the Change Log below |
 | I-16 | Code review PR 2a, Medium: Gold total order-dependence (fixed, decimal sum), ANSI not forced in conftest (fixed), unknown pipeline-config keys silently ignored (fixed, ValueError), vacuous totals test (renamed) | Closed | - |
 | I-17 | Code review PR 2a, Low. PR 2b closed the `CREATE VIEW` and UTC items. Still open, no PR 3 change: `trim` removes spaces only; `study_*` and cutoff must be midnight dates; the event-log SQL is Databricks-only; the broker-host scan needs `KAFKA_*` exported; `auto_loader_reader` and `kafka_reader` are exercised only by the integration tests | Low, open | Integration run |
 
@@ -281,11 +287,38 @@ Live verification of the whole feature (not run, by instruction). The full proce
 9. Redaction (AC-29, I-20): the runbook section "Stream error redaction check".
 10. Also look for: `cluster_by` accepted, the UTC assertion passes, `src_path` import works, names carry the `[dev <user>]` prefix, the schedule is paused.
 
-Rebuild first (decided 2026-10-19, see the Change Log): the quarantine dedup of I-15 changes `silver.py`, `metrics.py`, the contract schema test and the integration queries of AC-09, AC-11 and AC-12. Build it and rerun the unit tests before the live steps above, because steps C, F and G read the changed queries.
+The rebuild of I-15 is done (see *Iterate rebuild 2026-10-19*); steps C, F and G run the updated queries.
 
 Decisions still open:
 
 - Whether to accept any AC as `Pass` without live evidence, so the report can move to `Complete` before `/ship`.
+
+---
+
+## Iterate rebuild 2026-10-19
+
+Scope: the rebuild required by the `/iterate` of 2026-10-19 (commit 0207dc1; QR-09 b, I-15), on branch `feat/meter-ingestion-pr3`, as new commits on top of PR 3.
+
+| File | Change | Verified by |
+|---|---|---|
+| `src/smart_meter_peak_prediction/silver.py` | `_dedup_key` (files and Kafka expressions as in the DESIGN, control characters as SQL escapes), `quarantine_rank` over `(_dedup_key, is_dropped)`, `is_quarantine_duplicate`, `is_quarantined`, `is_duplicate` = valid or quarantine duplicate; evaluated and quarantine column lists in contract order; the quarantine view keeps `is_quarantined` rows | `test_contract_schemas.py`, `test_silver_dedup.py`, `test_silver_readings.py` |
+| `src/smart_meter_peak_prediction/metrics.py` | per-rule totals add `AND NOT is_quarantine_duplicate`; new `quarantine_duplicates`; `quarantine_rows` excludes quarantine duplicates; reconciliation has the fifth class `is_quarantine_duplicate` | unit tests above, seed-42 local data |
+| `src/smart_meter_peak_prediction/rules.py`, `pipelines/meter_pipeline.py` | QR-09 note and table comment | `test_pipeline_wiring.py` |
+| `tests/support/builders.py` | `mixed_fixture` gains a replayed QR-07 message | AC-11, AC-12 unit tests, wiring |
+| `tests/test_silver_dedup.py` | I-15 test replaced by `test_ac09_replayed_invalid_messages_not_quarantined_again`; new `test_ac09_dedup_key_is_per_path_and_offset_independent`; AC-17 rerun test also covers the pair fixture | pytest |
+| `tests/test_silver_readings.py`, `tests/test_rules_metrics.py` | AC-11 fifth class, AC-12 totals with the replayed invalid row, SQL builder check | pytest |
+| `tests/local_data/test_pipeline_seed42.py` | 60 quarantined rows have 60 distinct keys, 0 quarantine duplicates | `pytest -m local_data` |
+| `tests/integration/conftest.py`, `test_silver_tables.py`, `test_reprocessing.py` | AC-12 uniqueness and duplicate decomposition, AC-11 `is_quarantine_duplicate = 0`, AC-09 per-rule and quarantine-duplicate totals unchanged | collected, not run |
+| `docs/runbooks/meter_ingestion.md`, ADR 0004, ADR 0005 | Known-limit wording replaced; ADR amendments of 2026-10-19 (status unchanged) | `check_specs.py` |
+
+Deviations: none from the DESIGN. The AC-17 tests already matched the new wording; the rerun test was extended to assert the duplicate total 2 on the pair fixture.
+
+### Self-Review
+
+- **Weak points:** The AC-09 clause for invalid messages is proven only by the unit harness (the seed-42 stream has no invalid message). The `\u0001` and `\u0000` separators in `_dedup_key` are SQL escapes that local Spark parses; Databricks SQL is expected to parse them the same way but this was not run. The reconciliation SQL does a correlated lookup on the quarantine by `_dedup_key`, fine at 60 rows, untested at scale.
+- **Risks:** Dropping `is_dropped` from the partition would let a valid row and a dropped row with one business key compete; the test fixtures do not contain that exact collision. Recompute cost grows by one more window over the evaluation table.
+- **Trade-offs:** `is_duplicate` mixes two kinds (valid and dropped repeats); `is_quarantine_duplicate` is queryable alone, as the DESIGN requires.
+- **Next step:** Run the live steps under *Pending on the user* (steps C, F, G read the changed queries).
 
 ---
 
@@ -323,7 +356,7 @@ Decisions still open:
 
 ## Next Step
 
-Run the live verification listed under *Pending on the user* (or explicitly accept the pending ACs), then `/ship METER_INGESTION`. First build the quarantine dedup of I-15 (DESIGN Change Log 2026-10-19). The AC-17 wording and the I-18 fallback are decided; no user decision is open except whether to accept ACs without live evidence.
+Run the live verification listed under *Pending on the user* (or explicitly accept the pending ACs), then `/ship METER_INGESTION`. The quarantine dedup of I-15 is built (see *Iterate rebuild 2026-10-19*). The AC-17 wording and the I-18 fallback are decided; no user decision is open except whether to accept ACs without live evidence.
 
 ---
 
@@ -332,3 +365,4 @@ Run the live verification listed under *Pending on the user* (or explicitly acce
 | Date | What changed | Why | Downstream impact |
 |---|---|---|---|
 | 2026-10-19 | I-15 reopened and set to "Resolved by /iterate 2026-10-19, pending build" (quarantine dedup by `_dedup_key`); I-21 closed (AC-17 reworded); deviation row "Cross-path duplicate in AC-17 test" closed; I-18 row records the decided fallback and it is removed from "Pending on the user"; AC evidence rows for AC-09, AC-11, AC-12 and AC-17 and the summary line marked as pending rebuild; added a rebuild-first step to "Pending on the user"; PR 2a and PR 3 Self-Review text aligned | User decisions 2026-10-19; DEFINE, DESIGN and the quarantine and evaluation contracts changed through `/iterate` the same day | Rebuild: `src/smart_meter_peak_prediction/silver.py` (`_dedup_key`, `quarantine_rank`, `is_quarantine_duplicate`, `is_quarantined`, `is_duplicate` union), `rules.py` (comments, column lists if any), `metrics.py` (per-rule filter, quarantine-duplicate total, AC-11 reconciliation class), the harness if it lists columns; tests: rewrite the re-quarantine test in `tests/test_silver_dedup.py`, add the two AC-09 tests, extend AC-11, AC-12 and AC-17 tests, update `tests/test_contract_schemas.py` expectations; integration: `test_silver_tables.py` (AC-11, AC-12), `test_reprocessing.py` (AC-09, AC-12 helper); runbook line on re-quarantine; ADR 0004 and 0005 wording. Open PRs #2 (2a libraries), #3 (2b wiring) and #4 (3 integration tests, runbook) are all affected |
+| 2026-10-19 | Iterate rebuild: quarantine dedup (I-15 closed), AC-09, AC-11, AC-12 and AC-17 evidence rows, Verification Log rows, new section *Iterate rebuild 2026-10-19* | Rebuild required by commit 0207dc1 | Live steps C, F, G read the updated queries; no DESIGN change |
