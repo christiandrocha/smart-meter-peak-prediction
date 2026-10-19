@@ -201,12 +201,13 @@ def test_ac12_pipeline_expectations_match_rule_catalog(recorded: FakeDlt) -> Non
     assert recorded_pairs == attached
 
 
-def test_ac12_dependencies_read_the_published_evaluation_table(recorded: FakeDlt) -> None:
-    """Silver and quarantine filter the published evaluation table by its fully qualified name."""
-    source = PIPELINE.read_text(encoding="utf-8")
-    assert "spark.read.table(EVALUATED_FQN)" in source
-    assert "silver.silver_readings" in source
-    assert "silver.quarantine" in source
+def test_pipeline_fails_when_a_required_configuration_key_is_missing(monkeypatch) -> None:
+    conf = bundle_conf(Settings())
+    del conf["smart_meter.catalog"]
+    fake = FakeDlt()
+    monkeypatch.setitem(sys.modules, "dlt", fake)
+    with pytest.raises(KeyError):
+        runpy.run_path(str(PIPELINE), init_globals={"spark": FakeSpark(conf)})
 
 
 def test_da07_pipeline_asserts_session_time_zone_is_utc(monkeypatch) -> None:

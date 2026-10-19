@@ -45,8 +45,9 @@ _SETTING_FIELDS = (
     "study_end",
     "cutoff",
 )
+# No default: a missing key must fail the update, not fall back to another catalog.
 SETTINGS = Settings.from_pipeline_configuration(
-    {PIPELINE_PREFIX + name: spark.conf.get(PIPELINE_PREFIX + name, "") for name in _SETTING_FIELDS}
+    {PIPELINE_PREFIX + name: spark.conf.get(PIPELINE_PREFIX + name) for name in _SETTING_FIELDS}
 )
 
 EVALUATED_FQN = SETTINGS.table("silver", rules.EVALUATED)

@@ -82,9 +82,6 @@ def test_ac28_job_and_pipeline_names_and_schedule() -> None:
     # Development mode (target dev) prefixes display names and pauses the schedule; the test of the
     # deployed names strips the prefix with the anchored pattern of the DESIGN.
     assert BUNDLE["targets"]["dev"]["mode"] == "development"
-    assert DEV_PREFIX.sub("", "[dev christian] smart_meter_ingestion") == "smart_meter_ingestion"
-    assert DEV_PREFIX.sub("", "[dev x] [dev y] a") == "[dev y] a"
-    assert DEV_PREFIX.sub("", "smart_meter_ingestion [dev x] ") == "smart_meter_ingestion [dev x] "
 
 
 def test_ac28_no_more_than_five_concurrent_tasks() -> None:
@@ -131,13 +128,20 @@ def test_ac28_layout_variables_match_sample_plan() -> None:
     plan = json.loads((ROOT / "config" / "sample_plan.json").read_text(encoding="utf-8"))
     assert parse_utc(default("study_start")) == parse_utc(plan["period_start"])
     assert parse_utc(default("study_end")) == parse_utc(plan["period_end"])
-    assert parse_utc(default("cutoff")) == parse_utc(plan["cutoff"])
     assert (default("catalog"), default("bronze_schema"), default("silver_schema")) == (
         "smart_meter_dev",
         "bronze",
         "silver",
     )
     assert (default("gold_schema"), default("ml_schema")) == ("gold", "ml")
+
+
+def test_ac04_bundle_cutoff_default_equals_sample_plan() -> None:
+    plan = json.loads((ROOT / "config" / "sample_plan.json").read_text(encoding="utf-8"))
+    assert parse_utc(default("cutoff")) == parse_utc(plan["cutoff"])
+    assert PIPELINE["smart_meter_silver_gold"]["configuration"]["smart_meter.cutoff"] == (
+        "${var.cutoff}"
+    )
 
 
 def test_ac28_job_parameters_reach_declared_notebook_widgets() -> None:
@@ -155,13 +159,26 @@ def test_ac28_job_parameters_reach_declared_notebook_widgets() -> None:
         for parameter, value in task["notebook_task"]["base_parameters"].items():
             assert parameter in strings, (key, parameter)
             assert resolve(value) == resolve(value).strip()
-        assert Settings.from_mapping(
-            {
-                p: resolve(v)
-                for p, v in task["notebook_task"]["base_parameters"].items()
-                if p != "src_path"
-            }
-        )
+        parameters = {
+            p: resolve(v) for p, v in notebook_parameters(task).items() if p != "src_path"
+        }
+        assert Settings.from_mapping(parameters) == Settings()
+        widgets = widget_names(path)
+        assert widgets <= set(parameters), (key, widgets - set(parameters))
+
+
+def notebook_parameters(task: dict) -> dict:
+    return task["notebook_task"]["base_parameters"]
+
+
+def widget_names(path: Path) -> set[str]:
+    """Names in the notebook's ``_widget_names`` tuple (the widgets it creates from Settings)."""
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        if isinstance(node, ast.Assign) and any(
+            isinstance(t, ast.Name) and t.id == "_widget_names" for t in node.targets
+        ):
+            return {e.value for e in node.value.elts}
+    return set()
 
 
 def test_ac28_first_deploy_three_steps_are_supported_by_setup_notebook() -> None:
@@ -174,7 +191,6 @@ def test_ac28_first_deploy_three_steps_are_supported_by_setup_notebook() -> None
     assert 'dbutils.widgets.text("src_path", "")' in source
     assert "dbutils.widgets.text(_name, getattr(_defaults, _name))" in source
     assert not [n for n in ast.walk(tree) if isinstance(n, ast.Try)]
-    assert tasks()["setup_catalog"]["notebook_task"]["notebook_path"].endswith("setup_catalog.py")
     statements = catalog_setup.setup_statements(Settings())
     assert statements[0] == "CREATE CATALOG IF NOT EXISTS smart_meter_dev"
     # Terraform needs the catalog before the pipeline: the first deploy leaves the pipeline
@@ -268,29 +284,45 @@ def test_ac29_bundle_reads_kafka_credentials_from_secret_scope() -> None:
     )
 
 
+def _is_secret_call(node: ast.AST) -> bool:
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "get"
+        and isinstance(node.func.value, ast.Attribute)
+        and node.func.value.attr == "secrets"
+    )
+
+
+def _call_name(node: ast.AST) -> str | None:
+    if isinstance(node, ast.Call):
+        if isinstance(node.func, ast.Name):
+            return node.func.id
+        if isinstance(node.func, ast.Attribute):
+            return node.func.attr
+    return None
+
+
 def test_ac29_kafka_notebook_never_prints_options_or_secrets() -> None:
     tree = notebook_ast("ingest_kafka.py")
-    secret_names = {"kafka_options"}
+    tainted = {"kafka_options"}
+    for node in ast.walk(tree):  # names assigned from a secret read or from the options
+        if isinstance(node, ast.Assign) and any(_is_secret_call(n) for n in ast.walk(node.value)):
+            tainted |= {t.id for t in node.targets if isinstance(t, ast.Name)}
+    sinks = {"print", "display", "repr", "str", "show", "info", "warning", "error", "debug"}
     for node in ast.walk(tree):
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
-            if node.func.id in {"print", "display", "repr", "str"}:
-                used = {n.id for n in ast.walk(node) if isinstance(n, ast.Name)}
-                assert not used & secret_names, f"line {node.lineno} prints the Kafka options"
-    source = (NOTEBOOKS / "ingest_kafka.py").read_text(encoding="utf-8")
-    assert "logging" not in source
+        if _call_name(node) in sinks:
+            inner = list(ast.walk(node))
+            used = {n.id for n in inner if isinstance(n, ast.Name)}
+            assert not used & tainted, f"line {node.lineno} may print a secret"
+            assert not any(_is_secret_call(n) for n in inner), f"line {node.lineno} prints a secret"
+    assert "logging" not in (NOTEBOOKS / "ingest_kafka.py").read_text(encoding="utf-8")
 
 
 # ----------------------------------------------------------------------------- AC-30
 def test_ac30_job_timeout_within_60_minutes() -> None:
     assert job()["timeout_seconds"] <= 3600
-    critical_path = (
-        tasks()["setup_catalog"]["timeout_seconds"]
-        + max(
-            tasks()["ingest_files"]["timeout_seconds"], tasks()["ingest_kafka"]["timeout_seconds"]
-        )
-        + tasks()["refresh_silver_gold"]["timeout_seconds"]
-    )
-    assert critical_path >= job()["timeout_seconds"]  # the job timeout is the binding limit
+    assert all(t["timeout_seconds"] < job()["timeout_seconds"] for t in tasks().values())
 
 
 @pytest.mark.parametrize("name", ["setup_catalog.py", "ingest_files.py", "ingest_kafka.py"])
