@@ -337,8 +337,14 @@ def assert_rule_totals_consistent(sql: Sql, settings: Settings) -> Callable[[], 
             assert totals[metrics.count_column(rule)] == per_rule.get(rule, 0), rule
         assert totals["quarantine_rows"] == sql.scalar(f"SELECT count(*) FROM {quarantine}")
         assert totals["silver_rows"] == sql.scalar(f"SELECT count(*) FROM {silver}")
+        # QR-09 b: a dropped record appears once in the quarantine; its repeats are counted
+        # only in the duplicate total (and are not in any per-rule total)
+        assert sql.scalar(f"SELECT count(*) - count(DISTINCT _dedup_key) FROM {quarantine}") == 0
+        valid_duplicates = sql.scalar(
+            f"SELECT count_if(is_duplicate AND NOT is_quarantine_duplicate) FROM {evaluated}"
+        )
+        assert totals["qr_09"] == valid_duplicates + totals["quarantine_duplicates"]
         assert totals["sf_01"] >= 0
-        assert totals["qr_09"] >= 0
         return totals
 
     return check

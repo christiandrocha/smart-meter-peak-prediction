@@ -13,6 +13,7 @@ from __future__ import annotations
 import pytest
 
 from smart_meter_peak_prediction import metrics
+from smart_meter_peak_prediction.rules import DROP_RULE_PRECEDENCE
 
 pytestmark = pytest.mark.integration
 
@@ -36,9 +37,17 @@ def _contract_checksum(contracts, checksum, settings, stem: str) -> dict:
 # ----------------------------------------------------------------------------- AC-09
 def _ac09_state(sql, settings, contracts, checksum) -> dict:
     evaluated = settings.table("silver", "meter_readings_evaluated")
+    totals = sql.one(metrics.rule_counts_sql(evaluated))
     return {
         "kafka_rows": sql.scalar(f"SELECT count(*) FROM {settings.bronze_kafka_readings}"),
-        "qr_09": sql.one(metrics.rule_counts_sql(evaluated))["qr_09"],
+        "qr_09": totals["qr_09"],
+        # every per-rule total, which a replay must not raise (the stream holds no invalid
+        # message, so the quarantine-duplicate total stays equal as well)
+        "per_rule": {
+            metrics.count_column(rule): totals[metrics.count_column(rule)]
+            for rule in sorted(DROP_RULE_PRECEDENCE)
+        },
+        "quarantine_duplicates": totals["quarantine_duplicates"],
         "silver": _contract_checksum(contracts, checksum, settings, "silver_meter_readings"),
         "quarantine": _contract_checksum(
             contracts, checksum, settings, "silver_meter_readings_quarantine"
@@ -63,6 +72,8 @@ def test_ac09_after_replay_silver_unchanged(
     assert after["silver"] == before["silver"]
     assert after["quarantine"] == before["quarantine"]
     assert after["qr_09"] == before["qr_09"] + replayed
+    assert after["per_rule"] == before["per_rule"]
+    assert after["quarantine_duplicates"] == before["quarantine_duplicates"]
 
 
 # ----------------------------------------------------------------------------- AC-24

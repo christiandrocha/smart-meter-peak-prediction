@@ -59,6 +59,7 @@ def test_ac11_reconciliation_classifies_every_bronze_row(sql, settings, config_m
     assert result["in_quarantine"] == quarantined
     assert result["out_of_period"] == 0
     assert result["is_duplicate"] == 0
+    assert result["is_quarantine_duplicate"] == 0
     assert result["in_silver"] == counts["total_rows"] - quarantined
     assert result["unclassified"] == 0
     assert result["double_classified"] == 0
