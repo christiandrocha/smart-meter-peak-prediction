@@ -89,8 +89,8 @@ PR 3 (entries 53 to 60): **not started**.
 | 49 | databricks.yml | test_bundle_config.py; `bundle validate` OK |
 | 50 | resources/smart_meter_ingestion.job.yml | test_bundle_config.py; `bundle validate` OK |
 | 51 | tests/test_pipeline_wiring.py | 9 tests |
-| 52 | tests/test_bundle_config.py | 18 tests |
-| extra | src/.../catalog_setup.py, tests/test_catalog_setup.py (6 tests), pyproject.toml (F821 for `pipelines`) | see Deviations |
+| 52 | tests/test_bundle_config.py | 17 test functions (19 cases) |
+| extra | src/.../catalog_setup.py, tests/test_catalog_setup.py (6 cases), pyproject.toml (F821 for `pipelines`) | see Deviations |
 
 ---
 
