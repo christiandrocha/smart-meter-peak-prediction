@@ -115,6 +115,10 @@ HOUSEHOLD_COLUMNS = [
 # exists for every row and does not depend on offset, file name or file position. The path prefix
 # keeps a files row and a Kafka row apart. The separator and the null marker are control
 # characters that cannot occur in the CSV text (written as SQL escapes).
+# Kafka: the key is the raw household_id and reading_ts read with get_json_object whenever both
+# are non-null, whether or not the payload passes QR-07, so a replayed QR-07 failure with a
+# readable key (new offset, new produced_at) is not quarantined again. The payload hash is only
+# for payloads where either is unreadable (not JSON, not an object, missing or JSON null).
 _SEP = "\\u0001"
 _NULL = "\\u0000"
 FILES_DEDUP_KEY_SQL = (
@@ -125,7 +129,8 @@ FILES_DEDUP_KEY_SQL = (
     f"coalesce(energy_kwh_raw, '{_NULL}'), coalesce(_rescued_data, '{_NULL}')), 256)))"
 )
 KAFKA_DEDUP_KEY_SQL = (
-    "IF(payload_ok, concat('kafka:key:', household_id_raw, '#', reading_ts_raw), "
+    "IF(household_id_raw IS NOT NULL AND reading_ts_raw IS NOT NULL, "
+    "concat('kafka:key:', household_id_raw, '#', reading_ts_raw), "
     "concat('kafka:payload:', sha2(payload, 256)))"
 )
 

@@ -354,7 +354,8 @@ Update the secret with `put-secret` (and `.env` for the producer). No deploy is 
   1.68 M synthetic rows took 63 s in the feasibility spike). Revisit when an update exceeds
   15 minutes or Bronze exceeds 50 M rows (ADR 0005).
 - A replayed message that is invalid is not quarantined again: dropped rows are deduplicated on
-  `_dedup_key` (the raw business key, or a hash of the payload when the payload does not parse), the
+  `_dedup_key` (the raw business key when the payload has a readable `household_id` and `reading_ts`, also if it
+  fails QR-07, otherwise a hash of the payload), the
   earliest-ingested row stays in the quarantine, and each repeat is counted in `qr_09` and in
   `quarantine_duplicates`, and in no per-rule total. The seed-42 stream has no invalid message, so
   its figures show no quarantine duplicate.

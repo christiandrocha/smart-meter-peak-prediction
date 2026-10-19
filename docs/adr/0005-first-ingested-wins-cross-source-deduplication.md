@@ -83,9 +83,10 @@ from Silver entirely.
 
 QR-09 also applies to dropped rows (QR-09 b). Rows failing at least one drop rule are ranked with
 `row_number() OVER (PARTITION BY _dedup_key ORDER BY _ingested_at, _source_ref)`, where
-`_dedup_key` is computed from the raw values and prefixed by the ingestion path: the business key
-for a Kafka payload that parses, a hash of the payload for one that does not (QR-07), and the raw
-business key or a hash of the raw record for a file row. The first row stays in the quarantine; the
+`_dedup_key` is computed from the raw values and prefixed by the ingestion path: the raw business
+key for a Kafka payload whose household_id and reading_ts are both readable (also when it fails
+QR-07), a hash of the payload when either is unreadable, and the raw business key or a hash of the
+raw record for a file row. The first row stays in the quarantine; the
 others are `is_quarantine_duplicate`, counted in the same `is_duplicate` total and in no per-rule
 total, so a replay of the stream leaves Silver, the quarantine and every per-rule total unchanged
 (NFR-02, AC-09). A valid row and a dropped row with the same business key never compete. The decision
