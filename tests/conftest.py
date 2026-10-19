@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import time
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -14,6 +15,11 @@ _LOCAL_JDK = Path.home() / ".local" / "jdk17"
 if "JAVA_HOME" not in os.environ and shutil.which("java") is None and _LOCAL_JDK.is_dir():
     os.environ["JAVA_HOME"] = str(_LOCAL_JDK)
     os.environ["PATH"] = f"{_LOCAL_JDK / 'bin'}{os.pathsep}{os.environ['PATH']}"
+
+
+# Spark returns naive datetimes in the process time zone; pin it so tests see UTC (golden rule 5).
+os.environ["TZ"] = "UTC"
+time.tzset()
 
 
 @pytest.fixture(scope="session")
