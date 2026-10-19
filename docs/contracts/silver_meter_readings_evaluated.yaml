@@ -83,7 +83,7 @@ schema:
   - name: _dedup_key
     type: string
     nullable: false
-    description: Content identity of the row for deduplicating dropped rows, prefixed by the ingestion path (kafka:key:, kafka:payload:, files:key:, files:row:; see silver_meter_readings_quarantine.yaml). Computed for every row, used only for rows that failed a drop rule.
+    description: "Content identity of the row for deduplicating dropped rows, prefixed by the ingestion path (kafka:key: whenever the raw household_id and reading_ts are readable, otherwise kafka:payload:; files:key:, files:row:; see silver_meter_readings_quarantine.yaml). Computed for every row, used only for rows that failed a drop rule."
   - name: dedup_rank
     type: int
     nullable: true

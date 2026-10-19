@@ -18,7 +18,7 @@ schema:
   - name: _dedup_key
     type: string
     nullable: false
-    description: Content identity used to deduplicate dropped rows, always prefixed by the ingestion path. Kafka row with a parseable payload is kafka:key:<raw household_id>#<raw reading_ts>; Kafka row failing QR-07 is kafka:payload:<sha256 of payload>; files row with a raw household_id and reading_ts is files:key:<raw household_id>#<raw reading_ts>; any other files row is files:row:<sha256 of the raw record values>. Independent of offset and file position. Unique in this table.
+    description: Content identity used to deduplicate dropped rows, always prefixed by the ingestion path. Kafka row whose payload has a non-null raw household_id and a non-null raw reading_ts (get_json_object as a string, no trim, no type check; whether or not it passes QR-07) is kafka:key:<raw household_id>#<raw reading_ts>; any other Kafka row (payload not JSON, not an object, or either field missing or null) is kafka:payload:<sha256 hex of payload>; files row with a raw household_id and reading_ts is files:key:<raw household_id>#<raw reading_ts>; any other files row is files:row:<sha256 of the raw record values>. Independent of offset and file position. Unique in this table.
   - name: _ingestion_path
     type: string
     nullable: false
