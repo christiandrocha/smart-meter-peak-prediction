@@ -1,0 +1,33 @@
+# Triggered serverless Lakeflow pipeline for Silver and Gold (ADR 0004, A-10). Free Edition allows
+# one active pipeline per type, so everything downstream of Bronze is in this one pipeline.
+resources:
+  pipelines:
+    smart_meter_silver_gold:
+      name: smart_meter_silver_gold
+      serverless: true
+      continuous: false
+      channel: CURRENT
+      catalog: ${var.catalog}
+      # Default publishing schema; datasets are published by fully qualified name.
+      schema: ${var.silver_schema}
+      # Run observability only (OD-06); the AC counts come from silver.meter_readings_evaluated.
+      event_log:
+        catalog: ${var.catalog}
+        schema: ${var.silver_schema}
+        name: pipeline_event_log
+      configuration:
+        spark.sql.session.timeZone: UTC
+        smart_meter.src_path: ${workspace.file_path}/src
+        smart_meter.catalog: ${var.catalog}
+        smart_meter.bronze_schema: ${var.bronze_schema}
+        smart_meter.silver_schema: ${var.silver_schema}
+        smart_meter.gold_schema: ${var.gold_schema}
+        smart_meter.ml_schema: ${var.ml_schema}
+        smart_meter.study_start: ${var.study_start}
+        smart_meter.study_end: ${var.study_end}
+        smart_meter.cutoff: ${var.cutoff}
+      libraries:
+        - file:
+            path: ../pipelines/meter_pipeline.py
+        - file:
+            path: ../pipelines/household_data_quality.sql
