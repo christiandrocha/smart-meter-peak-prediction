@@ -106,9 +106,8 @@ def test_ac10_failed_kafka_run_left_bronze_and_checkpoint_unchanged(
                 break
         if failed:
             break
-    assert (
-        failed is not None
-    ), "no failed ingest_kafka run after the snapshot: run the job with Aiven off"
+    no_run = "no failed ingest_kafka run after the snapshot: run the job with Aiven off"
+    assert failed is not None, no_run
     seconds = (failed.end_time - failed.start_time) / 1000
     assert seconds <= MAX_FAILED_TASK_SECONDS, f"the task needed {seconds:.0f} s to fail"
     assert (
