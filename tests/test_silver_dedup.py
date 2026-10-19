@@ -212,7 +212,9 @@ def test_ac09_replayed_partially_parseable_invalid_payload_not_quarantined_again
         ts = b.kafka_ts(K)
         payloads = [
             b.kafka_payload("MAC000002", moment=K, produced_at=produced_at),  # valid
-            b.kafka_payload("MAC000002", moment=K + timedelta(hours=1), source=None),  # no source
+            b.kafka_payload(  # no source
+                "MAC000002", moment=K + timedelta(hours=1), source=None, produced_at=produced_at
+            ),
             json.dumps(  # energy_kwh of the wrong type
                 {
                     "household_id": "MAC000002",
