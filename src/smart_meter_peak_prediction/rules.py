@@ -137,7 +137,8 @@ RULES: tuple[Rule, ...] = (
         "NOT is_duplicate",
         "drop",
         "warn",
-        "deduplication: loser excluded from Silver and quarantine, counted",
+        "deduplication: loser (valid duplicate or repeat of a dropped record by _dedup_key) "
+        "excluded from Silver and quarantine, counted",
     ),
     Rule(
         "INV-01",

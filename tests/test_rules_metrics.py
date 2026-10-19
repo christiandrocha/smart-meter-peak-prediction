@@ -62,6 +62,9 @@ def test_ac12_rule_counts_sql_covers_every_drop_rule_scope_and_duplicates() -> N
         assert f"array_contains(failed_rules, '{rule_id}')" in sql
     assert "is_out_of_scope" in sql
     assert "is_duplicate" in sql
+    assert "is_quarantine_duplicate" in sql
+    for rule_id in rules.DROP_RULE_PRECEDENCE:  # a replay raises no per-rule total
+        assert f"array_contains(failed_rules, '{rule_id}') AND NOT is_quarantine_duplicate" in sql
     assert "FROM silver.meter_readings_evaluated" in sql
     assert "event_log" not in sql  # counts are table totals, not event-log reads
 

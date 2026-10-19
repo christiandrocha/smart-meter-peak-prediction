@@ -77,7 +77,8 @@ def _expectations(dataset: str):
 # ----------------------------------------------------------------------------- silver readings
 @dlt.table(
     name=EVALUATED_FQN,
-    comment="Ops table: every Bronze reading row with its failed rules, scope and dedup rank. "
+    comment="Ops table: every Bronze reading row with its failed rules, scope, dedup ranks and "
+    "dedup key. "
     "Source of the rule, scope and duplicate counts. Not a PEAK_MODEL input.",
 )
 @_expectations(rules.EVALUATED)
