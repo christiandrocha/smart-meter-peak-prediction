@@ -85,8 +85,9 @@ Silver and Gold schemas by fully qualified names.
 contract checks run as `expect_or_fail` on a private materialized view that reads it.
 
 **Counts.** Rule, scope and duplicate counts are table totals that `metrics.py` computes from the
-`failed_rules`, `is_out_of_scope` and `is_duplicate` columns of `silver.meter_readings_evaluated`
-(OD-02, OD-06). Spike 04 (DA-01, partial) showed on Free Edition that:
+`failed_rules`, `is_out_of_scope`, `is_duplicate` (valid duplicates and quarantine duplicates) and
+`is_quarantine_duplicate` columns of `silver.meter_readings_evaluated` (OD-02, OD-06). Per-rule
+totals exclude quarantine duplicates (see the amendment of 2026-10-19). Spike 04 (DA-01, partial) showed on Free Edition that:
 - expectations on a materialized view report per-rule metrics in the event log, and a row failing
   two counters is counted under both;
 - an update with no new input writes no expectation metrics, so event-log counts exist only for
@@ -114,3 +115,13 @@ incrementally, at about 1.7 M rows. The revisit trigger is in ADR 0005: refresh 
 - **What would make us revisit this:** Native quarantine support in Lakeflow expectations, more
   than one pipeline allowed on the platform, event log publication becoming unavailable, or the
   ADR 0005 revisit trigger.
+
+## Amendment 2026-10-19
+
+Quarantine is idempotent (QR-09 b, QD-01). `silver.meter_readings_evaluated` also carries
+`_dedup_key`, `quarantine_rank`, `is_quarantine_duplicate` and `is_quarantined`. The quarantine
+holds the `is_quarantined` rows only, so it has one row per distinct dropped content identity, and
+`_dedup_key` is unique in it. A repeat of a dropped record (replayed Kafka message, re-landed file)
+is an `is_quarantine_duplicate` row: it goes to neither table, is counted in the single QR-09 total
+with the valid duplicates, and is not counted under any per-rule total. The decision and its
+status are unchanged.

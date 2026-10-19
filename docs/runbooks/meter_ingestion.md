@@ -225,9 +225,12 @@ print(metrics.rule_counts_sql(config.Settings().table('silver', 'meter_readings_
 ```
 
 Result columns: `evaluated_rows` (must equal the rows of both Bronze reading tables), one column
-per drop rule (`qr_02` to `qr_07`), `sf_01` (outside the study period), `qr_09` (duplicates),
-`quarantine_rows` and `silver_rows`. `metrics.reconciliation_sql` classifies every Bronze row
-exactly once (seed 42: 60 quarantined, 0 out of period, 0 duplicates, 1,679,914 in Silver).
+per drop rule (`qr_02` to `qr_07`, not counting quarantine duplicates), `sf_01` (outside the study
+period), `qr_09` (all duplicates: valid duplicates plus quarantine duplicates),
+`quarantine_duplicates` (the repeats of a dropped record), `quarantine_rows` and `silver_rows`.
+`metrics.reconciliation_sql` classifies every Bronze row exactly once, in one of five classes
+(seed 42: 60 quarantined, 0 out of period, 0 duplicates, 0 quarantine duplicates, 1,679,914 in
+Silver).
 Rejected rows are in `silver.meter_readings_quarantine`.
 
 ### Evidence order for the integration tests
@@ -350,8 +353,11 @@ Update the secret with `put-secret` (and `.env` for the producer). No deploy is 
 - Silver and Gold are recomputed in full on every update (about 1.7 M rows; one update over
   1.68 M synthetic rows took 63 s in the feasibility spike). Revisit when an update exceeds
   15 minutes or Bronze exceeds 50 M rows (ADR 0005).
-- A replayed message that is invalid is a new Bronze row and is quarantined again; only valid rows
-  are deduplicated. The seed-42 stream has no invalid message.
+- A replayed message that is invalid is not quarantined again: dropped rows are deduplicated on
+  `_dedup_key` (the raw business key, or a hash of the payload when the payload does not parse), the
+  earliest-ingested row stays in the quarantine, and each repeat is counted in `qr_09` and in
+  `quarantine_duplicates`, and in no per-rule total. The seed-42 stream has no invalid message, so
+  its figures show no quarantine duplicate.
 - Free Edition: one active pipeline per type, at most five concurrent tasks, a daily compute quota,
   and a Kafka service that powers off when idle (`.claude/kb/databricks/free-edition.md`).
 - The unit tests prove the pipeline logic on local Spark with a fake `dlt`; Lakeflow behaviour is
