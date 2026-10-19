@@ -128,15 +128,15 @@ Final status after PR 3. **Local** is the unit, local-data, wiring and bundle ev
 | AC-06 | Pass (idempotent writer, unit) | Not run | `test_bronze_ingestion.py::test_ac06_rerun_file_ingestion_adds_no_rows`, step B (reruns `ingest_files`) |
 | AC-07 | Pass | Not run | `test_bronze_ingestion.py::test_ac07_kafka_bronze_count_uniqueness_and_payload_parse`, step C (needs Aiven on) |
 | AC-08 | Pass (unit) | Not run | `test_bronze_ingestion.py::test_ac08_rerun_kafka_ingestion_adds_no_rows`, step C (needs Aiven on) |
-| AC-09 | Pass | Not run | `test_reprocessing.py::test_ac09_before_replay_snapshot`, `::test_ac09_after_replay_silver_unchanged`, step F (second replay) |
+| AC-09 | Pass for the earlier wording; wording changed 2026-10-19 (invalid-message clause), rebuild pending | Not run | `test_reprocessing.py::test_ac09_before_replay_snapshot`, `::test_ac09_after_replay_silver_unchanged`, step F (second replay). New unit tests to add: `test_silver_dedup.py::test_ac09_replayed_invalid_messages_not_quarantined_again`, `::test_ac09_dedup_key_is_per_path_and_offset_independent` |
 | AC-10 | Pass (options, bundle, AST guard) | Not run | `test_bronze_ingestion.py::test_ac10_before_outage_snapshot`, `::test_ac10_failed_kafka_run_left_bronze_and_checkpoint_unchanged`, step D (Aiven off). Spike 03 evidence stands |
-| AC-11 | Pass (unit, seed-42 local data) | Not run | `test_silver_tables.py::test_ac11_reconciliation_classifies_every_bronze_row`, step C |
-| AC-12 | Pass (unit, wiring) | Not run | `test_silver_tables.py::test_ac12_update_rule_counts_match_quarantine_rows` (step C), `test_reprocessing.py::test_ac12_totals_consistent_after_full_refresh` (step G) |
+| AC-11 | Pass for the earlier wording; wording changed 2026-10-19 (class quarantine duplicate), rebuild pending (unit, seed-42 local data) | Not run | `test_silver_tables.py::test_ac11_reconciliation_classifies_every_bronze_row`, step C |
+| AC-12 | Pass for the earlier wording; wording changed 2026-10-19 (per-rule totals exclude quarantine duplicates), rebuild pending (unit, wiring) | Not run | `test_silver_tables.py::test_ac12_update_rule_counts_match_quarantine_rows` (step C), `test_reprocessing.py::test_ac12_totals_consistent_after_full_refresh` (step G) |
 | AC-13 | Pass | Not run | `test_silver_tables.py::test_ac13_silver_invariants`, step C |
 | AC-14 | Pass | Not run | `test_silver_tables.py::test_ac14_cutoff_rows_once_with_ingestion_path`, step C |
 | AC-15 | Pass (unit x7 groups, wired fail rule, spike 04 on the platform) | n/a | none: the DESIGN assigns the platform proof to spike 04 (`expect_or_fail` aborts with 0 rows committed) |
 | AC-16 | Pass | n/a | none in the DESIGN (fixture AC) |
-| AC-17 | Pass (wording open, I-21) | n/a | none in the DESIGN (fixture AC). The user has not decided the wording |
+| AC-17 | Pass for the earlier wording; reworded 2026-10-19 (I-21 closed), re-check the fixture pairs against the new text | n/a | none in the DESIGN (fixture AC): `test_silver_dedup.py::test_ac17_earlier_ingested_at_wins_and_tie_uses_smaller_source_ref`, `::test_ac17_rerun_keeps_same_winners` |
 | AC-18 | Pass | Not run | `test_silver_tables.py::test_ac18_silver_households_seed42`, step C |
 | AC-19 | Pass | Not run | `test_silver_tables.py::test_ac19_deployed_columns_match_contracts`, step C |
 | AC-20 | Pass | Not run | `test_silver_tables.py::test_ac20_dst_days_have_48_readings` (2 cases), step C |
@@ -156,7 +156,7 @@ Final status after PR 3. **Local** is the unit, local-data, wiring and bundle ev
 | AC-34 | Pass | Not run | `test_silver_tables.py::test_ac34_seed42_offgrid_null_rows_counted_under_both_rules`, step C |
 | AC-35 | Pass | Not run | `test_gold_tables.py::test_ac35_seed42_has_household_record_all_true`, step C |
 
-Summary: 35 ACs. Local result `Pass` for all 35 (the AC-17 wording is still undecided by the user, I-21). 25 ACs also need live evidence and are `Not run`: AC-05 to AC-14, AC-18 to AC-22, AC-24 to AC-31, AC-34, AC-35. The other 10 have no live test in the DESIGN: AC-01 to AC-04, AC-15 (spike 04), AC-16, AC-17, AC-23, AC-32, AC-33.
+Summary: 35 ACs. Local result was `Pass` for all 35 before `/iterate` 2026-10-19. That iterate changed the wording of AC-09, AC-11, AC-12 and AC-17, so these four are `Pass` only for the earlier wording until the rebuild (I-15) is done and the unit tests are rerun; the other 31 are unchanged. 25 ACs also need live evidence and are `Not run`: AC-05 to AC-14, AC-18 to AC-22, AC-24 to AC-31, AC-34, AC-35. The other 10 have no live test in the DESIGN: AC-01 to AC-04, AC-15 (spike 04), AC-16, AC-17, AC-23, AC-32, AC-33.
 
 ---
 
@@ -215,7 +215,7 @@ Summary: 35 ACs. Local result `Pass` for all 35 (the AC-17 wording is still unde
 | `pyspark` | Dev extra | Declared, not installed in `.venv` | PR 1 needs no Spark or Java | No |
 | Producer CLI | `--dry-run` | Also `--input`, `--topic`, `--speed`, `--limit` | Needed to run spikes with a few events; `--limit` is not required elsewhere | No |
 | `element_at(failed_rules, 1)` | `rule_name = element_at(...)` | `try_element_at` | ANSI mode raises on an empty array; found by the first local run | No (mechanical) |
-| Cross-path duplicate in AC-17 test | "A cross-path pair with different `_ingested_at`" | Pairs across two files and across two Kafka offsets | A files row and a Kafka row with one key cannot both pass QR-06 | No |
+| Cross-path duplicate in AC-17 test | "A cross-path pair with different `_ingested_at`" | Pairs across two files and across two Kafka offsets | A files row and a Kafka row with one key cannot both pass QR-06 | Closed: the build now matches the spec. DEFINE AC-17 and the DESIGN test text were reworded through `/iterate` 2026-10-19 (files pair plus Kafka pair; I-21). One adjustment may remain in the test: the files pair must have the earlier `_ingested_at` on the larger `_source_ref`, and the Kafka pair must tie on `_ingested_at` |
 | Extra files | Manifest lists 20 PR 2a files | Also tests/test_config.py, tests/test_rules_metrics.py, tests/local_data/test_pipeline_seed42.py, a `pyproject.toml` ruff S608 ignore | Catalog checks and real-sample figures without Databricks | No |
 | Hygiene scan input | `git ls-files` | `git ls-files --cached --others --exclude-standard`, environment values only (never reads `.env`) | Catches new files before commit | No |
 | Dedup window | Partition `(household_id, reading_ts)` | Partition also by `is_candidate` | Same ranks for candidates; validated in spike 04 | No |
@@ -253,14 +253,14 @@ Summary: 35 ACs. Local result `Pass` for all 35 (the AC-17 wording is still unde
 | I-14 | Spike 03: a stream failure surfaces at notebook-cell level ("Some streams terminated before this command could finish!") and is not caught by `try` around `awaitTermination` | Closed (PR 2b) | The Kafka task in PR 2a must not rely on catching the exception in Python; let the task fail and use task `timeout_seconds` and retries. PR 2a: `bronze.run_available_now` has no try/except, guarded by an AST test. The notebooks (PR 2b) must follow it. PR 2b: none of the three notebooks nor the pipeline has a try/except, and the AST guard `test_ac10_notebooks_and_pipeline_have_no_try_except` covers them |
 | I-12 | ADR 0005 still called the evaluation MV private and mentioned a per-update duplicate count | Closed | ADR 0005 updated 2026-10-16: published evaluation MV, `is_duplicate` table total, event log for observability |
 | I-10 | The workspace holds an unrelated pipeline (`elt-uber-eats-analytics`, idle) | Low | Spike 04 ran alongside it. Check the one-pipeline-per-type limit again when the bundle pipeline is deployed |
-| I-15 | A replayed invalid Kafka message is a new Bronze row that fails the same rule and is quarantined again; only valid rows are deduplicated (QR-09). AC-09 holds for seed 42 because the stream has no invalid message | Closed (accepted) | User decision 2026-10-19: accepted as is, no `/iterate`. Documented by a test |
+| I-15 | A replayed invalid Kafka message is a new Bronze row that fails the same rule and was quarantined again; only valid rows were deduplicated (QR-09). AC-09 held for seed 42 only because the stream has no invalid message, which contradicted NFR-02 | Resolved by /iterate 2026-10-19, pending build | Reopened by the user the same day (reverses "accepted as is"). New behaviour: dropped rows are deduplicated by `_dedup_key` (path prefix plus raw business key, or a SHA-256 of the raw payload or record when no key can be read), earliest `_ingested_at` then smallest `_source_ref` wins, repeats are counted in `is_duplicate` (and in `is_quarantine_duplicate`), are not quarantined again and raise no per-rule total (DEFINE QR-09 b, FR-08, AC-09, AC-11, AC-12; DESIGN Column derivations). The existing test `tests/test_silver_dedup.py` that documents re-quarantine (docstring "quarantined again", around line 79) must be rewritten as `test_ac09_replayed_invalid_messages_not_quarantined_again`. Code, contracts check and integration queries to rebuild: see the Change Log below |
 | I-16 | Code review PR 2a, Medium: Gold total order-dependence (fixed, decimal sum), ANSI not forced in conftest (fixed), unknown pipeline-config keys silently ignored (fixed, ValueError), vacuous totals test (renamed) | Closed | - |
 | I-17 | Code review PR 2a, Low. PR 2b closed the `CREATE VIEW` and UTC items. Still open, no PR 3 change: `trim` removes spaces only; `study_*` and cutoff must be midnight dates; the event-log SQL is Databricks-only; the broker-host scan needs `KAFKA_*` exported; `auto_loader_reader` and `kafka_reader` are exercised only by the integration tests | Low, open | Integration run |
 
-| I-18 | PR 2b review, Medium: `household_data_quality_check` (Python) reads the persisted view that the SQL file creates in the same pipeline. The platform dependency edge between a Python dataset and a SQL `CREATE VIEW` is proven only by the local fake | Medium, open | PR 3 added the integration pair `test_ac26_i18_before_first_update_gold_schema_is_empty` and `test_ac26_i18_after_first_update_summary_view_exists_and_update_completed`, and the runbook ordering (steps A and B, from an empty Gold schema). Not run. The fallback if it fails (derive the check from the monthly table, through `/iterate`) is not decided by the user and stays open |
+| I-18 | PR 2b review, Medium: `household_data_quality_check` (Python) reads the persisted view that the SQL file creates in the same pipeline. The platform dependency edge between a Python dataset and a SQL `CREATE VIEW` is proven only by the local fake | Medium, open | PR 3 added the integration pair `test_ac26_i18_before_first_update_gold_schema_is_empty` and `test_ac26_i18_after_first_update_summary_view_exists_and_update_completed`, and the runbook ordering (steps A and B, from an empty Gold schema). Not run. Fallback decided by the user 2026-10-19 (record only, no design change now): if the pipeline update from an empty Gold schema fails because the Python `household_data_quality_check` dataset cannot read the SQL-created summary view, derive the check from the monthly table (`gold.household_data_quality_monthly`) instead, applied through a follow-up `/iterate` |
 | I-19 | PR 2b review, Medium (fixed): pipeline settings keys now have no default, so a missing `smart_meter.*` key fails the update; wiring test replaced by an executed one; AC-29 print guard is taint-tracked; vacuous and tautological asserts removed; AC-04 test split out | Closed | - |
 | I-20 | PR 2b review, Low. Addressed in the runbook: the Aiven dependency of `refresh_silver_gold` (runbook, dependency section, and a pipeline-only run while Aiven is off); `CREATE TABLE IF NOT EXISTS` does not migrate a Bronze schema (runbook, Bronze reset and schema changes); verification of stream error redaction (runbook procedure and `test_ac29_failed_stream_error_does_not_leak_credentials`, not run). Left open: `src_path` fallback and `cluster_by` on serverless, which only a live run can show | Low, open | Live run (steps A to C) and the redaction procedure |
-| I-21 | AC-17 wording (DEFINE) is still undecided by the user | Open | Needs a user decision; no `/iterate` done. The AC-17 local tests pass for the current wording |
+| I-21 | AC-17 wording (DEFINE): the Given "same key from files and from Kafka" is impossible, because QR-06 admits files rows only before the cutoff and Kafka rows only at or after it | Closed | `/iterate` 2026-10-19: AC-17 reworded by the user (files pair plus Kafka pair, run again in reversed order and with a different partitioning). The deviation row "Cross-path duplicate in AC-17 test" is closed. The local AC-17 tests should be checked against the new fixture (earlier `_ingested_at` on the larger `_source_ref` in the files pair; Kafka pair tied on `_ingested_at`) |
 
 ---
 
@@ -281,10 +281,10 @@ Live verification of the whole feature (not run, by instruction). The full proce
 9. Redaction (AC-29, I-20): the runbook section "Stream error redaction check".
 10. Also look for: `cluster_by` accepted, the UTC assertion passes, `src_path` import works, names carry the `[dev <user>]` prefix, the schedule is paused.
 
+Rebuild first (decided 2026-10-19, see the Change Log): the quarantine dedup of I-15 changes `silver.py`, `metrics.py`, the contract schema test and the integration queries of AC-09, AC-11 and AC-12. Build it and rerun the unit tests before the live steps above, because steps C, F and G read the changed queries.
+
 Decisions still open:
 
-- AC-17 wording (I-21).
-- Fallback for I-18 if the update from an empty Gold schema fails.
 - Whether to accept any AC as `Pass` without live evidence, so the report can move to `Complete` before `/ship`.
 
 ---
@@ -294,7 +294,7 @@ Decisions still open:
 ### PR 3
 
 - **Weak points:** None of the 33 integration tests has run. The SQL was written for Databricks SQL and checked only by reading it against the contracts and the library (it was not executed on any engine), and the SDK calls (`run_now(only=...)`, `list_runs`, `list_updates`, `tables.get`, `get_run_output`) were checked against the installed `databricks-sdk` signatures, not against the workspace. The runbook commands were checked with `--help` only. Several tests depend on order and on a clean state (exact seed-42 counts, the empty Gold schema, files-only state before Kafka), which the runbook fixes but a test cannot enforce.
-- **Risks:** The I-18 platform edge (Python dataset reading the SQL view) is still unproven and has no decided fallback. An Aiven outage stalls the Silver and Gold refresh by design. The free warehouse time zone is assumed to be UTC (the fixture fails otherwise). The pre-commit hook pins ruff 0.6.9 while CI installs the latest ruff, so formatting can differ between them (one `assert ... , message` construct was rewritten to be stable under both).
+- **Risks:** The I-18 platform edge (Python dataset reading the SQL view) is still unproven; its fallback is decided (derive the check from the monthly table, through `/iterate`, 2026-10-19). The quarantine dedup of I-15 (decided 2026-10-19) is specified but not built, so AC-09, AC-11, AC-12 and AC-17 need the rebuild before the live run. An Aiven outage stalls the Silver and Gold refresh by design. The free warehouse time zone is assumed to be UTC (the fixture fails otherwise). The pre-commit hook pins ruff 0.6.9 while CI installs the latest ruff, so formatting can differ between them (one `assert ... , message` construct was rewritten to be stable under both).
 - **What I would do differently:** Give the integration suite a single orchestrating script that runs steps A to G in order and stops at the first failure, and make the seed-42 expectations relative to a recorded baseline instead of absolute counts.
 - **Next improvement:** Run the live verification (*Pending on the user*), fix what it finds through `/iterate` or code changes, then move this report to `Complete` and run `/ship METER_INGESTION`.
 
@@ -308,7 +308,7 @@ Decisions still open:
 ### PR 2a
 
 - **Weak points:** Lakeflow semantics (MV refresh, `expect_*` on the published evaluation MV, `CREATE VIEW` in the pipeline) are proven only by spike 04 and by the harness; `auto_loader_reader`, `kafka_reader` and the summary `CREATE VIEW` statement have not run. Local Spark 4.0.4 with ANSI forced is close to serverless but not identical.
-- **Risks:** AC-27 depends on all Gold aggregates being order independent (daily total fixed; monthly uses counts and min/max only). Pipeline refresh time of the full recompute is only known from spike 04 (63 s). Replayed invalid messages are not deduplicated (I-15).
+- **Risks:** AC-27 depends on all Gold aggregates being order independent (daily total fixed; monthly uses counts and min/max only). Pipeline refresh time of the full recompute is only known from spike 04 (63 s). Replayed invalid messages were not deduplicated when PR 2a was built (I-15, resolved by `/iterate` 2026-10-19, pending build).
 - **What I would do differently:** Build the harness against the real `dlt` wiring earlier, and add a settings validation step (dates, midnight, ordering) in `Settings.__post_init__`.
 - **Next improvement:** PR 2b (notebooks, pipeline wiring with `rules.py`, bundle), then run it on the workspace and collect the pending integration evidence.
 
@@ -323,4 +323,12 @@ Decisions still open:
 
 ## Next Step
 
-Run the live verification listed under *Pending on the user* (or explicitly accept the pending ACs), then `/ship METER_INGESTION`. Open user decisions: AC-17 wording (I-21) and the I-18 fallback.
+Run the live verification listed under *Pending on the user* (or explicitly accept the pending ACs), then `/ship METER_INGESTION`. First build the quarantine dedup of I-15 (DESIGN Change Log 2026-10-19). The AC-17 wording and the I-18 fallback are decided; no user decision is open except whether to accept ACs without live evidence.
+
+---
+
+## Change Log
+
+| Date | What changed | Why | Downstream impact |
+|---|---|---|---|
+| 2026-10-19 | I-15 reopened and set to "Resolved by /iterate 2026-10-19, pending build" (quarantine dedup by `_dedup_key`); I-21 closed (AC-17 reworded); deviation row "Cross-path duplicate in AC-17 test" closed; I-18 row records the decided fallback and it is removed from "Pending on the user"; AC evidence rows for AC-09, AC-11, AC-12 and AC-17 and the summary line marked as pending rebuild; added a rebuild-first step to "Pending on the user"; PR 2a and PR 3 Self-Review text aligned | User decisions 2026-10-19; DEFINE, DESIGN and the quarantine and evaluation contracts changed through `/iterate` the same day | Rebuild: `src/smart_meter_peak_prediction/silver.py` (`_dedup_key`, `quarantine_rank`, `is_quarantine_duplicate`, `is_quarantined`, `is_duplicate` union), `rules.py` (comments, column lists if any), `metrics.py` (per-rule filter, quarantine-duplicate total, AC-11 reconciliation class), the harness if it lists columns; tests: rewrite the re-quarantine test in `tests/test_silver_dedup.py`, add the two AC-09 tests, extend AC-11, AC-12 and AC-17 tests, update `tests/test_contract_schemas.py` expectations; integration: `test_silver_tables.py` (AC-11, AC-12), `test_reprocessing.py` (AC-09, AC-12 helper); runbook line on re-quarantine; ADR 0004 and 0005 wording. Open PRs #2 (2a libraries), #3 (2b wiring) and #4 (3 integration tests, runbook) are all affected |
