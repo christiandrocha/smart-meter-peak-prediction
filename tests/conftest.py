@@ -34,6 +34,7 @@ def spark(tmp_path_factory: pytest.TempPathFactory) -> Iterator:
         .config("spark.sql.shuffle.partitions", "2")
         .config("spark.default.parallelism", "2")
         .config("spark.sql.warehouse.dir", str(warehouse))
+        .config("spark.driver.memory", "2g")
         .config("spark.ui.enabled", "false")
         .config("spark.sql.adaptive.enabled", "false")
         .config("spark.sql.codegen.wholeStage", "false")
