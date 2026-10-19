@@ -15,7 +15,7 @@ import pytest
 from support import builders as b
 from support.harness import ExpectationFailed, build_update, checksum, rows, totals
 
-from smart_meter_peak_prediction import silver
+from smart_meter_peak_prediction import metrics, silver
 from smart_meter_peak_prediction.config import Settings
 
 T = datetime(2013, 1, 1, tzinfo=UTC)
@@ -186,6 +186,37 @@ def test_ac09_dedup_key_is_per_path_and_offset_independent(spark) -> None:
     assert key_of("/v/nots.csv") == "files:row:" + sha(sep.join(["MAC000001", nul, nul, "x"]))
 
 
+def test_ac09_dropped_repeat_sharing_key_with_valid_row_is_a_quarantine_duplicate(spark) -> None:
+    """A QR-05 row and a valid row share (household, ts); dropped and valid never compete."""
+    valid = b.kafka_row(b.kafka_payload("MAC000002", moment=K), offset=1, ingested_at=EARLY)
+    bad = b.kafka_payload("MAC000002", moment=K, energy_kwh=-1.0)
+    first = b.kafka_row(bad, offset=2, ingested_at=LATE)
+    # equal ingestion time: the smaller _source_ref (offset 3) is kept in the quarantine
+    tie_a = b.kafka_row(bad, offset=4, ingested_at=LATE)
+    tie_b = b.kafka_row(bad, offset=3, ingested_at=LATE)
+    update = build_update(spark, [], [valid, first, tie_a, tie_b])
+    assert update.silver.count() == 1  # the valid row is not displaced by the dropped ones
+    kept = [r["_source_ref"] for r in rows(update.quarantine)]
+    assert kept == ["kafka:meter-readings/0/00000000000000000002"]
+    update.register_views()
+    recon = spark.sql(
+        metrics.reconciliation_sql("evaluated", "silver", "quarantine", Settings())
+    ).collect()[0]
+    assert (recon.in_silver, recon.in_quarantine) == (1, 1)
+    assert (recon.is_duplicate, recon.is_quarantine_duplicate) == (0, 2)
+    assert recon.unclassified == 0
+    assert recon.double_classified == 0
+    assert totals(update)["qr_05"] == 1
+
+
+def test_ac09_quarantine_tie_on_ingested_at_keeps_smaller_source_ref(spark) -> None:
+    bad = "not json"
+    rows_ = [b.kafka_row(bad, offset=9), b.kafka_row(bad, offset=5)]
+    update = build_update(spark, [], rows_)
+    kept = [r["_source_ref"] for r in rows(update.quarantine)]
+    assert kept == ["kafka:meter-readings/0/00000000000000000005"]
+
+
 def test_ac11_source_ref_unique_per_bronze_row(spark) -> None:
     files = [
         b.file_row(" MAC000001 ", moment=T, source_file="/v/a.csv"),
@@ -284,6 +315,17 @@ def test_ac27_rebuild_is_identical_for_any_input_order(spark) -> None:
         + b.day_rows("MAC000002", T, count=40, skip=[3, 4, 5])
         + [b.file_row("MAC000001", moment=T + timedelta(minutes=15), energy_kwh_raw="Null")]
         + [b.file_row("MAC000001", moment=datetime(2011, 1, 1, tzinfo=UTC))]
+        # a dropped pair: the earlier ingestion sits on the larger _source_ref
+        + [
+            b.file_row("MAC000002", moment=T, energy_kwh_raw="-3", source_file="/v/z.csv"),
+            b.file_row(
+                "MAC000002",
+                moment=T,
+                energy_kwh_raw="-3",
+                source_file="/v/a.csv",
+                ingested_at=LATE,
+            ),
+        ]
     )
     kafka = (
         kafka_rows(12)

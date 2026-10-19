@@ -76,11 +76,12 @@ def reconciliation_sql(evaluated: str, silver: str, quarantine: str, settings: S
 
     - ``in_silver``: the ``_source_ref`` is in ``silver.meter_readings``;
     - ``in_quarantine``: the ``_source_ref`` is in the quarantine;
-    - ``is_duplicate``: not in either, and the key ``(household_id, reading_ts)`` is in Silver
-      under another ``_source_ref`` with an earlier or equal ``_ingested_at``;
-    - ``is_quarantine_duplicate``: not in either, not out of the period, not a valid duplicate,
-      and another quarantine row has the same ``_dedup_key`` with an earlier or equal
-      ``_ingested_at`` (a repeat of a dropped record);
+    - ``is_duplicate``: failed no drop rule, is in neither, and the key
+      ``(household_id, reading_ts)`` is in Silver under another ``_source_ref`` with an earlier
+      or equal ``_ingested_at``;
+    - ``is_quarantine_duplicate``: failed a drop rule, is in neither, and another quarantine row
+      has the same ``_dedup_key`` with an earlier or equal ``_ingested_at`` (a repeat of a
+      dropped record);
     - ``out_of_period``: ``reading_ts`` is outside the study period.
 
     Returns one row: ``bronze_rows``, one count per class, ``unclassified`` and
@@ -98,6 +99,7 @@ def reconciliation_sql(evaluated: str, silver: str, quarantine: str, settings: S
             WHERE s.household_id = e.household_id AND s.reading_ts = e.reading_ts
               AND s._source_ref <> e._source_ref AND s._ingested_at <= e._ingested_at)
       AS has_earlier_winner,
+    (size(e.failed_rules) > 0) AS failed_a_drop_rule,
     EXISTS (SELECT 1 FROM {quarantine} q
             WHERE q._dedup_key = e._dedup_key
               AND q._source_ref <> e._source_ref AND q._ingested_at <= e._ingested_at)
@@ -105,12 +107,12 @@ def reconciliation_sql(evaluated: str, silver: str, quarantine: str, settings: S
   FROM {evaluated} e
 ), labelled AS (
   SELECT *,
-    (NOT in_silver AND NOT in_quarantine AND NOT out_of_period AND has_earlier_winner)
-      AS is_duplicate
+    (NOT in_silver AND NOT in_quarantine AND NOT out_of_period AND NOT failed_a_drop_rule
+     AND has_earlier_winner) AS is_duplicate
   FROM classified
 ), labelled2 AS (
   SELECT *,
-    (NOT in_silver AND NOT in_quarantine AND NOT out_of_period AND NOT is_duplicate
+    (NOT in_silver AND NOT in_quarantine AND NOT out_of_period AND failed_a_drop_rule
      AND has_earlier_quarantine_row) AS is_quarantine_duplicate
   FROM labelled
 ), counted AS (
