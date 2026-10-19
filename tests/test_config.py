@@ -57,3 +57,10 @@ def test_ac16_parse_utc_normalises_offsets_and_naive_values() -> None:
     assert parse_utc("2013-12-01T01:00:00+01:00") == datetime(2013, 12, 1, tzinfo=UTC)
     assert parse_utc("2013-12-01 00:00:00") == datetime(2013, 12, 1, tzinfo=UTC)
     assert timestamp_sql(parse_utc("2014-02-28")).startswith("CAST('2014-02-28 00:00:00+00:00'")
+
+
+def test_ac04_unknown_prefixed_configuration_key_is_rejected() -> None:
+    import pytest
+
+    with pytest.raises(ValueError, match="smart_meter.cuttoff"):
+        Settings.from_pipeline_configuration({"smart_meter.cuttoff": "2013-11-01T00:00:00Z"})

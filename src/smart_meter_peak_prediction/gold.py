@@ -41,7 +41,10 @@ def daily_consumption(silver: DataFrame) -> DataFrame:
     return (
         silver.groupBy("household_id", "reading_date")
         .agg(
-            F.sum("energy_kwh").alias("total_energy_kwh"),
+            # Exact decimal sum, so the total does not depend on row order (AC-27).
+            F.sum(F.col("energy_kwh").cast("decimal(38,10)"))
+            .cast("double")
+            .alias("total_energy_kwh"),
             F.max("energy_kwh").alias("max_energy_kwh"),
             F.count(F.lit(1)).cast("int").alias("reading_count"),
         )

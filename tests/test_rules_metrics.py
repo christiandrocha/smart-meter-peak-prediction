@@ -89,8 +89,8 @@ def test_ac27_checksum_is_order_independent_and_detects_a_changed_value(spark) -
         metrics.table_checksum_sql("t", [])
 
 
-def test_ac12_totals_are_unchanged_by_a_second_identical_update(spark) -> None:
-    """No per-update delta exists: an update with no new input leaves the totals as they were."""
+def test_ac12_totals_are_deterministic_for_the_same_bronze_snapshot(spark) -> None:
+    """Totals are a function of the Bronze snapshot only (no per-update delta exists)."""
     files = [b.file_row("MAC000001", moment=b.T_FILES, energy_kwh_raw="Null")]
     first = totals(build_update(spark, files, []))
     second = totals(build_update(spark, files, []))

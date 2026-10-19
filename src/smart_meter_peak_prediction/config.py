@@ -72,6 +72,13 @@ class Settings:
         Job parameters use the bare field names (prefix ``""``).
         """
         known = {f.name for f in fields(cls)}
+        unknown = [
+            key
+            for key in values
+            if key.startswith(prefix) and prefix and key[len(prefix) :] not in known
+        ]
+        if unknown:
+            raise ValueError("unknown settings key(s): " + ", ".join(sorted(unknown)))
         picked = {
             key[len(prefix) :]: str(value)
             for key, value in values.items()
