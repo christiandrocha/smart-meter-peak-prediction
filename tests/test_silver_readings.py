@@ -11,6 +11,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from support import builders as b
+from support.builders import mixed_fixture
 from support.harness import ExpectationFailed, rows, run_update, totals
 
 from smart_meter_peak_prediction import metrics
@@ -19,7 +20,6 @@ from smart_meter_peak_prediction.config import Settings
 SETTINGS = Settings()
 T = datetime(2013, 1, 1, tzinfo=UTC)
 K = datetime(2013, 12, 1, tzinfo=UTC)
-LATER = datetime(2024, 1, 2, 12, tzinfo=UTC)
 
 
 def update(spark, files=(), kafka=(), households=None, settings=SETTINGS):
@@ -27,27 +27,6 @@ def update(spark, files=(), kafka=(), households=None, settings=SETTINGS):
     return run_update(
         spark, settings, b.bronze_files(spark, files), b.bronze_kafka(spark, kafka), hh
     )
-
-
-def mixed_fixture():
-    """One row for every class: Silver, each drop rule, out of period and a duplicate."""
-    files = [
-        b.file_row("MAC000001", moment=T),  # silver
-        b.file_row("MAC000001", moment=T + timedelta(minutes=30)),  # silver
-        b.file_row("MAC000001", moment=T + timedelta(minutes=45)),  # QR-03 only
-        b.file_row("MAC000001", moment=T + timedelta(hours=1), energy_kwh_raw="abc"),  # QR-04
-        b.file_row("MAC000001", moment=T + timedelta(hours=2), energy_kwh_raw="-1"),  # QR-05
-        b.file_row("MAC000001", reading_ts_raw="garbage"),  # QR-02 only
-        b.file_row("MAC000001", moment=datetime(2011, 1, 1, tzinfo=UTC)),  # out of period
-        # the same file landed twice under another name: duplicate of the first row
-        b.file_row("MAC000001", moment=T, source_file="/v/copy.csv", ingested_at=LATER),
-    ]
-    kafka = [
-        b.kafka_row(b.kafka_payload("MAC000002", moment=K), offset=1),  # silver
-        b.kafka_row(b.kafka_payload("MAC000002", moment=K), offset=2, ingested_at=LATER),  # replay
-        b.kafka_row("not json", offset=3),  # QR-07
-    ]
-    return files, kafka
 
 
 def test_ac11_every_bronze_row_classified_exactly_once(spark) -> None:

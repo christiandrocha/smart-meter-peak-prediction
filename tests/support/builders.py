@@ -153,3 +153,33 @@ def day_rows(
         for i, moment in enumerate(half_hours(day, count))
         if i not in skipped
     ]
+
+
+T_FILES = datetime(2013, 1, 1, tzinfo=UTC)
+T_KAFKA = datetime(2013, 12, 1, tzinfo=UTC)
+INGESTED_LATER = datetime(2024, 1, 2, 12, tzinfo=UTC)
+
+
+def mixed_fixture():
+    """One row for every class: Silver, each drop rule, out of period and a duplicate."""
+    files = [
+        file_row("MAC000001", moment=T_FILES),  # silver
+        file_row("MAC000001", moment=T_FILES + timedelta(minutes=30)),  # silver
+        file_row("MAC000001", moment=T_FILES + timedelta(minutes=45)),  # QR-03 only
+        file_row("MAC000001", moment=T_FILES + timedelta(hours=1), energy_kwh_raw="abc"),  # QR-04
+        file_row("MAC000001", moment=T_FILES + timedelta(hours=2), energy_kwh_raw="-1"),  # QR-05
+        file_row("MAC000001", reading_ts_raw="garbage"),  # QR-02 only
+        file_row("MAC000001", moment=datetime(2011, 1, 1, tzinfo=UTC)),  # out of period
+        # the same file landed twice under another name: duplicate of the first row
+        file_row(
+            "MAC000001", moment=T_FILES, source_file="/v/copy.csv", ingested_at=INGESTED_LATER
+        ),
+    ]
+    kafka = [
+        kafka_row(kafka_payload("MAC000002", moment=T_KAFKA), offset=1),  # silver
+        kafka_row(
+            kafka_payload("MAC000002", moment=T_KAFKA), offset=2, ingested_at=INGESTED_LATER
+        ),  # replay
+        kafka_row("not json", offset=3),  # QR-07
+    ]
+    return files, kafka
