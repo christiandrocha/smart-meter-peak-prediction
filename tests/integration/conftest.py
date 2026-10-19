@@ -158,7 +158,7 @@ def sql(workspace: Any) -> Sql:
         warehouse_id = warehouses[0].id
     runner = Sql(workspace, warehouse_id)
     zone = runner.scalar("SELECT current_timezone()")
-    assert zone == "UTC", (
+    assert zone in ("UTC", "Etc/UTC", "GMT"), (
         f"the warehouse session time zone is {zone}; set the SQL configuration parameter "
         "TIMEZONE to UTC in the workspace SQL settings (golden rule 5)"
     )
@@ -178,7 +178,11 @@ def _only(matches: list[Any], what: str) -> Any:
 
 @pytest.fixture(scope="session")
 def job(workspace: Any) -> Any:
-    found = [j for j in workspace.jobs.list() if strip_dev_prefix(j.settings.name) == JOB_NAME]
+    found = [
+        j
+        for j in workspace.jobs.list(expand_tasks=True)
+        if j.settings and strip_dev_prefix(j.settings.name or "") == JOB_NAME
+    ]
     return _only(found, f"job named {JOB_NAME} (development prefix stripped)")
 
 
@@ -190,6 +194,28 @@ def pipeline(workspace: Any) -> Any:
         if strip_dev_prefix(p.name or "") == PIPELINE_NAME
     ]
     return _only(found, f"pipeline named {PIPELINE_NAME} (development prefix stripped)")
+
+
+@pytest.fixture
+def full_runs(workspace: Any, job: Any) -> Callable[[], list[Any]]:
+    """Successful runs of all four tasks, newest first (partial ``only=`` runs are excluded)."""
+    all_tasks = {t.task_key for t in job.settings.tasks}
+
+    def find() -> list[Any]:
+        runs = workspace.jobs.list_runs(
+            job_id=job.job_id, completed_only=True, expand_tasks=True, limit=50
+        )
+        full = [
+            r
+            for r in runs
+            if r.state
+            and r.state.result_state
+            and r.state.result_state.value == "SUCCESS"
+            and {t.task_key for t in r.tasks or []} == all_tasks
+        ]
+        return sorted(full, key=lambda r: r.start_time, reverse=True)
+
+    return find
 
 
 @pytest.fixture
@@ -311,8 +337,8 @@ def assert_rule_totals_consistent(sql: Sql, settings: Settings) -> Callable[[], 
             assert totals[metrics.count_column(rule)] == per_rule.get(rule, 0), rule
         assert totals["quarantine_rows"] == sql.scalar(f"SELECT count(*) FROM {quarantine}")
         assert totals["silver_rows"] == sql.scalar(f"SELECT count(*) FROM {silver}")
-        assert totals["sf_01"] is not None
-        assert totals["qr_09"] is not None
+        assert totals["sf_01"] >= 0
+        assert totals["qr_09"] >= 0
         return totals
 
     return check

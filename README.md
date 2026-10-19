@@ -79,11 +79,12 @@ databricks bundle run -t dev -p dev smart_meter_ingestion
 ```
 
 The integration tests target the deployed environment, carry the `integration` marker and are
-excluded from the default run and from CI:
+excluded from the default run and from CI. Some are before/after pairs that need a real operation
+in between, so run them per step as listed in the runbook ("Evidence order"):
 
 ```bash
 pip install -e ".[dev,integration]"
-pytest -m integration tests/integration
+pytest -m integration tests/integration/<file>::<test>
 ```
 
 ## Repository layout

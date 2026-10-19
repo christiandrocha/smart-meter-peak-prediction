@@ -186,7 +186,8 @@ idempotent (`acks=all`); delivery is at-least-once and Silver deduplicates.
 
 ```bash
 docker build -f docker/producer/Dockerfile -t smart-meter-producer .
-docker run --rm --user "$(id -u):$(id -g)" --env-file .env \
+mkdir -p out && grep '^\(KAFKA_\|REPLAY_\)' .env > "$PWD/out/producer.env"   # keep Databricks keys out of the container
+docker run --rm --user "$(id -u):$(id -g)" --env-file "$PWD/out/producer.env" \
   -e KAFKA_CA_PATH=/certs/ca.pem -e SAMPLE_STREAM_FILE=/data/readings_stream.csv \
   -v "$PWD/data/sample/seed42/stream/readings_stream.csv:/data/readings_stream.csv:ro" \
   -v /absolute/path/outside/repo/ca.pem:/certs/ca.pem:ro \
@@ -240,7 +241,9 @@ export DATABRICKS_CONFIG_PROFILE=dev       # and DATABRICKS_WAREHOUSE_ID if not 
 pytest -m integration tests/integration/<file>::<test>
 ```
 
-Some tests are before/after pairs: the `before` test stores a snapshot in `out/evidence/`
+AC-25 reads the per-household facts from the local `data/sample/seed42/manifest.json` (or
+`SAMPLE_MANIFEST`), so build the sample locally first. AC-30 and AC-31 use the latest successful
+run of all four tasks, so run the full job right after producing (step C); partial `--only` reruns do not count. Some tests are before/after pairs: the `before` test stores a snapshot in `out/evidence/`
 (git-ignored) and the `after` test compares against it, so run them in this order.
 
 | Step | Do | Then run |
@@ -290,9 +293,8 @@ variable values (`--var study_end=...`) and a pipeline update.
 The summary check dataset (`household_data_quality_check`, Python) reads the summary view that the
 SQL file `pipelines/household_data_quality.sql` creates in the same pipeline. That dependency is
 proved only by a local fake, so the first update must start from an empty Gold schema. A fresh
-workspace does this naturally (evidence steps A and B). The user has not decided a fallback if it
-fails; do not work around it silently. Report the failing update and the error text. The candidate
-fallback is to derive the check from the monthly table, which is a DESIGN change.
+workspace does this naturally (evidence steps A and B). No fallback is decided. If the update fails, report the failing update and its error text; the
+candidate fallback is to derive the check from the monthly table, which is a DESIGN change.
 
 ### Bronze reset and Bronze schema changes
 

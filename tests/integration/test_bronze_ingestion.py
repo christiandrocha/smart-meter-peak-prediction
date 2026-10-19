@@ -67,7 +67,7 @@ FROM {table}"""
     assert row["nulls"] == 0
     evaluated = settings.table("silver", "meter_readings_evaluated")
     unparsed = sql.scalar(
-        f"SELECT count_if(NOT payload_ok) FROM {evaluated} WHERE _ingestion_path = 'kafka'"
+        f"SELECT count_if(payload_ok IS NOT TRUE) FROM {evaluated} WHERE _ingestion_path = 'kafka'"
     )
     assert unparsed == 0
 
@@ -101,7 +101,7 @@ def test_ac10_failed_kafka_run_left_bronze_and_checkpoint_unchanged(
             break
         for task in run.tasks or []:
             result = task.state.result_state.value if task.state and task.state.result_state else ""
-            if task.task_key == STREAM_TASK and result == "FAILED":
+            if task.task_key == STREAM_TASK and result in ("FAILED", "TIMEDOUT"):
                 failed = task
                 break
         if failed:

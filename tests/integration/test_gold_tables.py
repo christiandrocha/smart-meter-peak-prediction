@@ -57,9 +57,10 @@ FROM {daily} d FULL OUTER JOIN r
         sql.one(metrics.published_counts_sql(daily, households))["qr_10"]
         == (row["incomplete_days"])
     )
-    assert _table_info(
-        workspace, settings, "gold", "household_daily_consumption"
-    ).table_type.value == ("MATERIALIZED_VIEW")
+    assert (
+        _table_info(workspace, settings, "gold", "household_daily_consumption").table_type.value
+        == "MATERIALIZED_VIEW"
+    )
 
 
 def test_ac22_monthly_quality_matches_independent_recomputation(sql, settings) -> None:
@@ -196,9 +197,7 @@ def test_ac26_i18_after_first_update_summary_view_exists_and_update_completed(
     assert daily.table_type.value == "MATERIALIZED_VIEW"
 
 
-def test_ac31_produced_reading_reaches_silver_and_gold_within_24h(
-    workspace, sql, settings, job
-) -> None:
+def test_ac31_produced_reading_reaches_silver_and_gold_within_24h(sql, settings, full_runs) -> None:
     silver = settings.table("silver", "meter_readings")
     daily = settings.table("gold", "household_daily_consumption")
     monthly = settings.table("gold", "household_data_quality_monthly")
@@ -222,17 +221,9 @@ def test_ac31_produced_reading_reaches_silver_and_gold_within_24h(
         AND g.observed_readings > 0) AS months"""
     )
     assert missing == {"days": 0, "months": 0}
-    # The run that delivered the readings: the earliest successful run ending after the last one
-    # was produced. Delay is measured from the earliest produced reading.
-    ends = [
-        run.end_time
-        for run in workspace.jobs.list_runs(job_id=job.job_id, completed_only=True, limit=50)
-        if run.end_time
-        and run.end_time >= produced["last_ms"]
-        and run.state
-        and run.state.result_state
-        and run.state.result_state.value == "SUCCESS"
-    ]
+    # The run that delivered the readings: the earliest successful full run (all four tasks)
+    # ending after the last reading was produced. Delay counts from the earliest produced reading.
+    ends = [r.end_time for r in full_runs() if r.end_time and r.end_time >= produced["last_ms"]]
     assert ends, "no successful job run finished after the last reading was produced"
     delay_s = (min(ends) - produced["first_ms"]) / 1000
     assert delay_s <= MAX_PRODUCE_TO_GOLD_SECONDS, f"delay {delay_s:.0f} s"

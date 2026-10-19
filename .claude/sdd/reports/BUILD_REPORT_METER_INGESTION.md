@@ -21,7 +21,11 @@ This report covers **PR 1 (manifest entries 1 to 23)**. The local sampling port,
 
 **PR 2a (entries 24 to 42 and 30a) was built on 2026-10-19** on branch `feat/meter-ingestion-pr2a`: library modules, summary view SQL, contract 30a, local pipeline harness and unit tests, all verified locally (Spark 4.0.4, Java 17). Nothing was run against Databricks or Kafka. PR 2a status: **Complete** (local scope; live evidence pending, see below).
 
-**PR 2b (entries 43 to 52) was built on 2026-10-19** on branch `feat/meter-ingestion-pr2b` (off `feat/meter-ingestion-pr2a`): notebooks, pipeline wiring, bundle resources and their tests, all verified locally; `databricks bundle validate -t dev -p dev` reports `Validation OK!`. Nothing was deployed or run on Databricks, and Kafka was not touched. PR 2b status: **Complete** (local scope; live evidence pending). PR 3 (entries 53 to 60) is not started.
+**PR 2b (entries 43 to 52) was built on 2026-10-19** on branch `feat/meter-ingestion-pr2b` (off `feat/meter-ingestion-pr2a`): notebooks, pipeline wiring, bundle resources and their tests, all verified locally; `databricks bundle validate -t dev -p dev` reports `Validation OK!`. Nothing was deployed or run on Databricks, and Kafka was not touched. PR 2b status: **Complete** (local scope; live evidence pending).
+
+**PR 3 (entries 53 to 60) was built on 2026-10-19** on branch `feat/meter-ingestion-pr3` (off `feat/meter-ingestion-pr2b`): the integration tests, the runbook and the README, all verified locally; `databricks bundle validate -t dev -p dev` reports `Validation OK!`. Nothing was deployed, run or submitted on Databricks, Kafka was not touched, and the integration tests were collected but **not run**. PR 3 status: **Complete** (local scope; live evidence pending).
+
+**Feature status.** Every manifest entry (1 to 60 and 30a) is built and verified locally. The header status stays `In Progress` on purpose: the build rules allow `Complete` only when every AC is `Pass` or explicitly accepted by the user, and the platform evidence for 25 ACs (all with an integration test) is `Not run`. The exact steps are under *Pending on the user*; run them before `/ship`, or accept the pending ACs explicitly.
 
 ---
 
@@ -55,7 +59,7 @@ State legend: done, written-not-run, partial, not started.
 | 22 | PR 1 | tests/test_producer.py | Created | done: 13 passed |
 | 23 | PR 1 | tests/test_runtime_adr.py | Created | done (1 red by design): check_specs test passes; the ADR-results test fails until the user records spike results |
 
-PR 3 (entries 53 to 60): **not started**.
+PR 3 (entries 53 to 60): see *PR 3 files* below.
 
 ### PR 2a files (state: done, verified locally)
 
@@ -92,49 +96,67 @@ PR 3 (entries 53 to 60): **not started**.
 | 52 | tests/test_bundle_config.py | 17 test functions (19 cases) |
 | extra | src/.../catalog_setup.py, tests/test_catalog_setup.py (6 cases), pyproject.toml (F821 for `pipelines`) | see Deviations |
 
+### PR 3 files (state: done, verified locally; nothing run on the platform)
+
+| # | File | Verification |
+|---|---|---|
+| 53 | tests/integration/conftest.py | ruff; collected by pytest; SDK imported lazily (no `databricks-sdk` needed to collect). Fixtures: workspace client (CLI profile or `DATABRICKS_*` env), SQL through the Statement Execution API with a UTC time-zone assertion, settings overrides (`SMART_METER_<FIELD>`), manifests, contracts, order-independent checksums, evidence snapshots in `out/evidence/`, job and pipeline lookup with the development prefix stripped, a `run_tasks` helper (`run_now(only=...)`), and the shared AC-12 totals check. Not run |
+| 54 | tests/integration/test_bronze_ingestion.py | 7 tests (AC-05, AC-06, AC-07, AC-08, AC-10 x2, AC-29 redaction). Collected, not run |
+| 55 | tests/integration/test_silver_tables.py | 9 test cases (AC-11, AC-12, AC-13, AC-14, AC-18, AC-19, AC-20 x2 DST days, AC-34). Collected, not run |
+| 56 | tests/integration/test_gold_tables.py | 8 tests (AC-21, AC-22, AC-25, AC-26 x3 incl. the I-18 pair, AC-31, AC-35). Collected, not run |
+| 57 | tests/integration/test_reprocessing.py | 7 tests (AC-09 pair, AC-24 pair, AC-27 pair, AC-12 after full refresh). Collected, not run |
+| 58 | tests/integration/test_deployment.py | 2 tests (AC-28, AC-30). Collected, not run |
+| 59 | docs/runbooks/meter_ingestion.md | CLI flags checked with `--help` (read-only): `bundle run --only/--full-refresh-all`, `fs cp -r --overwrite`, `fs rm -r`, `secrets put-secret` (prompt and stdin), `bundle validate -o json` (`workspace.file_path`). Commands themselves not executed. Covers I-13 (topic creation, Aiven dependency), DA-06 three-step first deploy, `bundle run`, evidence order, broker outage, full refresh, Bronze reset and schema change, redaction check, update from an empty Gold schema |
+| 60 | README.md | Architecture, quick start, layout, limitations; links resolve (`docs/runbooks`, `docs/adr`, `.claude/sdd`) |
+| extra | tests/test_integration_layout.py (6 tests), pyproject.toml (S608 ignore for `tests/integration`) | see Deviations |
+
+Collected by `pytest --collect-only -m integration -o addopts= tests/integration`: 33 tests. The default `pytest` deselects them: `198 passed, 46 deselected` (33 integration and 13 local_data).
+
 ---
 
 ## Acceptance Criteria Evidence
 
-Evidence collected for PR 1, PR 2a and PR 2b. Unit and local-data evidence is real output; integration and platform evidence for PR 2b and PR 3 is pending (Aiven is off, nothing was run on Databricks).
+Final status after PR 3. **Local** is the unit, local-data, wiring and bundle evidence of PR 1 to PR 3 (real output, see the PR 1 to PR 3 rows of the Verification Log and the per-PR evidence in git history). **Live** is the platform evidence: `Not run` means the integration test exists, is collected, and was not executed (no deployment, Aiven off). Steps A to G are the evidence steps of `docs/runbooks/meter_ingestion.md` ("Evidence order for the integration tests"); `pytest -m integration` needs `DATABRICKS_CONFIG_PROFILE=dev`.
 
-| AC | Result | Evidence |
-|---|---|---|
-| AC-01 | Pass (PR 1 scope) | `pytest tests/test_sampling.py`: test_ac01_* pass. `pytest -m local_data`: test_ac01_seed42_reruns_are_byte_identical and test_ac01_plan_recomputed_from_raw_equals_committed_plan pass; data-file SHA-256 equal `config/sample_manifest.json`; household CSV byte-equal `config/sample_households.csv` |
-| AC-02 | Pass (PR 1 scope) | test_ac02_* (unit, 2 tests) and local_data test_ac02_src_sampling_selects_exactly_the_pinned_households and test_ac02_src_sampling_counts_match_pinned_manifest pass: 60 households, 20 per group, 16 Std and 4 ToU per group, exclusions equal the pinned list |
-| AC-03 | Pass (PR 1 scope) | test_ac03_* (unit, 2 tests) and local_data test_ac03_seed42_split_counts_match_pinned_manifest pass: 1,432,405 historical and 247,569 stream rows, per-file rows and checksums equal the pinned manifest |
-| AC-04 | Pass (PR 1 and PR 2b scope) | test_ac04_* (unit, 2 tests) and local_data test_ac04_seed42_cutoff_2013_11_01_preserves_total pass. Bundle-variable half (AC-28) is PR 2b. PR 2b: test_ac04_bundle_cutoff_default_equals_sample_plan passes (bundle `cutoff` equals `config/sample_plan.json` and reaches the pipeline configuration). Bundle-variable half of AC-04 closed |
-| AC-05 | Partial | PR 2a: test_ac05_* in tests/test_bronze.py pass (file and household projections, source header only in the read schema). Integration counts are PR 3 |
-| AC-06 | Not started | PR 3 (integration) |
-| AC-07 | Partial | Producer half (PR 1) and test_ac07_kafka_projection_keeps_raw_payload_and_offsets pass. Integration is PR 3 |
-| AC-08 | Not started | PR 3 (integration) |
-| AC-09 | Partial | PR 2a: test_ac09_replayed_messages_counted_as_duplicates_and_silver_unchanged passes (Silver and quarantine checksums equal, QR-09 total up by the replayed rows). Integration is PR 3. See I-15 for replayed invalid messages |
-| AC-10 | Partial | PR 2a: test_ac10_kafka_options_bound_broker_timeouts and the no-try/except test pass. Bundle test is PR 2b; broker-outage evidence is PR 3 (manual). Spike 03 evidence as before. PR 2b: test_ac10_kafka_task_fails_within_15_minutes (timeout 840 s, 0 retries, pipeline task depends on it), test_ac10_notebooks_and_pipeline_have_no_try_except (AST guard over every notebook and the pipeline, I-14) and test_ac10_stream_notebooks_use_the_available_now_writer pass. Broker-outage evidence is PR 3 (manual) |
-| AC-11 | Partial | PR 2a: test_ac11_* pass (reconciliation 0 unclassified, 0 double). Local-data on the real seed-42 sample (`pytest -m local_data tests/local_data/test_pipeline_seed42.py`): 1,679,974 Bronze rows, 60 quarantined, 1,679,914 in Silver, 0 out of period, 0 duplicates, 0 unclassified. Integration is PR 3 |
-| AC-12 | Partial | PR 2a: test_ac12_rule_counts_equal_quarantine_failed_rules_per_update passes (two updates, equal totals); wiring test is PR 2b; integration is PR 3. PR 2b: test_ac12_pipeline_expectations_match_rule_catalog passes (every counter and fail expectation of `rules.py` on the dataset the catalog names; `silver.meter_readings_evaluated` is published, not private, DA-01); test_ac12_wired_pipeline_matches_harness_and_totals_come_from_published_table runs all dataset functions in order and the `metrics.py` totals over the published evaluation table equal the harness. Integration is PR 3 |
-| AC-13 | Partial | test_ac13_silver_invariants_hold_on_mixed_fixture passes; integration is PR 3 |
-| AC-14 | Partial | test_ac14_cutoff_boundary_rows_appear_once_with_correct_path passes; integration is PR 3 |
-| AC-15 | Partial | PR 2a unit tests pass (drop rules x5, QR-08 warn, fail rules x7 parametrized, unknown household, QR-10/12, QR-11, QR-13 to QR-15). Platform evidence from spike 04. Wiring is PR 2b. PR 2b: test_ac15_wired_fail_rule_aborts_the_update (QR-01 raises through the wired expectations; no Silver table written). Platform proof is still spike 04 |
-| AC-16 | Pass (PR 2a scope) | test_ac16_study_period_boundaries_and_scope_count and the settings-driven variant pass; SF-01 total 2 |
-| AC-17 | Pass (PR 2a scope) | test_ac17_earlier_ingested_at_wins_and_tie_uses_smaller_source_ref and test_ac17_rerun_keeps_same_winners pass (reversed order, repartitioning) |
-| AC-18 | Partial | test_ac18_households_are_typed_and_renamed passes; local-data seed-42: 60 unique, 20 per group. Integration is PR 3 |
-| AC-19 | Partial | test_contract_schemas.py passes (7 contracts incl. 30a in order, names and types; non-null columns; naming rule; Bronze inline schemas). Deployed columns are PR 3 |
-| AC-20 | Partial | test_ac20_dst_change_days_have_48_utc_readings passes (both DST days); integration is PR 3 |
-| AC-21 | Partial | test_ac21_* pass; local-data complete-day share inside 98.5 to 99.5 percent. Integration is PR 3 |
-| AC-22 | Partial | test_ac22_* pass (1,488 / 1,344 / 29,184, pandas recomputation); local-data 1,200 rows, unique key. Integration is PR 3 |
-| AC-23 | Pass | test_ac23_gap_count_per_month passes (2, 1, 0) |
-| AC-24 | Partial | test_ac24_appending_later_months_keeps_earlier_rows passes; integration is PR 3 |
-| AC-25 | Partial | test_ac25_* pass (summary SQL run locally). Local-data: Gold coverage within 0.001 of the manifest for all 60 households (I-04 closed). Integration is PR 3 |
-| AC-26 | Partial | Spike 04: the pipeline publishes `CREATE VIEW` to `gold` (DA-02 Pass). Other tests are PR 2a/2b/3. PR 2b: test_ac26_pipeline_defines_all_silver_and_gold_objects (6 published and 3 private datasets, batch `@dlt.table` only, summary view not a Python dataset), test_ac26_single_serverless_triggered_pipeline, test_ac26_summary_sql_is_a_pipeline_library_and_names_match_contract, and test_ac25_summary_create_view_statement_runs_and_matches_select_body (full `CREATE VIEW` statement run on local Spark, I-17) pass. Table types on the platform are PR 3 |
-| AC-27 | Partial | test_ac27_rebuild_is_identical_for_any_input_order passes (Silver, quarantine, daily, monthly checksums over shuffles and 1, 3, 7 partitions); integration is PR 3 |
-| AC-28 | Pass (PR 2b unit scope) | PR 2b/3. Spike 00: A-09 Pass. DA-06 Fail: the evidence uses the three-step first deploy (DESIGN Change Log 2026-10-16). test_ac28_job_and_pipeline_names_and_schedule, test_ac28_no_more_than_five_concurrent_tasks (width 2), test_ac28_layout_variables_match_sample_plan, test_ac28_task_dependencies_and_pipeline_task, test_ac28_job_parameters_reach_declared_notebook_widgets, test_ac28_first_deploy_three_steps_are_supported_by_setup_notebook (DA-06), test_ac28_prod_target_is_documented_only, test_catalog_setup (idempotent statements, main and fallback layouts) pass. `databricks bundle validate -t dev -p dev`: Validation OK; resolved names are `[dev christiandr] smart_meter_ingestion` and `[dev christiandr] smart_meter_silver_gold` (the anchored prefix pattern strips them), schedule `PAUSED`, `workspace.file_path` starts with `/Workspace`. Deployed-name evidence and the three-step deploy (exit codes) are PR 3 / pending live |
-| AC-29 | Partial | tests/test_secrets_hygiene.py (8) and bronze secret tests pass; `pre-commit run --all-files` passes. Bundle test is PR 2b. The broker-host scan runs only when KAFKA_* is exported. PR 2b: test_ac29_bundle_reads_kafka_credentials_from_secret_scope (YAML holds only the scope name; four `dbutils.secrets.get(settings.secret_scope, ...)` calls) and test_ac29_kafka_notebook_never_prints_options_or_secrets (taint-tracked) pass. Redaction of a failing stream's error is not verified (pending live) |
-| AC-30 | Partial | Spike 04: one update over 1,680,000 synthetic rows completed in 63 s (budget 2700 s). Bundle and integration tests are PR 2b/3. PR 2b: test_ac30_job_timeout_within_60_minutes passes (job 3600 s, each task below it). Integration run is PR 3 |
-| AC-31 | Partial | Producer sets `produced_at` as the UTC wall clock in ISO-8601 (test_ac31_produced_at_is_utc_wall_clock_not_event_time passes). End-to-end check is PR 3 |
-| AC-32 | Partial | test_ac32_check_specs_reports_no_errors passes. test_ac32_runtime_adr_records_every_spike_outcome passes: every row of ADR 0001 has a result |
-| AC-33 | Pass | test_ac33_* pass (dense months, empty household, orphan) |
-| AC-34 | Partial | test_ac34_* pass; local-data seed-42: 60 rows counted under QR-03 and QR-04, 60 quarantine rows with failed_rules [QR-03, QR-04]. Integration is PR 3 |
-| AC-35 | Partial | test_ac35_orphan_false_known_household_true passes; local-data seed-42 all true. Integration is PR 3 |
+| AC | Local | Live | Integration test (file `tests/integration/`) and step |
+|---|---|---|---|
+| AC-01 | Pass | n/a | none: `test_sampling.py`, `local_data/test_sample_seed42.py` (byte-identical, checksums equal the pinned manifest) |
+| AC-02 | Pass | n/a | none: unit and local-data (60 households, 20 per group, exclusions equal the pinned list) |
+| AC-03 | Pass | n/a | none: unit and local-data (1,432,405 historical, 247,569 stream rows) |
+| AC-04 | Pass | n/a | none: unit, local-data and `test_ac04_bundle_cutoff_default_equals_sample_plan` |
+| AC-05 | Pass | Not run | `test_bronze_ingestion.py::test_ac05_bronze_file_counts_match_manifest`, step B |
+| AC-06 | Pass (idempotent writer, unit) | Not run | `test_bronze_ingestion.py::test_ac06_rerun_file_ingestion_adds_no_rows`, step B (reruns `ingest_files`) |
+| AC-07 | Pass | Not run | `test_bronze_ingestion.py::test_ac07_kafka_bronze_count_uniqueness_and_payload_parse`, step C (needs Aiven on) |
+| AC-08 | Pass (unit) | Not run | `test_bronze_ingestion.py::test_ac08_rerun_kafka_ingestion_adds_no_rows`, step C (needs Aiven on) |
+| AC-09 | Pass | Not run | `test_reprocessing.py::test_ac09_before_replay_snapshot`, `::test_ac09_after_replay_silver_unchanged`, step F (second replay) |
+| AC-10 | Pass (options, bundle, AST guard) | Not run | `test_bronze_ingestion.py::test_ac10_before_outage_snapshot`, `::test_ac10_failed_kafka_run_left_bronze_and_checkpoint_unchanged`, step D (Aiven off). Spike 03 evidence stands |
+| AC-11 | Pass (unit, seed-42 local data) | Not run | `test_silver_tables.py::test_ac11_reconciliation_classifies_every_bronze_row`, step C |
+| AC-12 | Pass (unit, wiring) | Not run | `test_silver_tables.py::test_ac12_update_rule_counts_match_quarantine_rows` (step C), `test_reprocessing.py::test_ac12_totals_consistent_after_full_refresh` (step G) |
+| AC-13 | Pass | Not run | `test_silver_tables.py::test_ac13_silver_invariants`, step C |
+| AC-14 | Pass | Not run | `test_silver_tables.py::test_ac14_cutoff_rows_once_with_ingestion_path`, step C |
+| AC-15 | Pass (unit x7 groups, wired fail rule, spike 04 on the platform) | n/a | none: the DESIGN assigns the platform proof to spike 04 (`expect_or_fail` aborts with 0 rows committed) |
+| AC-16 | Pass | n/a | none in the DESIGN (fixture AC) |
+| AC-17 | Pass (wording open, I-21) | n/a | none in the DESIGN (fixture AC). The user has not decided the wording |
+| AC-18 | Pass | Not run | `test_silver_tables.py::test_ac18_silver_households_seed42`, step C |
+| AC-19 | Pass | Not run | `test_silver_tables.py::test_ac19_deployed_columns_match_contracts`, step C |
+| AC-20 | Pass | Not run | `test_silver_tables.py::test_ac20_dst_days_have_48_readings` (2 cases), step C |
+| AC-21 | Pass | Not run | `test_gold_tables.py::test_ac21_daily_consumption_matches_silver_recomputation`, step C |
+| AC-22 | Pass | Not run | `test_gold_tables.py::test_ac22_monthly_quality_matches_independent_recomputation`, step C |
+| AC-23 | Pass | n/a | none in the DESIGN (fixture AC) |
+| AC-24 | Pass | Not run | `test_reprocessing.py::test_ac24_before_kafka_snapshot` (step B), `::test_ac24_after_kafka_months_up_to_november_unchanged` (step C) |
+| AC-25 | Pass | Not run | `test_gold_tables.py::test_ac25_summary_matches_monthly_and_manifest`, step C (needs `data/sample/seed42/manifest.json`) |
+| AC-26 | Pass (wiring, bundle, spike 04 `CREATE VIEW`) | Not run | `test_gold_tables.py::test_ac26_pipeline_and_table_metadata` (step C); I-18 pair `test_ac26_i18_before_first_update_gold_schema_is_empty` (step A) and `test_ac26_i18_after_first_update_summary_view_exists_and_update_completed` (step B) |
+| AC-27 | Pass | Not run | `test_reprocessing.py::test_ac27_before_full_refresh_snapshot`, `::test_ac27_after_full_refresh_checksums_equal`, step G |
+| AC-28 | Pass (bundle unit tests, `bundle validate` OK) | Not run | `test_deployment.py::test_ac28_deployed_job_pipeline_and_catalog_layout`, step C, plus the exit codes of the three-step first deploy (manual, runbook section 4) |
+| AC-29 | Pass (unit, hygiene, `pre-commit run --all-files`) | Not run (redaction of a failing stream's error, I-20) | `test_bronze_ingestion.py::test_ac29_failed_stream_error_does_not_leak_credentials`, runbook "Stream error redaction check" |
+| AC-30 | Pass (job timeout test, spike 04: 63 s for 1.68 M rows) | Not run | `test_deployment.py::test_ac30_daily_job_run_within_60_minutes`, steps C and E |
+| AC-31 | Pass (unit: UTC wall clock) | Not run | `test_gold_tables.py::test_ac31_produced_reading_reaches_silver_and_gold_within_24h`, step C |
+| AC-32 | Pass | n/a | `test_runtime_adr.py`, `scripts/check_specs.py` (0 errors) |
+| AC-33 | Pass | n/a | none in the DESIGN (fixture AC) |
+| AC-34 | Pass | Not run | `test_silver_tables.py::test_ac34_seed42_offgrid_null_rows_counted_under_both_rules`, step C |
+| AC-35 | Pass | Not run | `test_gold_tables.py::test_ac35_seed42_has_household_record_all_true`, step C |
+
+Summary: 35 ACs. Local result `Pass` for all 35 (the AC-17 wording is still undecided by the user, I-21). 25 ACs also need live evidence and are `Not run`: AC-05 to AC-14, AC-18 to AC-22, AC-24 to AC-31, AC-34, AC-35. The other 10 have no live test in the DESIGN: AC-01 to AC-04, AC-15 (spike 04), AC-16, AC-17, AC-23, AC-32, AC-33.
 
 ---
 
@@ -170,6 +192,14 @@ Evidence collected for PR 1, PR 2a and PR 2b. Unit and local-data evidence is re
 | PR 2b hooks | `.venv/bin/pre-commit run --all-files` | all hooks passed |
 | PR 2b bundle | `databricks bundle validate -t dev -p dev` (read-only) | `Validation OK!` (Name smart-meter-peak-prediction, Target dev). No deploy, no job run |
 | PR 2b review | code-reviewer subagent | 0 High, 4 Medium, 9 Low (see Issues); Medium 2 to 4 and six Low fixed, Medium 1 left for PR 3 |
+| PR 3 lint | `.venv/bin/ruff check . && .venv/bin/ruff format --check .` | All checks passed; 69 files already formatted |
+| PR 3 tests | `JAVA_HOME=~/.local/jdk17 .venv/bin/pytest` | 198 passed, 46 deselected (192 + 6 layout tests; deselected: 33 integration, 13 local_data) |
+| PR 3 collection | `.venv/bin/pytest --collect-only -q -m integration -o addopts= tests/integration` | 33 tests collected (5 modules); the default run lists none of them and reports them as deselected (test_integration_layout.py checks both in subprocesses) |
+| PR 3 specs | `.venv/bin/python scripts/check_specs.py` | 19 document(s) checked, 0 error(s), 0 warning(s) |
+| PR 3 hooks | `.venv/bin/pre-commit run --all-files` | all 9 hooks passed |
+| PR 3 bundle | `databricks bundle validate -t dev -p dev` (read-only) | `Validation OK!` (User and Path shown, not repeated here). No deploy, no job run, no Kafka |
+| PR 3 review | code-reviewer subagent | 2 High, 6 Medium, 9 Low. Both High fixed (job fixture lists with `expand_tasks`; AC-30 and AC-31 select only successful full four-task runs, because the AC-06 and AC-08 reruns are partial `only=` runs). Fixed Medium: UTC accepts `Etc/UTC`, AC-10 accepts `TIMEDOUT`, AC-28 also checks Volumes, Bronze tables and the raw name, README no longer shows a whole-directory command, runbook wording and producer env file (no Databricks keys), AC-25 manifest note. Fixed Low: `payload_ok IS NOT TRUE`, vacuous asserts, stray parentheses. Not changed (Low): tautological QR-10 and expected_readings comparisons, AC-18 literals, DESIGN-id parsing in the layout test, AC-26 wording (DESIGN fix at `/ship`). Medium AC-26 wording is the recorded deviation |
+| PR 3 integration | not run | by instruction: no workspace calls, Aiven off. Commands under *Pending on the user* |
 
 ---
 
@@ -195,6 +225,13 @@ Evidence collected for PR 1, PR 2a and PR 2b. Unit and local-data evidence is re
 | Placeholder notebook | Entry 47 deletes `resources/jobs.yml` only | `notebooks/hello.py` deleted too | Its own header says to delete it once the first real job exists; nothing references it | No |
 | Package path in notebooks | Not specified | Job passes `src_path=${workspace.file_path}/src`; a manual run falls back to `<cwd>/../src` | Avoids py4J notebook-context calls on serverless; the fallback is unverified (pending live) | No |
 | Ruff globs | - | `**/pipelines/*` ignores F821 (`spark` is injected) | Same reason as notebooks | No |
+| PR 3 extra tests and config | Manifest lists 6 test files for PR 3 (53 to 58) | Also `tests/test_integration_layout.py` (marker, naming, AC coverage, deselection, no SDK import at module level) and a `pyproject.toml` ruff S608 ignore for `tests/integration` | Proves in the default run that the integration tests are collectable, marked and excluded, without a workspace | No |
+| AC-26 pipeline count | "Exactly one pipeline in the workspace" | Exactly one pipeline with the bundle name; every pipeline name seen is saved to `out/evidence/ac26_pipelines.json` | The workspace also holds an unrelated idle pipeline (I-10) | No (needs a DESIGN wording fix at `/ship`) |
+| Extra integration tests | AC-10 has the `after` test only; no I-18 or redaction test | Added `test_ac10_before_outage_snapshot`, the I-18 pair, `test_ac29_failed_stream_error_does_not_leak_credentials` and `test_ac12_totals_consistent_after_full_refresh` | The DESIGN names a before/after pair for AC-10 without a before test; I-18 and I-20 are PR 3 must-handle items; AC-12 must also hold after a full refresh | No |
+| AC-30 run choice | "The latest full job run succeeded" | The latest *successful* run, all four tasks successful, duration and no quota termination checked; newer unsuccessful runs are recorded in evidence | After the AC-10 outage run the latest run is a failure by design | No |
+| Re-running a task | "Rerun task `ingest_files`" | `jobs.run_now(job_id, only=[task])` through the SDK | Runs one task of the deployed job without the others | No |
+| Time zone | - | The SQL fixture fails unless the warehouse session time zone is UTC | Golden rule 5 | No |
+| Seed-42 counts and test order | Counts asserted as stated | Exact counts hold only for a state with no replay, so the runbook fixes the order (step F last among data tests) | AC-07, AC-11 and AC-34 compare with the pinned manifest | No |
 
 ---
 
@@ -212,18 +249,18 @@ Evidence collected for PR 1, PR 2a and PR 2b. Unit and local-data evidence is re
 | I-08 | DA-06 failed: deploy cannot create the pipeline before the catalog exists | Closed | `/iterate` on DESIGN and ADR 0003 (2026-10-16): deploy, run `setup_catalog.py`, deploy. `notebooks/setup_catalog.py` (entry 43) must also run by hand, with default catalog and schema values |
 | I-09 | DA-01 partial: an update with no new input writes no expectation metrics | Closed | `/iterate` on DESIGN and ADR 0004 (2026-10-16): evaluation table published, counts are table totals in `metrics.py`, event log kept for observability only |
 | I-11 | DEFINE worded AC-12, NFR-07, SF-01 and QR-09 as per-update counts within 5 minutes of the update | Closed | `/iterate` on DEFINE (2026-10-16): FR-09, NFR-07, SF-01, QR-09, AC-09, AC-12, AC-16, AC-17, AC-34 restated as table totals; OD-02 and OD-06 resolved |
-| I-13 | Topic `meter-readings` did not exist and Aiven does not auto-create topics | Open for PR 3 | PR 2a has no runbook. Topic created 2026-10-16 through the Kafka admin API with 2 partitions as in the contract (broker default 3 replicas). The runbook (entry 59, PR 3) must include topic creation |
+| I-13 | Topic `meter-readings` did not exist and Aiven does not auto-create topics | Closed (PR 3) | Runbook section 3 creates the topic (2 partitions, idempotent, reads `.env`, prints no credential) and documents the Aiven dependency (an Aiven outage stalls the Silver and Gold refresh). The topic itself was created 2026-10-16 |
 | I-14 | Spike 03: a stream failure surfaces at notebook-cell level ("Some streams terminated before this command could finish!") and is not caught by `try` around `awaitTermination` | Closed (PR 2b) | The Kafka task in PR 2a must not rely on catching the exception in Python; let the task fail and use task `timeout_seconds` and retries. PR 2a: `bronze.run_available_now` has no try/except, guarded by an AST test. The notebooks (PR 2b) must follow it. PR 2b: none of the three notebooks nor the pipeline has a try/except, and the AST guard `test_ac10_notebooks_and_pipeline_have_no_try_except` covers them |
 | I-12 | ADR 0005 still called the evaluation MV private and mentioned a per-update duplicate count | Closed | ADR 0005 updated 2026-10-16: published evaluation MV, `is_duplicate` table total, event log for observability |
 | I-10 | The workspace holds an unrelated pipeline (`elt-uber-eats-analytics`, idle) | Low | Spike 04 ran alongside it. Check the one-pipeline-per-type limit again when the bundle pipeline is deployed |
 | I-15 | A replayed invalid Kafka message is a new Bronze row that fails the same rule and is quarantined again; only valid rows are deduplicated (QR-09). AC-09 holds for seed 42 because the stream has no invalid message | Closed (accepted) | User decision 2026-10-19: accepted as is, no `/iterate`. Documented by a test |
 | I-16 | Code review PR 2a, Medium: Gold total order-dependence (fixed, decimal sum), ANSI not forced in conftest (fixed), unknown pipeline-config keys silently ignored (fixed, ValueError), vacuous totals test (renamed) | Closed | - |
-| I-17 | Code review PR 2a, Low. PR 2b closed: the summary `CREATE VIEW` statement is run as a whole on local Spark (test_ac25_summary_create_view_statement_runs_and_matches_select_body) and the pipeline asserts the session UTC (test_da07_pipeline_asserts_session_time_zone_is_utc; notebooks set and assert it too). Still open: `trim` removes spaces only; `study_*`/cutoff must be midnight dates; event-log SQL is Databricks-only; broker-host scan needs KAFKA_* exported; `auto_loader_reader` and `kafka_reader` untested until integration | Low | PR 3 |
+| I-17 | Code review PR 2a, Low. PR 2b closed the `CREATE VIEW` and UTC items. Still open, no PR 3 change: `trim` removes spaces only; `study_*` and cutoff must be midnight dates; the event-log SQL is Databricks-only; the broker-host scan needs `KAFKA_*` exported; `auto_loader_reader` and `kafka_reader` are exercised only by the integration tests | Low, open | Integration run |
 
-| I-18 | PR 2b review, Medium: `household_data_quality_check` (Python) reads the persisted view that the SQL file creates in the same pipeline. The platform dependency edge between a Python dataset and a SQL `CREATE VIEW` is proven only by the local fake | Medium | Not fixed. PR 3 integration must run an update from an empty Gold schema. Fallback if it fails: derive the check from the monthly table (through `/iterate`) |
+| I-18 | PR 2b review, Medium: `household_data_quality_check` (Python) reads the persisted view that the SQL file creates in the same pipeline. The platform dependency edge between a Python dataset and a SQL `CREATE VIEW` is proven only by the local fake | Medium, open | PR 3 added the integration pair `test_ac26_i18_before_first_update_gold_schema_is_empty` and `test_ac26_i18_after_first_update_summary_view_exists_and_update_completed`, and the runbook ordering (steps A and B, from an empty Gold schema). Not run. The fallback if it fails (derive the check from the monthly table, through `/iterate`) is not decided by the user and stays open |
 | I-19 | PR 2b review, Medium (fixed): pipeline settings keys now have no default, so a missing `smart_meter.*` key fails the update; wiring test replaced by an executed one; AC-29 print guard is taint-tracked; vacuous and tautological asserts removed; AC-04 test split out | Closed | - |
-| I-20 | PR 2b review, Low, open: `refresh_silver_gold` needs both ingest tasks, so an Aiven outage also blocks the file-path refresh (DESIGN, AC-10 trade-off); `CREATE TABLE IF NOT EXISTS` does not migrate a changed Bronze schema; redaction of stream errors unverified; setup of `src_path` fallback and `cluster_by` on serverless unverified | Low | Runbook (PR 3) and live run |
-| I-21 | AC-17 wording (DEFINE) is still undecided by the user | Open | Needs a user decision; no `/iterate` done |
+| I-20 | PR 2b review, Low. Addressed in the runbook: the Aiven dependency of `refresh_silver_gold` (runbook, dependency section, and a pipeline-only run while Aiven is off); `CREATE TABLE IF NOT EXISTS` does not migrate a Bronze schema (runbook, Bronze reset and schema changes); verification of stream error redaction (runbook procedure and `test_ac29_failed_stream_error_does_not_leak_credentials`, not run). Left open: `src_path` fallback and `cluster_by` on serverless, which only a live run can show | Low, open | Live run (steps A to C) and the redaction procedure |
+| I-21 | AC-17 wording (DEFINE) is still undecided by the user | Open | Needs a user decision; no `/iterate` done. The AC-17 local tests pass for the current wording |
 
 ---
 
@@ -231,14 +268,35 @@ Evidence collected for PR 1, PR 2a and PR 2b. Unit and local-data evidence is re
 
 Done on 2026-10-16: auth (`dev` profile), `.env`, secret scope, Aiven SASL mechanism, topic, sample upload, DA-06 test and spikes 00 to 04.
 
-1. Power the Aiven service back on when the Kafka path is needed again.
-2. Build the producer image: `docker build -f docker/producer/Dockerfile -t smart-meter-producer .`
-3. Live verification of PR 2b (not run, by instruction): `databricks bundle deploy -t dev -p dev` (expected to fail on a fresh workspace at pipeline creation), run `notebooks/setup_catalog.py` once from the synced files, deploy again, then `databricks bundle run -t dev -p dev smart_meter_ingestion` with Aiven on. Check: pipeline update succeeds from an empty Gold schema (I-18), `cluster_by` accepted, UTC assertion passes, `src_path` import works, notebooks start without py4J issues, schedule is paused and names carry the `[dev <user>]` prefix.
-4. Decide the AC-17 wording (I-21).
+Live verification of the whole feature (not run, by instruction). The full procedure, with the order and the pass criteria, is in `docs/runbooks/meter_ingestion.md`. In short:
+
+1. Preparation: power Aiven on; build the producer image `docker build -f docker/producer/Dockerfile -t smart-meter-producer .`; `export DATABRICKS_CONFIG_PROFILE=dev`; `pip install -e ".[dev,integration]"`; `python scripts/prepare_sample.py build --out data/sample/seed42` (the AC-25 test reads its manifest).
+2. Deploy (AC-28 evidence, record the exit codes): `databricks bundle deploy -t dev -p dev` (expected to fail at pipeline creation on a fresh workspace), run `notebooks/setup_catalog.py` once from the synced files, `databricks bundle deploy -t dev -p dev` again. If the catalog already exists from the 2026-10-16 spikes, the first deploy may succeed; record what happens.
+3. Step A: upload the sample (runbook section 2), `databricks bundle run -t dev -p dev smart_meter_ingestion --only setup_catalog,ingest_files`, then `pytest -m integration tests/integration/test_gold_tables.py::test_ac26_i18_before_first_update_gold_schema_is_empty`. Note: the Gold schema must be empty; if a spike left objects there, follow the runbook "Update from an empty Gold schema".
+4. Step B: `databricks bundle run -t dev -p dev smart_meter_silver_gold`, then the I-18 `after` test, `test_ac24_before_kafka_snapshot`, `test_ac05_*`, `test_ac06_*`.
+5. Step C: one full replay (producer, Aiven on), `databricks bundle run -t dev -p dev smart_meter_ingestion`, then the Bronze Kafka tests (AC-07, AC-08), all of `test_silver_tables.py` and `test_gold_tables.py` (except the I-18 pair), `test_ac24_after_*`, `test_deployment.py`.
+6. Step D (AC-10): `test_ac10_before_outage_snapshot`, power Aiven off, run the job (the Kafka task fails), `test_ac10_failed_kafka_run_left_bronze_and_checkpoint_unchanged`. Step E: Aiven on, run the job, re-run AC-07 and AC-30.
+7. Step F (AC-09): `test_ac09_before_replay_snapshot`, second full replay, run the job, `test_ac09_after_replay_silver_unchanged`.
+8. Step G (AC-27, AC-12): `test_ac27_before_full_refresh_snapshot`, `databricks bundle run -t dev -p dev smart_meter_silver_gold --full-refresh-all`, `test_ac27_after_*`, `test_ac12_totals_consistent_after_full_refresh`.
+9. Redaction (AC-29, I-20): the runbook section "Stream error redaction check".
+10. Also look for: `cluster_by` accepted, the UTC assertion passes, `src_path` import works, names carry the `[dev <user>]` prefix, the schedule is paused.
+
+Decisions still open:
+
+- AC-17 wording (I-21).
+- Fallback for I-18 if the update from an empty Gold schema fails.
+- Whether to accept any AC as `Pass` without live evidence, so the report can move to `Complete` before `/ship`.
 
 ---
 
 ## Self-Review
+
+### PR 3
+
+- **Weak points:** None of the 33 integration tests has run. The SQL was written for Databricks SQL and checked only by reading it against the contracts and the library (it was not executed on any engine), and the SDK calls (`run_now(only=...)`, `list_runs`, `list_updates`, `tables.get`, `get_run_output`) were checked against the installed `databricks-sdk` signatures, not against the workspace. The runbook commands were checked with `--help` only. Several tests depend on order and on a clean state (exact seed-42 counts, the empty Gold schema, files-only state before Kafka), which the runbook fixes but a test cannot enforce.
+- **Risks:** The I-18 platform edge (Python dataset reading the SQL view) is still unproven and has no decided fallback. An Aiven outage stalls the Silver and Gold refresh by design. The free warehouse time zone is assumed to be UTC (the fixture fails otherwise). The pre-commit hook pins ruff 0.6.9 while CI installs the latest ruff, so formatting can differ between them (one `assert ... , message` construct was rewritten to be stable under both).
+- **What I would do differently:** Give the integration suite a single orchestrating script that runs steps A to G in order and stops at the first failure, and make the seed-42 expectations relative to a recorded baseline instead of absolute counts.
+- **Next improvement:** Run the live verification (*Pending on the user*), fix what it finds through `/iterate` or code changes, then move this report to `Complete` and run `/ship METER_INGESTION`.
 
 ### PR 2b
 
@@ -265,4 +323,4 @@ Done on 2026-10-16: auth (`dev` profile), `.env`, secret scope, Aiven SASL mecha
 
 ## Next Step
 
-`/build` PR 3. (`/ship METER_INGESTION` only after PR 3.)
+Run the live verification listed under *Pending on the user* (or explicitly accept the pending ACs), then `/ship METER_INGESTION`. Open user decisions: AC-17 wording (I-21) and the I-18 fallback.

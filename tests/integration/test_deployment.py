@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import pytest
 
+from smart_meter_peak_prediction.bronze import BRONZE_TABLES
 from smart_meter_peak_prediction.config import LAYERS
 
 pytestmark = pytest.mark.integration
@@ -35,20 +36,21 @@ def test_ac28_deployed_job_pipeline_and_catalog_layout(
     schemas = {s.name for s in workspace.schemas.list(catalog_name=settings.catalog)}
     expected = {settings.schema(layer) for layer in LAYERS}
     assert expected <= schemas, f"missing schemas: {sorted(expected - schemas)}"
+    bronze = settings.schema("bronze")
+    volumes = {v.name for v in workspace.volumes.list(settings.catalog, bronze)}
+    assert {"landing", "checkpoints"} <= volumes
+    tables = {t.name for t in workspace.tables.list(settings.catalog, bronze)}
+    assert set(BRONZE_TABLES) <= tables
+    assert job.settings.name.endswith(JOB_NAME)  # raw name: optional prefix plus the base name
 
 
-def test_ac30_daily_job_run_within_60_minutes(workspace, job, evidence) -> None:
-    """The latest successful run finished all four tasks within the budget."""
-    runs = list(workspace.jobs.list_runs(job_id=job.job_id, completed_only=True, limit=25))
-    successful = [
-        r
-        for r in runs
-        if r.state and r.state.result_state and r.state.result_state.value == "SUCCESS"
-    ]
-    assert successful, "no successful job run: run `databricks bundle run smart_meter_ingestion`"
-    latest = max(successful, key=lambda r: r.start_time)
-    run = workspace.jobs.get_run(latest.run_id)
-    assert {t.task_key for t in run.tasks} == set(JOB_TASKS)
+def test_ac30_daily_job_run_within_60_minutes(workspace, job, full_runs, evidence) -> None:
+    """The latest successful run of all four tasks finished within the budget."""
+    successful = full_runs()
+    assert (
+        successful
+    ), "no successful full job run: run `databricks bundle run smart_meter_ingestion`"
+    run = workspace.jobs.get_run(successful[0].run_id)
     for task in run.tasks:
         assert task.state.result_state.value == "SUCCESS", task.task_key
     assert run.status.termination_details.code.value == "SUCCESS"  # no quota termination
@@ -56,15 +58,13 @@ def test_ac30_daily_job_run_within_60_minutes(workspace, job, evidence) -> None:
     assert seconds <= MAX_JOB_SECONDS, f"the run took {seconds:.0f} s"
 
     by_task = {t.task_key: (t.end_time - t.start_time) / 1000 for t in run.tasks}
-    pipeline_seconds = by_task["refresh_silver_gold"]
-    newer_failures = [r.run_id for r in runs if r.start_time > latest.start_time]
     evidence.save(
         "ac30_latest_run",
         {
             "run_id": run.run_id,
             "run_seconds": seconds,
             "task_seconds": by_task,
-            "pipeline_over_revisit_trigger": pipeline_seconds > PIPELINE_REVISIT_SECONDS,
-            "newer_unsuccessful_runs": newer_failures,
+            "pipeline_over_revisit_trigger": by_task["refresh_silver_gold"]
+            > PIPELINE_REVISIT_SECONDS,
         },
     )
