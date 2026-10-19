@@ -47,9 +47,8 @@ def test_ac28_deployed_job_pipeline_and_catalog_layout(
 def test_ac30_daily_job_run_within_60_minutes(workspace, job, full_runs, evidence) -> None:
     """The latest successful run of all four tasks finished within the budget."""
     successful = full_runs()
-    assert (
-        successful
-    ), "no successful full job run: run `databricks bundle run smart_meter_ingestion`"
+    hint = "no successful full job run: run `databricks bundle run smart_meter_ingestion`"
+    assert successful, hint
     run = workspace.jobs.get_run(successful[0].run_id)
     for task in run.tasks:
         assert task.state.result_state.value == "SUCCESS", task.task_key
