@@ -41,6 +41,7 @@ def test_ac11_every_bronze_row_classified_exactly_once(spark) -> None:
     assert result["in_silver"] == 3
     assert result["in_quarantine"] == 5  # QR-03, QR-04, QR-05, QR-02 and QR-07
     assert result["is_duplicate"] == 2
+    assert result["is_quarantine_duplicate"] == 1  # the replayed QR-07 message
     assert result["out_of_period"] == 1
 
 
@@ -72,7 +73,12 @@ def test_ac12_rule_counts_equal_quarantine_failed_rules_per_update(spark) -> Non
         assert t["quarantine_rows"] == u.quarantine.count()
         assert t["silver_rows"] == u.silver.count()
         assert t["sf_01"] == 1
-        assert t["qr_09"] == 2
+        # the replayed invalid message raises no per-rule total, only the duplicate total
+        assert t["qr_07"] == 1
+        assert t["quarantine_duplicates"] == 1
+        assert t["qr_09"] == 2 + t["quarantine_duplicates"]
+        assert u.quarantine.select("_dedup_key").distinct().count() == t["quarantine_rows"]
+        assert u.evaluated.where("is_duplicate").count() == t["qr_09"]
     assert results[0] == results[1]
 
 

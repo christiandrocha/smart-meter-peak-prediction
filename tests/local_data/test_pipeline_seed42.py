@@ -98,6 +98,7 @@ def test_ac11_seed42_reconciliation_classifies_every_bronze_row(update, manifest
     assert t["silver_rows"] == 1_679_914
     assert t["sf_01"] == 0
     assert t["qr_09"] == 0
+    assert t["quarantine_duplicates"] == 0
     update.register_views()
     recon = update.spark.sql(
         metrics.reconciliation_sql("evaluated", "silver", "quarantine", SETTINGS)
@@ -105,6 +106,16 @@ def test_ac11_seed42_reconciliation_classifies_every_bronze_row(update, manifest
     assert recon.unclassified == 0
     assert recon.double_classified == 0
     assert recon.bronze_rows == total
+    assert recon.is_quarantine_duplicate == 0
+
+
+def test_ac09_seed42_quarantine_has_distinct_dedup_keys_and_no_duplicates(update) -> None:
+    """QR-09 b on the real data: 60 quarantined rows, 60 distinct keys, none repeated."""
+    quarantined = update.quarantine
+    assert quarantined.count() == 60
+    assert quarantined.select("_dedup_key").distinct().count() == 60
+    assert update.evaluated.where("is_quarantine_duplicate").count() == 0
+    assert all(r["_dedup_key"].startswith("files:key:") for r in rows(quarantined))
 
 
 def test_ac34_seed42_offgrid_null_rows_counted_under_both_rules(update) -> None:

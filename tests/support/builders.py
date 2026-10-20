@@ -161,7 +161,11 @@ INGESTED_LATER = datetime(2024, 1, 2, 12, tzinfo=UTC)
 
 
 def mixed_fixture():
-    """One row for every class: Silver, each drop rule, out of period and a duplicate."""
+    """One row for every class: Silver, each drop rule, out of period and duplicates.
+
+    Includes a replayed invalid message (the QR-07 row delivered again at a new offset, later),
+    which is a quarantine duplicate (AC-11, AC-12).
+    """
     files = [
         file_row("MAC000001", moment=T_FILES),  # silver
         file_row("MAC000001", moment=T_FILES + timedelta(minutes=30)),  # silver
@@ -181,5 +185,6 @@ def mixed_fixture():
             kafka_payload("MAC000002", moment=T_KAFKA), offset=2, ingested_at=INGESTED_LATER
         ),  # replay
         kafka_row("not json", offset=3),  # QR-07
+        kafka_row("not json", offset=4, ingested_at=INGESTED_LATER),  # replayed QR-07: duplicate
     ]
     return files, kafka

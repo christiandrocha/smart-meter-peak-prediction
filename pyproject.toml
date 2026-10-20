@@ -58,5 +58,6 @@ ignore = ["S101"]  # assert is how tests and spikes check outcomes
 "scripts/*" = ["S603", "S607"]  # trusted local scripts call git and subprocesses
 "src/smart_meter_peak_prediction/metrics.py" = ["S608"]  # SQL builders over trusted table names
 "src/smart_meter_peak_prediction/gold.py" = ["S608"]     # SQL text built from validated settings
+"tests/integration/*" = ["S608"]  # SQL over table names from Settings, run on the dev workspace
 "**/notebooks/*" = ["F821"]       # Databricks notebooks get spark and dbutils at runtime
 "**/pipelines/*" = ["F821"]       # pipeline sources get spark at runtime
