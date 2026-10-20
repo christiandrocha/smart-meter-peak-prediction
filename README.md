@@ -18,17 +18,49 @@ tables to build features and train models.
 ## Architecture
 
 ```text
- historical CSV files ---- Volume landing ---- Auto Loader (availableNow) ---+
-                                                                             v
- replay producer (Docker) -- Aiven Kafka -- Structured Streaming ---> Bronze (append-only Delta)
-                          topic meter-readings   (availableNow)       files_meter_readings
-                                                                      files_households
-                                                                      kafka_meter_readings
-                                                                             |
-              one triggered serverless Lakeflow pipeline, recomputed from Bronze on every update
-                                                                             v
-        Silver: meter_readings, meter_readings_quarantine, households, meter_readings_evaluated
-        Gold:   household_daily_consumption, household_data_quality_monthly, household_data_quality
+[London smart meter data (Kaggle) — 60 households — 1,679,974 half-hourly readings]
+                                │
+                                ▼
+                scripts/prepare_sample.py (seed 42)
+                Study period 2012-07-01 → 2014-02-28 (UTC)
+                Cutoff 2013-12-01T00:00:00Z
+                                │
+               ┌────────────────┴────────────────┐
+               ▼                                 ▼
+     Historical files                   Stream file
+     1,432,405 readings                 247,569 readings
+     17 monthly CSVs + households       readings_stream.csv
+               │                                 │
+               ▼                                 ▼
+     Unity Catalog Volume landing       Replay producer (Docker)
+     databricks fs cp                   Keyed by household_id, event-time order
+               │                                 │
+               │                                 ▼
+               │                        Aiven Kafka — topic meter-readings
+               │                        2 partitions, SASL_SSL (SCRAM)
+               │                                 │
+               ▼                                 ▼
+     Auto Loader                        Structured Streaming (Kafka source)
+     trigger(availableNow=True)         trigger(availableNow=True)
+               │                                 │
+               └────────────────┬────────────────┘
+                                ▼
+                Bronze — append-only Delta (3 tables)
+                Raw payload + source metadata (file / topic, partition, offset)
+                Bronze, not Kafka, is the replay source
+                                │
+                                ▼
+                Lakeflow pipeline smart_meter_silver_gold
+                Triggered, serverless, recomputed from Bronze
+                Rules from rules.py as expectations
+                                │
+                     ┌──────────┼──────────┐
+                     ▼          ▼          ▼
+                  Silver   Quarantine     Gold
+               (3 tables)   (1 table)  (3 tables)
+                                │
+                                ▼
+                PEAK_MODEL (next feature) reads Gold and silver.households
 ```
 
 - **Two ingestion paths, one cutoff.** Readings before `2013-12-01T00:00:00Z` come from files,
