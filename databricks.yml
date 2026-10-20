@@ -1,4 +1,6 @@
 # Databricks Asset Bundle. Docs: https://docs.databricks.com/aws/en/dev-tools/bundles/
+# Feature METER_INGESTION (DESIGN, Bundle and job layout). Defaults equal config/sample_plan.json
+# (period, cutoff) and the layout of ADR 0003.
 bundle:
   name: smart-meter-peak-prediction
 
@@ -7,17 +9,60 @@ include:
 
 variables:
   catalog:
-    description: Unity Catalog catalog for this deployment
-    default: workspace
-  schema_prefix:
-    description: Prefix for schemas created by this project
-    default: smart_meter_peak_prediction
+    description: Unity Catalog catalog (A-09 fallback is the catalog workspace)
+    default: smart_meter_dev
+  bronze_schema:
+    description: Schema of the Bronze tables and the landing and checkpoints Volumes
+    default: bronze
+  silver_schema:
+    description: Schema of Silver, the evaluation table and the pipeline event log
+    default: silver
+  gold_schema:
+    description: Schema of the Gold tables and the summary view
+    default: gold
+  ml_schema:
+    description: Empty schema reserved for PEAK_MODEL
+    default: ml
+  study_start:
+    description: First day of the study period (UTC, inclusive)
+    default: "2012-07-01"
+  study_end:
+    description: Last day of the study period (UTC, inclusive)
+    default: "2014-02-28"
+  cutoff:
+    description: Instant where readings move from the files path to the Kafka path (UTC)
+    default: "2013-12-01T00:00:00Z"
+  kafka_topic:
+    description: Kafka topic with the replayed readings
+    default: meter-readings
+  kafka_sasl_mechanism:
+    description: SASL mechanism of the Aiven service user (ADR 0002, A-06)
+    default: SCRAM-SHA-256
+  secret_scope:
+    description: Secret scope that holds the Kafka credentials (the scope name only, never values)
+    default: smart_meter
 
 targets:
   dev:
     mode: development
     default: true
     # The workspace host comes from DATABRICKS_HOST or the CLI profile, so the same file works
-    # locally and in CI. Pin it here only if one bundle must always target one workspace:
-    # workspace:
-    #   host: https://<your-workspace>.cloud.databricks.com
+    # locally and in CI.
+    #
+    # A-09 fallback (only if CREATE CATALOG is not allowed; record it in ADR 0003):
+    #   variables:
+    #     catalog: workspace
+    #     bronze_schema: smart_meter_dev_bronze
+    #     silver_schema: smart_meter_dev_silver
+    #     gold_schema: smart_meter_dev_gold
+    #     ml_schema: smart_meter_dev_ml
+
+  # prod: documented only, not deployed in v0.1 (ADR 0003). It would be
+  #   prod:
+  #     mode: production          # no "[dev <user>]" name prefix
+  #     variables:
+  #       catalog: smart_meter_prod
+  #     workspace:
+  #       root_path: /Workspace/Shared/.bundle/${bundle.name}/${bundle.target}
+  # First deploy on a fresh workspace (DA-06): deploy, run notebooks/setup_catalog.py once from
+  # the synced files, deploy again.

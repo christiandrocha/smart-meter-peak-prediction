@@ -59,3 +59,4 @@ ignore = ["S101"]  # assert is how tests and spikes check outcomes
 "src/smart_meter_peak_prediction/metrics.py" = ["S608"]  # SQL builders over trusted table names
 "src/smart_meter_peak_prediction/gold.py" = ["S608"]     # SQL text built from validated settings
 "**/notebooks/*" = ["F821"]       # Databricks notebooks get spark and dbutils at runtime
+"**/pipelines/*" = ["F821"]       # pipeline sources get spark at runtime
