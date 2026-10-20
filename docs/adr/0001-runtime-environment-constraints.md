@@ -41,6 +41,9 @@ already built into the design, so that a failed spike changes configuration, not
 | DA-08 | Pipeline sources and notebook tasks import `smart_meter_peak_prediction` from the synced bundle files via `sys.path` | spike 04 | Import succeeds in the spike pipeline | Pass (2026-10-16, spike 04). `spike_pkg.rules` imported from `/Workspace/.../src` | Build a wheel with bundle `artifacts` and add it to the pipeline and task environments |
 | DA-09 | Databricks-backed secret scopes are available on Free Edition and readable from serverless tasks | spike 02 | `dbutils.secrets.get` returns the values (redacted in output) | Pass (2026-10-16, spike 02). Scope `smart_meter` with four keys read from a serverless notebook task | None that keeps NFR-05; would block the Kafka path |
 
+| DA-11 | Powering the Aiven free service off and on keeps the topic and its offsets, so the Kafka stream resumes at the checkpoint offsets | Live job steps D and E (runbook), 2026-10-20 | After power-on the next run reads from the checkpoint offsets and adds only new messages | Fail (2026-10-20, live steps D and E). A power-off empties the topic and resets its offsets to 0. With the service off, `ingest_kafka` failed within seconds (`No resolvable bootstrap urls given in bootstrap.servers`; Bronze and checkpoint unchanged, AC-10 holds). After power-on the run failed on `failOnDataLoss` (`Partition meter-readings-1 offset was changed from 140778 to 0`), wrote nothing to Bronze and left an uncommitted `offsets/1` batch in the checkpoint, so every later run failed the same way. Kafka-only data not yet in Bronze is lost on a power-off | Kafka reset: drop `bronze.kafka_meter_readings`, delete the checkpoint folder `checkpoints/kafka_meter_readings` in the Volume (Catalog Explorer; `databricks fs rm -r` left the folder in place twice), re-produce the full stream sample, run the job. Bronze, not the topic, is the reprocessing source (ADR 0006) |
+| DA-12 | A job task with `max_retries: 0` runs once per job run | Live job steps D and E (runbook), 2026-10-20 | The failed `ingest_kafka` task shows `attempt_number` 0 only | Fail (2026-10-20, live steps D and E). In both failing runs `ingest_kafka` ran twice (attempt numbers 0 and 1; one run's attempts were `INTERNAL_ERROR`, the other's `TERMINATED FAILED`) although `resources/smart_meter_ingestion.job.yml` sets `max_retries: 0`. Successful runs had one attempt per task. Probable cause: automatic retry of serverless jobs; not verified. Both attempts failed without writing, so there was no effect on Bronze or the checkpoint | None applied. Treat "no retry" as configured, not guaranteed. Follow-up: check the serverless retry setting for the job; any bundle change goes through DESIGN and `/build` |
+
 A-14 (`tstp` marks the start of the half hour) cannot be validated by a spike; the dataset
 documentation does not state it. The design applies it consistently (`reading_date` is the UTC
 date of `reading_ts`); if it proves false, `reading_date` shifts by one slot at midnight and is
@@ -73,3 +76,9 @@ assumption without changing the architecture of `DESIGN_METER_INGESTION.md`.
   bundle pipeline is deployed (one active pipeline per type).
 - **What would make us revisit this:** A change in Free Edition limits, a move to a paid
   workspace, or any spike failing without a working fallback.
+
+## Change Log
+
+| Date | What changed | Why | Downstream impact |
+|---|---|---|---|
+| 2026-10-20 | Added DA-11 (Aiven free power-off empties the topic and resets offsets; resume at checkpoint offsets does not hold) and DA-12 (task ran twice despite `max_retries: 0`). Status unchanged | Live steps D and E, build report issue I-23 | Runbook "Broker outage" and "Bronze reset", DESIGN retry and recovery wording; no code change |

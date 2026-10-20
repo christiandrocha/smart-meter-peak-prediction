@@ -30,9 +30,10 @@ producer (Docker) --> topic meter-readings (2 partitions) -->                   
 
 ### Dependency on Aiven
 
-The pipeline task `refresh_silver_gold` depends on both ingestion tasks. The Kafka task has no
-retry and an 840 s timeout, so with the Aiven service off or unreachable it fails within
-15 minutes and the pipeline task does not run. **An Aiven outage therefore stalls the refresh of
+The pipeline task `refresh_silver_gold` depends on both ingestion tasks. The Kafka task is
+configured with `max_retries: 0` (the platform may still run it twice, see "Broker outage") and an
+840 s timeout, so with the Aiven service off or unreachable it fails within 15 minutes and the
+pipeline task does not run. **An Aiven outage therefore stalls the refresh of
 Silver and Gold, including the file-based history, until the next successful run.** Bronze and the
 checkpoint of the Kafka stream stay unchanged on such a failure. To refresh Silver and Gold while
 Aiven is off, run the pipeline directly (see "Broker outage").
@@ -254,30 +255,59 @@ run of all four tasks, so run the full job right after producing (step C); parti
 | A. Files only | Deploy (section 4), upload the sample (section 2), then `databricks bundle run -t dev -p dev smart_meter_ingestion --only setup_catalog,ingest_files` | `test_gold_tables.py::test_ac26_i18_before_first_update_gold_schema_is_empty` |
 | B. First pipeline update | `databricks bundle run -t dev -p dev smart_meter_silver_gold` (from an empty Gold schema) | `test_gold_tables.py::test_ac26_i18_after_first_update_summary_view_exists_and_update_completed`, `test_reprocessing.py::test_ac24_before_kafka_snapshot`, `test_bronze_ingestion.py::test_ac05_*`, `test_ac06_*` |
 | C. Kafka load | Aiven on, topic created, one full replay (produce), then `databricks bundle run -t dev -p dev smart_meter_ingestion` | `test_bronze_ingestion.py::test_ac07_*`, `test_ac08_*`; `test_silver_tables.py` (all); `test_gold_tables.py` (all except the `i18` pair); `test_reprocessing.py::test_ac24_after_*`; `test_deployment.py::test_ac28_*`, `test_ac30_*` |
-| D. Broker outage (AC-10) | `test_bronze_ingestion.py::test_ac10_before_outage_snapshot`; power Aiven off; run the job (it fails); see "Broker outage" | `test_bronze_ingestion.py::test_ac10_failed_kafka_run_left_bronze_and_checkpoint_unchanged` |
-| E. Recovery | Aiven on; run the job again; it passes | `test_bronze_ingestion.py::test_ac07_*`, `test_deployment.py::test_ac30_*` (the latest successful run) |
+| D. Broker outage (AC-10) | `test_bronze_ingestion.py::test_ac10_before_outage_snapshot`; power Aiven off; run the job (it fails, possibly with two attempts of `ingest_kafka`); see "Broker outage" | `test_bronze_ingestion.py::test_ac10_failed_kafka_run_left_bronze_and_checkpoint_unchanged` |
+| E. Recovery | Aiven on. A power-off empties the topic and resets its offsets, so a plain re-run fails on `failOnDataLoss` and leaves the checkpoint stuck. Do the "Kafka reset after an Aiven power-off" in "Broker outage" (drop table, delete the Kafka checkpoint, one full replay), then run the job; it passes | `test_bronze_ingestion.py::test_ac07_*`, `test_deployment.py::test_ac30_*` (the latest successful run) |
 | F. Replay (AC-09) | `test_reprocessing.py::test_ac09_before_replay_snapshot`; produce the full stream again; run the job | `test_reprocessing.py::test_ac09_after_replay_silver_unchanged` |
 | G. Full refresh (AC-27) | `test_reprocessing.py::test_ac27_before_full_refresh_snapshot`; Aiven may be off; `databricks bundle run -t dev -p dev smart_meter_silver_gold --full-refresh-all` | `test_reprocessing.py::test_ac27_after_*`, `test_ac12_totals_consistent_after_full_refresh` |
 
 Steps A and B also give the AC-28 deploy evidence (exit codes of section 4). The exact seed-42
-counts in step C hold for a state with no replay; run step F last among the data tests.
+counts in step C hold for a state with exactly one full replay in Bronze Kafka; after the Kafka
+reset of step E that is again the case, and after step F (a second replay) they no longer hold.
+Run step F last among the data tests, and before Aiven powers off again: a power-off empties the
+topic, so it also ends the replay evidence of the topic (Bronze keeps its rows).
 
 ## 6. Operations
 
 ### Broker outage
 
-With the service off or unreachable, `ingest_kafka` fails; it does not retry. Bounded Kafka
-timeouts and the task timeout (840 s) make it fail within 15 minutes, and the stream checkpoint and
-`bronze.kafka_meter_readings` stay unchanged (`failOnDataLoss` is on). The pipeline task is skipped.
+With the service off or unreachable, `ingest_kafka` fails. The task is configured with
+`max_retries: 0`, but in the observed failing runs it ran twice (attempt numbers 0 and 1; probable
+cause: the serverless automatic retry, not verified). Both attempts failed without writing, so the
+effect is harmless. With the service off, the failure comes in seconds (`No resolvable bootstrap
+urls given in bootstrap.servers`); the bounded Kafka timeouts and the task timeout (840 s) cap it
+at 15 minutes. The stream checkpoint and `bronze.kafka_meter_readings` stay unchanged. The pipeline
+task is skipped.
 
-1. Power Aiven on.
-2. Run the job again. The Kafka stream resumes at the checkpoint offsets.
-3. To refresh Silver and Gold in the meantime, using only what Bronze already holds, run the
-   pipeline directly: `databricks bundle run -t dev -p dev smart_meter_silver_gold`.
+To refresh Silver and Gold in the meantime, using only what Bronze already holds, run the pipeline
+directly: `databricks bundle run -t dev -p dev smart_meter_silver_gold`.
 
-The free tier keeps messages only briefly. If a consumer outage outlasts the retention, the messages
-are lost to the lakehouse and `failOnDataLoss` fails the task; re-produce them from the stream
-sample file (duplicates are removed by Silver).
+Recovery depends on what the outage was.
+
+**Network outage or unreachable broker (the service kept running).** Fix the connection and run the
+job again. The Kafka stream resumes at the checkpoint offsets.
+
+**Aiven free service powered off.** Powering off empties the topic and resets its offsets to 0.
+Messages that were on the topic but not yet in Bronze are lost. After power-on, a plain re-run
+fails on `failOnDataLoss` (`Partition meter-readings-1 offset was changed from <n> to 0`), writes
+nothing to Bronze and leaves an uncommitted `offsets/1` batch in the checkpoint, so every later
+run fails the same way. Do a Kafka reset:
+
+1. Power Aiven on and create the topic if it is missing (section 3).
+2. Run in the SQL editor: `DROP TABLE <catalog>.bronze.kafka_meter_readings;`
+3. Delete the checkpoint folder `checkpoints/kafka_meter_readings` in the Volume, as described in
+   "Bronze reset and Bronze schema changes" (step 2: Catalog Explorer, then check with
+   `databricks fs ls`). Only this folder.
+4. Re-produce the full stream sample (section 5, Produce).
+5. Run the job. `setup_catalog` recreates the table and the stream reads the topic from the
+   earliest offset.
+
+Bronze, not the topic, is the reprocessing source (ADR 0006), so re-producing from the sample is
+the replay path. Rows already in Bronze before the reset are dropped with the table; the reset
+restores them from the sample (duplicates are removed by Silver).
+
+The free tier also keeps messages only briefly. If a consumer outage outlasts the retention without
+a power-off, the messages are lost to the lakehouse and `failOnDataLoss` fails the task; the same
+Kafka reset and re-production apply.
 
 ### Full refresh
 
@@ -308,9 +338,15 @@ migrate an existing one. If the Bronze schema in `src/smart_meter_peak_predictio
 changes, or a Bronze table must be rebuilt, reset it:
 
 1. Run in the SQL editor: `DROP TABLE <catalog>.bronze.<table>;`
-2. Remove its checkpoint:
-   `databricks fs rm -r -p dev dbfs:/Volumes/smart_meter_dev/bronze/checkpoints/<stream>`
-   (`files_meter_readings`, `files_households` or `kafka_meter_readings`).
+2. Remove its checkpoint folder `checkpoints/<stream>` in the Volume `bronze.checkpoints`
+   (`files_meter_readings`, `files_households` or `kafka_meter_readings`). Delete it in Catalog
+   Explorer (Catalog, `bronze`, Volumes, `checkpoints`, the folder, Delete). The CLI command
+   `databricks fs rm -r -p dev dbfs:/Volumes/smart_meter_dev/bronze/checkpoints/<stream>` exited
+   without removing the folder in two attempts, so do not rely on it. Verify before running the job
+   that the folder is gone:
+   `databricks fs ls -p dev dbfs:/Volumes/smart_meter_dev/bronze/checkpoints` must not list it.
+   Delete only the subfolder of the one stream. The `files_*` checkpoints must stay when only the
+   Kafka table is reset: without them Auto Loader re-ingests every file and duplicates the rows.
 3. Run the job (`setup_catalog` recreates the table; the stream re-ingests: files from the Volume,
    Kafka from the earliest message still on the topic; re-produce from the sample if needed).
 4. The pipeline update that follows recomputes Silver and Gold.
