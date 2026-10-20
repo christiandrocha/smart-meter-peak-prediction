@@ -137,6 +137,26 @@ def test_complete_build_with_failing_ac(tmp_path):
     assert "failing criteria: AC-02" in errors
 
 
+def test_complete_build_ignores_fail_in_test_names_and_prose(tmp_path):
+    write(tmp_path, "features", "DEFINE_X.md", define_doc())
+    write(tmp_path, "features", "DESIGN_X.md", design_doc(["AC-01", "AC-02"]))
+    build = """# BUILD REPORT: X
+## Metadata
+| **Status** | Complete |
+## Files Changed
+| 1 | src/x.py | Created | pytest |
+## Acceptance Criteria Evidence
+| AC-01 | Pass (wired fail rule) | Pass | `test_ac01_failed_run_left_table_unchanged` |
+| AC-02 | Pass | Failed live | `test_ac02_rerun` |
+## Self-Review
+- Weak points: rerun bug.
+"""
+    write(tmp_path, "reports", "BUILD_REPORT_X.md", build)
+    errors = " ".join(check_specs.run(tmp_path).errors)
+    assert "failing criteria: AC-02" in errors
+    assert "AC-01" not in errors
+
+
 def test_code_blocks_are_not_placeholders(tmp_path):
     text = define_doc() + '\n```json\n{"entity_id": "x"}\n```\n'
     write(tmp_path, "features", "DEFINE_X.md", text)

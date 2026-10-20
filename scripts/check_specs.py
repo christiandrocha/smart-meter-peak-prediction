@@ -79,6 +79,8 @@ PLACEHOLDER = re.compile(r"\{[A-Za-z][^{}\n]{0,80}\}")
 HEADING = re.compile(r"^##\s+(.+?)\s*$", re.MULTILINE)
 STATUS = re.compile(r"^\|\s*\*\*Status\*\*\s*\|\s*([^|]+?)\s*\|", re.MULTILINE)
 AC_ROW = re.compile(r"^\|\s*(AC-\d+)\s*\|(.*)$", re.MULTILINE)
+# A result cell that starts with "Fail"; "fail" inside test names or prose does not count.
+FAILING_CELL = re.compile(r"^\s*fail", re.IGNORECASE)
 CLARITY_TOTAL = re.compile(r"\*\*Total\*\*\s*\|\s*\**\s*(\d+)\s*/\s*15", re.IGNORECASE)
 
 
@@ -214,7 +216,11 @@ def check_traceability(docs: list[Doc], report: Report) -> None:
                 msg = f"acceptance criteria without evidence: {', '.join(missing)}"
                 (report.error if complete else report.warn)(build, msg)
             if complete:
-                failing = sorted(ac for ac, row in evidence.items() if "fail" in row.lower())
+                failing = sorted(
+                    ac
+                    for ac, row in evidence.items()
+                    if any(FAILING_CELL.match(cell) for cell in row.split("|"))
+                )
                 if failing:
                     report.error(build, f"Complete with failing criteria: {', '.join(failing)}")
 
