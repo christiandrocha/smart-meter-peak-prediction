@@ -181,8 +181,8 @@ def test_ac26_i18_after_first_update_summary_view_exists_and_update_completed(
 ) -> None:
     """I-18: the Python check dataset reads the SQL-created view in the same pipeline.
 
-    If this fails with an unresolved view, the fallback is to derive the check from the monthly
-    table (a DESIGN change through ``/iterate``; not decided).
+    If this fails with an unresolved view, the decided fallback (2026-10-19) is to derive the check
+    from the monthly table, a DESIGN change applied through ``/iterate``.
     """
     before = evidence.load(
         "ac26_i18_before_first_update", "test_ac26_i18_before_first_update_gold_schema_is_empty"

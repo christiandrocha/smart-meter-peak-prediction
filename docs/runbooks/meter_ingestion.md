@@ -296,8 +296,10 @@ variable values (`--var study_end=...`) and a pipeline update.
 The summary check dataset (`household_data_quality_check`, Python) reads the summary view that the
 SQL file `pipelines/household_data_quality.sql` creates in the same pipeline. That dependency is
 proved only by a local fake, so the first update must start from an empty Gold schema. A fresh
-workspace does this naturally (evidence steps A and B). No fallback is decided. If the update fails, report the failing update and its error text; the
-candidate fallback is to derive the check from the monthly table, which is a DESIGN change.
+workspace does this naturally (evidence steps A and B). If the update fails because the check
+dataset cannot read the view, report the failing update and its error text. The decided fallback
+(2026-10-19) is to derive the check from the monthly table (`gold.household_data_quality_monthly`),
+a DESIGN change applied through `/iterate`.
 
 ### Bronze reset and Bronze schema changes
 
