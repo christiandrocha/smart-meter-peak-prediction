@@ -1,0 +1,58 @@
+# Data contract: readings dropped by Silver quality rules, kept for audit and row-level reconciliation.
+# Defined in .claude/sdd/features/DEFINE_METER_INGESTION.md (Data Contracts, Q-04).
+dataset: smart_meter_dev.silver.meter_readings_quarantine
+kind: table
+object_type: materialized view recomputed over bronze.files_meter_readings and bronze.kafka_meter_readings
+owner: METER_INGESTION
+description: One Bronze reading row that failed at least one Silver drop rule, with the raw values and the rules it failed.
+grain: one row per dropped Bronze row
+primary_key: [_source_ref]
+freshness:
+  expected_latency: 24h
+  schedule: daily
+schema:
+  - name: _source_ref
+    type: string
+    nullable: false
+    description: Identifier of the Bronze row, same definition as in silver.meter_readings.
+  - name: _ingestion_path
+    type: string
+    nullable: false
+    description: files or kafka.
+  - name: household_id
+    type: string
+    nullable: true
+    description: Raw household identifier when it could be read; null for an unparseable Kafka payload.
+  - name: reading_ts_raw
+    type: string
+    nullable: true
+    description: Raw timestamp text as received.
+  - name: energy_kwh_raw
+    type: string
+    nullable: true
+    description: Raw energy text as received (files) or as found in the payload (Kafka).
+  - name: payload
+    type: string
+    nullable: true
+    description: Raw Kafka message value; null for the file path.
+  - name: rule_name
+    type: string
+    nullable: false
+    description: First failed drop rule in the precedence order QR-07, QR-02, QR-03, QR-04, QR-05.
+  - name: failed_rules
+    type: array<string>
+    nullable: false
+    description: Every drop rule the row failed, in precedence order; per-rule quality metrics count the row under each of them.
+  - name: _ingested_at
+    type: timestamp
+    nullable: false
+    description: Bronze ingestion time in UTC, copied from Bronze.
+quality:
+  - rule: "rule_name IN ('QR-02', 'QR-03', 'QR-04', 'QR-05', 'QR-07')"
+    action: fail
+consumers:
+  - name: reconciliation tests and the data platform operator
+    usage: account for every dropped Bronze row and inspect the raw values
+changes:
+  policy: additive changes allowed; breaking changes need a new version and an ADR
+  version: 1

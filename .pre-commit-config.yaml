@@ -5,6 +5,8 @@ repos:
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
+        # Pinned outputs of the sampling spike must stay byte-identical to what the script writes.
+        exclude: ^(spikes/local/plan\.json|config/sample_manifest\.json)$
       - id: check-yaml
         args: [--allow-multiple-documents]
       - id: check-added-large-files

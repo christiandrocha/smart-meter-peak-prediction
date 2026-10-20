@@ -1,0 +1,15 @@
+{
+  "seed": 42,
+  "blocks_per_group": 2,
+  "households_per_group": 20,
+  "period_start": "2012-07-01 00:00:00",
+  "period_end": "2014-02-28 00:00:00",
+  "cutoff": "2013-12-01 00:00:00",
+  "max_zero_ratio": 0.9,
+  "min_coverage": 0.8,
+  "blocks": {
+    "Affluent": ["block_11", "block_17"],
+    "Comfortable": ["block_49", "block_69"],
+    "Adversity": ["block_82", "block_104"]
+  }
+}

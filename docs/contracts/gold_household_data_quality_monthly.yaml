@@ -1,0 +1,63 @@
+# Data contract: monthly data quality facts per household (source of truth for data quality).
+# Defined in .claude/sdd/features/DEFINE_METER_INGESTION.md (Data Contracts, Q-11). Interface to PEAK_MODEL.
+dataset: smart_meter_dev.gold.household_data_quality_monthly
+kind: table
+object_type: materialized view
+owner: METER_INGESTION
+description: Measured reading coverage, zero readings and gaps of one household in one UTC calendar month of the study period; facts only, no threshold and no exclusion flag.
+grain: one row per household per UTC month of the study period, dense (months without readings have a row with observed_readings = 0)
+primary_key: [household_id, reading_month]
+point_in_time_rule: a row for month M depends only on Silver readings with reading_ts before the first day of month M + 1, so it is final once month M is fully ingested
+freshness:
+  expected_latency: 24h
+  schedule: daily
+schema:
+  - name: household_id
+    type: string
+    nullable: false
+    description: Household identifier; the household set is the union of silver.households and the households with any silver.meter_readings row, and each has a row for every study month.
+  - name: has_household_record
+    type: boolean
+    nullable: false
+    description: True when household_id exists in silver.households, false for an orphan household that has Silver readings only; lets consumers filter orphans without a join.
+  - name: reading_month
+    type: date
+    nullable: false
+    description: First day of the UTC calendar month.
+  - name: expected_readings
+    type: int
+    nullable: false
+    description: 48 x the number of days of the month inside the study period.
+  - name: observed_readings
+    type: int
+    nullable: false
+    description: Silver readings of the household in the month, between 0 and expected_readings.
+  - name: zero_readings
+    type: int
+    nullable: false
+    description: Silver readings of the household in the month with energy_kwh = 0.
+  - name: gap_count
+    type: int
+    nullable: false
+    description: Gap events closed in the month (missing slots are expected_readings - observed_readings); a gap is a maximal run of missing half-hour slots between two Silver readings of the household, counted in the month of the reading that ends it.
+  - name: first_reading_ts
+    type: timestamp
+    nullable: true
+    description: Earliest Silver reading_ts of the household in the month; null when observed_readings = 0.
+  - name: last_reading_ts
+    type: timestamp
+    nullable: true
+    description: Latest Silver reading_ts of the household in the month; null when observed_readings = 0.
+quality:
+  - rule: "observed_readings BETWEEN 0 AND expected_readings"
+    action: fail
+  - rule: "zero_readings BETWEEN 0 AND observed_readings"
+    action: fail
+consumers:
+  - name: PEAK_MODEL
+    usage: point-in-time household exclusion restricted to months before a split boundary or target date (PEAK_MODEL Q-14)
+  - name: smart_meter_dev.gold.household_data_quality
+    usage: whole-period summary
+changes:
+  policy: additive changes allowed; breaking changes need a new version, an ADR and /iterate on both features
+  version: 1

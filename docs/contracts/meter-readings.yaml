@@ -1,0 +1,49 @@
+# Kafka topic contract for half-hourly smart meter readings.
+# Defined in .claude/sdd/features/DEFINE_METER_INGESTION.md (Data Contracts).
+dataset: meter-readings
+kind: topic
+owner: METER_INGESTION
+description: One message per half-hourly energy reading of one household, replayed from the London smart meter dataset for readings at or after the batch/stream cutoff.
+key:
+  field: household_id
+  reason: keeps the readings of one household ordered within a partition
+event_time:
+  field: reading_ts
+  rule: reading_ts >= cutoff (default 2013-12-01T00:00:00Z) and within the study period ending 2014-02-28
+value:
+  format: json
+  schema:
+    - name: household_id
+      type: string
+      nullable: false
+      description: Household identifier, renamed from the source column LCLid, e.g. MAC000002.
+    - name: reading_ts
+      type: string
+      format: ISO-8601 UTC
+      nullable: false
+      description: Event time, the source column tstp converted to ISO-8601 with a Z suffix, e.g. 2013-12-01T00:30:00Z.
+    - name: energy_kwh
+      type: double
+      nullable: true
+      description: Energy in kWh over the half hour; null when the source value is not numeric (the producer never drops a record).
+    - name: source
+      type: string
+      nullable: false
+      description: Origin of the event; always replay in this release.
+    - name: produced_at
+      type: string
+      format: ISO-8601 UTC
+      nullable: false
+      description: Producer wall clock when the message was sent; ingestion clock, never event time. Keeps this name in the payload (the producer's field); Silver exposes it as _produced_at.
+delivery: at-least-once; idempotent producer with acks=all; consumers deduplicate on (household_id, reading_ts)
+partitions: 2
+retention_assumption: short (Aiven free tier); the Bronze table kafka_meter_readings is the reprocessing source, not the topic
+producer:
+  name: local replay producer (Docker)
+  usage: replays the stream sample file in event-time order at a configurable speed
+consumers:
+  - name: smart_meter_dev.bronze.kafka_meter_readings
+    usage: Structured Streaming with an AvailableNow trigger stores the raw payload with _topic, _partition, _offset and _kafka_timestamp; Silver exposes produced_at as _produced_at
+changes:
+  policy: additive fields only; a breaking change creates a new topic version and an ADR
+  version: 1

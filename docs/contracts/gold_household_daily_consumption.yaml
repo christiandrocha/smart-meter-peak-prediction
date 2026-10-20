@@ -1,0 +1,53 @@
+# Data contract: daily consumption per household (materialized view). Interface to PEAK_MODEL.
+# Defined in .claude/sdd/features/DEFINE_METER_INGESTION.md (Data Contracts).
+dataset: smart_meter_dev.gold.household_daily_consumption
+kind: table
+object_type: materialized view
+owner: METER_INGESTION
+description: Consumption of one household on one UTC day, aggregated from silver.meter_readings, with a completeness flag.
+grain: one row per household per UTC day with at least one Silver reading
+primary_key: [household_id, reading_date]
+freshness:
+  expected_latency: 24h
+  schedule: daily
+schema:
+  - name: household_id
+    type: string
+    nullable: false
+    description: Household identifier.
+  - name: reading_date
+    type: date
+    nullable: false
+    description: UTC calendar date of the readings.
+  - name: total_energy_kwh
+    type: double
+    nullable: false
+    description: Sum of energy_kwh of the household's Silver readings on reading_date.
+  - name: max_energy_kwh
+    type: double
+    nullable: false
+    description: Largest half-hour energy_kwh on reading_date.
+  - name: reading_count
+    type: int
+    nullable: false
+    description: Number of Silver readings on reading_date, between 1 and 48.
+  - name: is_complete_day
+    type: boolean
+    nullable: false
+    description: True exactly when reading_count = 48.
+quality:
+  - id: QR-10
+    rule: "is_complete_day (reading_count = 48); incomplete days are kept and counted"
+    action: warn
+  - id: QR-11
+    rule: "reading_count <= 48"
+    action: fail
+  - id: QR-12
+    rule: "household_id exists in silver.households (orphans are kept and counted)"
+    action: warn
+consumers:
+  - name: PEAK_MODEL
+    usage: label computation and daily features; is_complete_day decides which days can be labelled or enter a baseline
+changes:
+  policy: additive changes allowed; breaking changes need a new version, an ADR and /iterate on both features
+  version: 1

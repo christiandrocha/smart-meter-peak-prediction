@@ -1,0 +1,15 @@
+# Keep credentials, data and history out of the build context (AC-29).
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+data/
+out/
+.git/
+.venv/
+.databricks/
+spikes/
+tests/
+__pycache__/
+*.egg-info/

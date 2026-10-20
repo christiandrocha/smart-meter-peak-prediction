@@ -12,7 +12,17 @@ dev = [
     "ruff>=0.6",
     "pre-commit>=3.7",
     "pyyaml>=6",       # scripts/check_specs.py validates data contracts
-    "pandas>=2.2",     # scripts/profile_data.py and its tests
+    "pandas>=2.2",     # scripts/profile_data.py, sampling and their tests
+    "pyspark>=3.5,<4.1",  # local Spark for the library and pipeline-harness unit tests
+]
+sample = [
+    "pandas>=2.2",     # src/smart_meter_peak_prediction/sampling.py
+]
+producer = [
+    "confluent-kafka>=2.4",  # src/smart_meter_peak_prediction/producer.py
+]
+integration = [
+    "databricks-sdk>=0.30",  # tests/integration against the dev workspace
 ]
 profile = [
     "pandas>=2.2",
@@ -31,8 +41,9 @@ testpaths = ["tests"]
 pythonpath = ["src", "scripts"]
 markers = [
     "integration: needs a live environment (cloud workspace, broker); skipped in CI",
+    "local_data: needs the Kaggle raw files in data/raw; skipped in CI",
 ]
-addopts = "-m 'not integration'"
+addopts = "-m 'not integration and not local_data'"
 
 [tool.ruff]
 line-length = 100
