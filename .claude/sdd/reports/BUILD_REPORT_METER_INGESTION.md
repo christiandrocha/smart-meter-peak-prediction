@@ -124,8 +124,8 @@ Final status after PR 3. **Local** is the unit, local-data, wiring and bundle ev
 | AC-02 | Pass | n/a | none: unit and local-data (60 households, 20 per group, exclusions equal the pinned list) |
 | AC-03 | Pass | n/a | none: unit and local-data (1,432,405 historical, 247,569 stream rows) |
 | AC-04 | Pass | n/a | none: unit, local-data and `test_ac04_bundle_cutoff_default_equals_sample_plan` |
-| AC-05 | Pass | Not run | `test_bronze_ingestion.py::test_ac05_bronze_file_counts_match_manifest`, step B |
-| AC-06 | Pass (idempotent writer, unit) | Not run | `test_bronze_ingestion.py::test_ac06_rerun_file_ingestion_adds_no_rows`, step B (reruns `ingest_files`) |
+| AC-05 | Pass | Pass (run after step C, 2026-10-20) | `test_bronze_ingestion.py::test_ac05_bronze_file_counts_match_manifest`, step B |
+| AC-06 | Pass (idempotent writer, unit) | Pass (run after step C, 2026-10-20) | `test_bronze_ingestion.py::test_ac06_rerun_file_ingestion_adds_no_rows`, step B (reruns `ingest_files`) |
 | AC-07 | Pass | Pass (step C, 2026-10-20) | `test_bronze_ingestion.py::test_ac07_kafka_bronze_count_uniqueness_and_payload_parse`, step C (needs Aiven on) |
 | AC-08 | Pass (unit) | Pass (step C, 2026-10-20) | `test_bronze_ingestion.py::test_ac08_rerun_kafka_ingestion_adds_no_rows`, step C (needs Aiven on) |
 | AC-09 | Pass (rebuilt 2026-10-19: unit `test_ac09_replayed_messages_counted_as_duplicates_and_silver_unchanged`, `test_ac09_replayed_invalid_messages_not_quarantined_again`, `test_ac09_dedup_key_is_per_path_and_offset_independent`, `test_ac09_replayed_partially_parseable_invalid_payload_not_quarantined_again` (I-22); local data `test_ac09_seed42_quarantine_has_distinct_dedup_keys_and_no_duplicates`) | Not run | `test_reprocessing.py::test_ac09_before_replay_snapshot`, `::test_ac09_after_replay_silver_unchanged` (now also compares per-rule totals and `quarantine_duplicates`), step F (second replay) |
@@ -156,7 +156,7 @@ Final status after PR 3. **Local** is the unit, local-data, wiring and bundle ev
 | AC-34 | Pass | Pass (step C, 2026-10-20) | `test_silver_tables.py::test_ac34_seed42_offgrid_null_rows_counted_under_both_rules`, step C |
 | AC-35 | Pass | Pass (step C, 2026-10-20) | `test_gold_tables.py::test_ac35_seed42_has_household_record_all_true`, step C |
 
-Summary: 35 ACs. Local result is `Pass` for all 35. The `/iterate` of 2026-10-19 changed the wording of AC-09, AC-11, AC-12 and AC-17; the rebuild (I-15) is done and their local evidence is `Pass` for the new wording (see *Iterate rebuild 2026-10-19*). 25 ACs also need live evidence. After step C (2026-10-20): 16 are `Pass` live (AC-07, AC-08, AC-11, AC-13, AC-14, AC-18 to AC-22, AC-24 to AC-26, AC-31, AC-34, AC-35); 3 are `Partial` (AC-12 needs step G, AC-28 the first-deploy exit codes, AC-30 step E); 6 are `Not run` here (AC-05 and AC-06, step B, not recorded in this report; AC-09 step F; AC-10 step D; AC-27 step G; AC-29 the redaction check). The other 10 have no live test in the DESIGN: AC-01 to AC-04, AC-15 (spike 04), AC-16, AC-17, AC-23, AC-32, AC-33.
+Summary: 35 ACs. Local result is `Pass` for all 35. The `/iterate` of 2026-10-19 changed the wording of AC-09, AC-11, AC-12 and AC-17; the rebuild (I-15) is done and their local evidence is `Pass` for the new wording (see *Iterate rebuild 2026-10-19*). 25 ACs also need live evidence. After step C (2026-10-20): 18 are `Pass` live (AC-05 to AC-08, AC-11, AC-13, AC-14, AC-18 to AC-22, AC-24 to AC-26, AC-31, AC-34, AC-35); 3 are `Partial` (AC-12 needs step G, AC-28 the first-deploy exit codes, AC-30 step E); 4 are `Not run` (AC-09 step F; AC-10 step D; AC-27 step G; AC-29 the redaction check). The other 10 have no live test in the DESIGN: AC-01 to AC-04, AC-15 (spike 04), AC-16, AC-17, AC-23, AC-32, AC-33.
 
 ---
 
@@ -376,3 +376,4 @@ Run the live verification listed under *Pending on the user* (or explicitly acce
 | 2026-10-19 | I-22 rebuilt and closed: `KAFKA_DEDUP_KEY_SQL` no longer conditioned on `payload_ok`; new and extended AC-09 tests; ADR 0005 and runbook reworded | Rebuild required by commit 5c655cc | none; live steps C, F unchanged |
 | 2026-10-20 | I-18 closed: the I-18 pair passed live from a dropped Gold schema (update `47f03259`); AC-26 live evidence marked partial; PR 3 Self-Review risk updated | The first attempt was invalidated by the RESOURCE_EXHAUSTED update `8649ab60` after the snapshot | none; the AC-26 metadata test still runs in step C |
 | 2026-10-20 | Step C recorded: AC evidence rows and summary, three Verification Log rows | Live step C run 2026-10-20 | `full_runs` fixture fixed (page size, partial runs); steps D to G remain |
+| 2026-10-20 | AC-05 and AC-06 live Pass, run after step C | They had no recorded step B result | none; the AC-06 rerun is a partial `only=` run, which `full_runs` now excludes |
