@@ -16,6 +16,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - uses: actions/setup-java@v4
+        # Local Spark (pyspark) runs the library and pipeline-harness unit tests.
+        with:
+          distribution: temurin
+          java-version: "17"
       - name: Install
         run: pip install -e ".[dev]"
       - name: Lint
