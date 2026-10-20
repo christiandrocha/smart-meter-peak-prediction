@@ -9,7 +9,7 @@
 | **Feature** | METER_INGESTION |
 | **Date** | 2026-10-19 |
 | **Source** | DESIGN_METER_INGESTION.md |
-| **Status** | In Progress |
+| **Status** | Complete |
 
 Allowed status values: `In Progress`, `Blocked`, `Complete`.
 
@@ -25,7 +25,7 @@ This report covers **PR 1 (manifest entries 1 to 23)**. The local sampling port,
 
 **PR 3 (entries 53 to 60) was built on 2026-10-19** on branch `feat/meter-ingestion-pr3` (off `feat/meter-ingestion-pr2b`): the integration tests, the runbook and the README, all verified locally; `databricks bundle validate -t dev -p dev` reports `Validation OK!`. Nothing was deployed, run or submitted on Databricks, Kafka was not touched, and the integration tests were collected but **not run**. PR 3 status: **Complete** (local scope; live evidence pending).
 
-**Feature status.** Every manifest entry (1 to 60 and 30a) is built and verified locally. The header status stays `In Progress` on purpose: the build rules allow `Complete` only when every AC is `Pass` or explicitly accepted by the user, and the platform evidence for 25 ACs (all with an integration test) is `Not run`. The exact steps are under *Pending on the user*; run them before `/ship`, or accept the pending ACs explicitly.
+**Feature status.** Every manifest entry (1 to 60 and 30a) is built and verified locally. The live verification ran on 2026-10-20 (evidence steps A to G and the redaction check): 24 of the 25 ACs with an integration test are `Pass` live, and AC-28 is `Partial`, accepted by the user on 2026-10-20 (see *Deviations from Design*). The build rules allow `Complete` when every AC is `Pass` or explicitly accepted by the user, so the status is `Complete`.
 
 ---
 
@@ -147,7 +147,7 @@ Final status after PR 3. **Local** is the unit, local-data, wiring and bundle ev
 | AC-25 | Pass | Pass (step C, 2026-10-20) | `test_gold_tables.py::test_ac25_summary_matches_monthly_and_manifest`, step C (needs `data/sample/seed42/manifest.json`) |
 | AC-26 | Pass (wiring, bundle, spike 04 `CREATE VIEW`) | Pass (I-18 pair steps A and B, metadata test step C, 2026-10-20) | `test_gold_tables.py::test_ac26_pipeline_and_table_metadata` (step C); I-18 pair `test_ac26_i18_before_first_update_gold_schema_is_empty` (step A) and `test_ac26_i18_after_first_update_summary_view_exists_and_update_completed` (step B) |
 | AC-27 | Pass | Pass (step G, 2026-10-20) | `test_reprocessing.py::test_ac27_before_full_refresh_snapshot`, `::test_ac27_after_full_refresh_checksums_equal`, step G |
-| AC-28 | Pass (bundle unit tests, `bundle validate` OK) | Partial: layout test Pass (step C, 2026-10-20); first-deploy exit codes not recorded | `test_deployment.py::test_ac28_deployed_job_pipeline_and_catalog_layout`, step C, plus the exit codes of the three-step first deploy (manual, runbook section 4) |
+| AC-28 | Pass (bundle unit tests, `bundle validate` OK) | Partial, accepted by the user 2026-10-20: layout test Pass (step C, 2026-10-20); first-deploy exit codes not recorded | `test_deployment.py::test_ac28_deployed_job_pipeline_and_catalog_layout`, step C, plus the exit codes of the three-step first deploy (manual, runbook section 4) |
 | AC-29 | Pass (unit, hygiene, `pre-commit run --all-files`) | Pass (redaction check, 2026-10-20) | `test_bronze_ingestion.py::test_ac29_failed_stream_error_does_not_leak_credentials`, runbook "Stream error redaction check" |
 | AC-30 | Pass (job timeout test, spike 04: 63 s for 1.68 M rows) | Pass (step C run 682175635266718, 395 s; step E run 1088438823635937, 381 s; 2026-10-20) | `test_deployment.py::test_ac30_daily_job_run_within_60_minutes`, steps C and E |
 | AC-31 | Pass (unit: UTC wall clock) | Pass (step C, 2026-10-20) | `test_gold_tables.py::test_ac31_produced_reading_reaches_silver_and_gold_within_24h`, step C |
@@ -240,10 +240,11 @@ Summary: 35 ACs. Local result is `Pass` for all 35. The `/iterate` of 2026-10-19
 | Test time zone | - | conftest pins process TZ to UTC | Spark returns naive datetimes in the process zone | No |
 | PR 2b helper module | Setup notebook holds the DDL (entry 43) | DDL lives in `src/.../catalog_setup.py` with `tests/test_catalog_setup.py`; the notebook only executes it | A notebook cannot be imported, so the statements would be untestable | No |
 | Placeholder notebook | Entry 47 deletes `resources/jobs.yml` only | `notebooks/hello.py` deleted too | Its own header says to delete it once the first real job exists; nothing references it | No |
-| Package path in notebooks | Not specified | Job passes `src_path=${workspace.file_path}/src`; a manual run falls back to `<cwd>/../src` | Avoids py4J notebook-context calls on serverless; the fallback is unverified (pending live) | No |
+| Package path in notebooks | Not specified | Job passes `src_path` as the bundle's `workspace.file_path` plus `/src`; a manual run falls back to `<cwd>/../src` | Avoids py4J notebook-context calls on serverless; the fallback is unverified (pending live) | No |
 | Ruff globs | - | `**/pipelines/*` ignores F821 (`spark` is injected) | Same reason as notebooks | No |
 | PR 3 extra tests and config | Manifest lists 6 test files for PR 3 (53 to 58) | Also `tests/test_integration_layout.py` (marker, naming, AC coverage, deselection, no SDK import at module level) and a `pyproject.toml` ruff S608 ignore for `tests/integration` | Proves in the default run that the integration tests are collectable, marked and excluded, without a workspace | No |
 | AC-26 pipeline count | "Exactly one pipeline in the workspace" | Exactly one pipeline with the bundle name; every pipeline name seen is saved to `out/evidence/ac26_pipelines.json` | The workspace also holds an unrelated idle pipeline (I-10) | No (needs a DESIGN wording fix at `/ship`) |
+| AC-28 first-deploy evidence | The exit codes of the three-step first deploy on a fresh workspace (deploy, `setup_catalog`, deploy again) are part of the AC-28 evidence | Not recorded. The catalog already existed from the 2026-10-16 spikes, so the deploys of this build never started from a fresh workspace. Live evidence is `test_ac28_deployed_job_pipeline_and_catalog_layout` (Pass, step C) plus `bundle validate` and `bundle deploy -t dev` exiting 0 on 2026-10-20 | Reproducing it here means dropping `smart_meter_dev` and re-running steps A to G. User decision 2026-10-20: accept `Partial`; the fresh-workspace three-step deploy is a follow-up for `/ship` | No |
 | Extra integration tests | AC-10 has the `after` test only; no I-18 or redaction test | Added `test_ac10_before_outage_snapshot`, the I-18 pair, `test_ac29_failed_stream_error_does_not_leak_credentials` and `test_ac12_totals_consistent_after_full_refresh` | The DESIGN names a before/after pair for AC-10 without a before test; I-18 and I-20 are PR 3 must-handle items; AC-12 must also hold after a full refresh | No |
 | AC-30 run choice | "The latest full job run succeeded" | The latest *successful* run, all four tasks successful, duration and no quota termination checked; newer unsuccessful runs are recorded in evidence | After the AC-10 outage run the latest run is a failure by design | No |
 | Re-running a task | "Rerun task `ingest_files`" | `jobs.run_now(job_id, only=[task])` through the SDK | Runs one task of the deployed job without the others | No |
@@ -302,9 +303,7 @@ Live verification of the whole feature (not run, by instruction). The full proce
 
 The rebuild of I-15 is done (see *Iterate rebuild 2026-10-19*); steps C, F and G run the updated queries.
 
-Decisions still open:
-
-- Whether to accept any AC as `Pass` without live evidence, so the report can move to `Complete` before `/ship`.
+Decisions still open: none. On 2026-10-20 the user accepted AC-28 as `Partial` (fresh-workspace first-deploy exit codes not recorded); every other AC with a live test is `Pass` live.
 
 ---
 
@@ -369,7 +368,7 @@ Deviations: none from the DESIGN. The AC-17 tests already matched the new wordin
 
 ## Next Step
 
-Run the live verification listed under *Pending on the user* (or explicitly accept the pending ACs), then `/ship METER_INGESTION`. The quarantine dedup of I-15 is built (see *Iterate rebuild 2026-10-19*). The AC-17 wording and the I-18 fallback are decided; no user decision is open except whether to accept ACs without live evidence.
+Run `/ship METER_INGESTION`. The live verification is done (steps A to G and the redaction check, 2026-10-20) and AC-28 `Partial` is accepted. Follow-ups for the ship record: the fresh-workspace three-step deploy (AC-28), the serverless retry setting (I-23 b), and the open Low items of I-17 and I-20.
 
 ---
 
@@ -389,3 +388,4 @@ Run the live verification listed under *Pending on the user* (or explicitly acce
 | 2026-10-20 | Step G recorded: AC-27 and AC-12 live Pass, summary, Verification Log row | Live step G run 2026-10-20 | AC-29 redaction check, AC-28 first-deploy exit codes and the I-23 `/iterate` remain |
 | 2026-10-20 | I-23 documents updated by `/iterate`: runbook (Broker outage, Bronze reset, steps D and E, replay-count note), ADR 0001 (DA-11, DA-12, Change Log), DESIGN (retry wording, AC-10 evidence, risk row, Change Log); DEFINE unchanged | I-23 live evidence from steps D and E | No code, test or bundle change; open follow-up: check the serverless retry setting (I-23 b) |
 | 2026-10-20 | AC-29 recorded: live Pass, summary, Verification Log row; I-23 notes the second attempt of the submitted redaction run | Live redaction check 2026-10-20 | Only the AC-28 decision remains before `/ship` |
+| 2026-10-20 | Status `Complete`: AC-28 `Partial` accepted by the user (deviation row added), open decisions cleared, Next Step points to `/ship` | User decision 2026-10-20 | `/ship METER_INGESTION` can run; follow-ups: fresh-workspace three-step deploy, serverless retry setting (I-23 b) |
