@@ -2,7 +2,7 @@
 
 | Attribute | Value |
 |---|---|
-| **Status** | Proposed |
+| **Status** | Accepted |
 | **Date** | 2026-10-15 |
 | **Deciders** | Christian |
 | **Related** | METER_INGESTION; NFR-03, NFR-04, NFR-09; AC-28, AC-30, AC-32; ADR 0002, 0003, 0004, 0006 |
@@ -82,3 +82,4 @@ assumption without changing the architecture of `DESIGN_METER_INGESTION.md`.
 | Date | What changed | Why | Downstream impact |
 |---|---|---|---|
 | 2026-10-20 | Added DA-11 (Aiven free power-off empties the topic and resets offsets; resume at checkpoint offsets does not hold) and DA-12 (task ran twice despite `max_retries: 0`). Status unchanged | Live steps D and E, build report issue I-23 | Runbook "Broker outage" and "Bronze reset", DESIGN retry and recovery wording; no code change |
+| 2026-10-20 | Status changed from Proposed to Accepted at `/ship` (METER_INGESTION) | Feature shipped with live verification; the spike outcomes above were the basis for acceptance | None; Decisions to Carry Forward in the SHIPPED record |

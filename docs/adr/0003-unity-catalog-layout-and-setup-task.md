@@ -2,7 +2,7 @@
 
 | Attribute | Value |
 |---|---|
-| **Status** | Proposed |
+| **Status** | Accepted |
 | **Date** | 2026-10-15 |
 | **Deciders** | Christian |
 | **Related** | METER_INGESTION; FR-17, NFR-09; AC-19, AC-28, AC-32; Q-05; ADR 0001 |

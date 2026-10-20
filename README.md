@@ -46,8 +46,10 @@ tables to build features and train models.
   (`setup_catalog`, `ingest_files`, `ingest_kafka`, `refresh_silver_gold`) and the pipeline to a
   `dev` target on Databricks Free Edition.
 
-Design documents: [`.claude/sdd/features/`](.claude/sdd/features) (brainstorm, define, design) and
-the build report in [`.claude/sdd/reports/`](.claude/sdd/reports). Decisions:
+Specifications: active features in [`.claude/sdd/features/`](.claude/sdd/features); shipped
+features (brainstorm, define, design, build report and the ship record) in
+[`.claude/sdd/archive/`](.claude/sdd/archive), for example
+[`METER_INGESTION`](.claude/sdd/archive/METER_INGESTION). Decisions:
 [`docs/adr/`](docs/adr/README.md).
 
 ## Getting started

@@ -2,7 +2,7 @@
 
 How to set up, deploy, run, verify and recover the meter ingestion pipeline (feature
 METER_INGESTION). It targets the `dev` bundle target on Databricks Free Edition with an Aiven
-Kafka service. Design: `.claude/sdd/features/DESIGN_METER_INGESTION.md`. Decisions: `docs/adr/`.
+Kafka service. Design: `.claude/sdd/archive/METER_INGESTION/DESIGN_METER_INGESTION.md` (shipped; see `SHIPPED_2026-10-20.md` in the same folder). Decisions: `docs/adr/`.
 Contracts: `docs/contracts/`.
 
 ## What runs where
