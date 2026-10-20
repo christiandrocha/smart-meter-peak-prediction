@@ -198,6 +198,54 @@ docker run --rm --user "$(id -u):$(id -g)" --env-file "$PWD/out/producer.env" \
 `--dry-run` writes the events as JSON lines to stdout without contacting the broker, and
 `--limit N` publishes only the first N events.
 
+### Verify the replay before running the job
+
+A replay counts as done only when the topic holds it. Keep the producer log (append
+`2>&1 | tee out/replay.log` to the `docker run` line): its last line must be
+`INFO published <N> event(s)` with `<N>` equal to `counts.stream_rows` in
+`data/sample/seed42/manifest.json`, and an `ERROR` line names the cause. Then check the topic. The
+command reads the connection settings from your `.env` and prints no credential:
+
+```bash
+set -a; . ./.env; set +a
+python - <<'PY'
+import json
+import os
+
+from confluent_kafka import Consumer, TopicPartition
+from smart_meter_peak_prediction.producer import build_kafka_config
+
+wanted = ("bootstrap.servers", "security.protocol", "sasl.mechanism",
+          "sasl.username", "sasl.password", "ssl.ca.location")
+config = {k: v for k, v in build_kafka_config(os.environ).items() if k in wanted}
+config.update({"group.id": "replay-check", "enable.auto.commit": False})
+topic = os.environ.get("KAFKA_TOPIC", "").strip() or "meter-readings"
+expected = json.load(open("data/sample/seed42/manifest.json"))["counts"]["stream_rows"]
+consumer = Consumer(config)
+partitions = consumer.list_topics(topic, timeout=20).topics[topic].partitions
+total = 0
+for p in sorted(partitions):
+    low, high = consumer.get_watermark_offsets(TopicPartition(topic, p), timeout=20)
+    total += high - low
+    print(f"{topic}[{p}]: low={low} high={high}")
+print(f"messages on the topic: {total}; one replay is {expected}")
+consumer.close()
+PY
+```
+
+The total must be `stream_rows` times the number of full replays on the topic since it was created
+or emptied (one in step C and E, two in step F). If it is lower, do not run the job: a job run on
+a short topic ingests a partial stream, and the step C counts then fail. A total of 0 after a
+replay that logged `published` means the producer and the check point at different services or
+topics; compare `KAFKA_BOOTSTRAP` and `KAFKA_TOPIC` with the secret scope. An rdkafka line about
+the GroupCoordinator printed when the consumer closes can be ignored; the watermarks above it are
+valid.
+
+To probe a new environment, publish `--limit 10` first and check that the total rises by 10. The
+probe events stay on the topic, and the Aiven free tier does not delete records (`delete_records`
+does not return), so before the full replay recreate the topic (section 3) and, if the job already
+ingested the probe, do the Kafka reset in "Broker outage".
+
 ### Run the job
 
 ```bash
@@ -254,10 +302,10 @@ run of all four tasks, so run the full job right after producing (step C); parti
 |---|---|---|
 | A. Files only | Deploy (section 4), upload the sample (section 2), then `databricks bundle run -t dev -p dev smart_meter_ingestion --only setup_catalog,ingest_files` | `test_gold_tables.py::test_ac26_i18_before_first_update_gold_schema_is_empty` |
 | B. First pipeline update | `databricks bundle run -t dev -p dev smart_meter_silver_gold` (from an empty Gold schema) | `test_gold_tables.py::test_ac26_i18_after_first_update_summary_view_exists_and_update_completed`, `test_reprocessing.py::test_ac24_before_kafka_snapshot`, `test_bronze_ingestion.py::test_ac05_*`, `test_ac06_*` |
-| C. Kafka load | Aiven on, topic created, one full replay (produce), then `databricks bundle run -t dev -p dev smart_meter_ingestion` | `test_bronze_ingestion.py::test_ac07_*`, `test_ac08_*`; `test_silver_tables.py` (all); `test_gold_tables.py` (all except the `i18` pair); `test_reprocessing.py::test_ac24_after_*`; `test_deployment.py::test_ac28_*`, `test_ac30_*` |
+| C. Kafka load | Aiven on, topic created, one full replay (produce), verify it ("Verify the replay before running the job": one replay on the topic), then `databricks bundle run -t dev -p dev smart_meter_ingestion` | `test_bronze_ingestion.py::test_ac07_*`, `test_ac08_*`; `test_silver_tables.py` (all); `test_gold_tables.py` (all except the `i18` pair); `test_reprocessing.py::test_ac24_after_*`; `test_deployment.py::test_ac28_*`, `test_ac30_*` |
 | D. Broker outage (AC-10) | `test_bronze_ingestion.py::test_ac10_before_outage_snapshot`; power Aiven off; run the job (it fails, possibly with two attempts of `ingest_kafka`); see "Broker outage" | `test_bronze_ingestion.py::test_ac10_failed_kafka_run_left_bronze_and_checkpoint_unchanged` |
-| E. Recovery | Aiven on. A power-off empties the topic and resets its offsets, so a plain re-run fails on `failOnDataLoss` and leaves the checkpoint stuck. Do the "Kafka reset after an Aiven power-off" in "Broker outage" (drop table, delete the Kafka checkpoint, one full replay), then run the job; it passes | `test_bronze_ingestion.py::test_ac07_*`, `test_deployment.py::test_ac30_*` (the latest successful run) |
-| F. Replay (AC-09) | `test_reprocessing.py::test_ac09_before_replay_snapshot`; produce the full stream again; run the job | `test_reprocessing.py::test_ac09_after_replay_silver_unchanged` |
+| E. Recovery | Aiven on. A power-off empties the topic and resets its offsets, so a plain re-run fails on `failOnDataLoss` and leaves the checkpoint stuck. Do the "Kafka reset after an Aiven power-off" in "Broker outage" (drop table, delete the Kafka checkpoint, one full replay, verify it), then run the job; it passes | `test_bronze_ingestion.py::test_ac07_*`, `test_deployment.py::test_ac30_*` (the latest successful run) |
+| F. Replay (AC-09) | `test_reprocessing.py::test_ac09_before_replay_snapshot`; produce the full stream again; verify it (two replays on the topic); run the job | `test_reprocessing.py::test_ac09_after_replay_silver_unchanged` |
 | G. Full refresh (AC-27) | `test_reprocessing.py::test_ac27_before_full_refresh_snapshot`; Aiven may be off; `databricks bundle run -t dev -p dev smart_meter_silver_gold --full-refresh-all` | `test_reprocessing.py::test_ac27_after_*`, `test_ac12_totals_consistent_after_full_refresh` |
 
 Steps A and B also give the AC-28 deploy evidence (exit codes of section 4). The exact seed-42
