@@ -17,34 +17,97 @@ tables to build features and train models.
 
 ## Architecture
 
-```text
- historical CSV files ---- Volume landing ---- Auto Loader (availableNow) ---+
-                                                                             v
- replay producer (Docker) -- Aiven Kafka -- Structured Streaming ---> Bronze (append-only Delta)
-                          topic meter-readings   (availableNow)       files_meter_readings
-                                                                      files_households
-                                                                      kafka_meter_readings
-                                                                             |
-              one triggered serverless Lakeflow pipeline, recomputed from Bronze on every update
-                                                                             v
-        Silver: meter_readings, meter_readings_quarantine, households, meter_readings_evaluated
-        Gold:   household_daily_consumption, household_data_quality_monthly, household_data_quality
+**The ingestion spine.** Recent readings are a Kafka stream; earlier ones arrive
+as files through Auto Loader, and both land in Bronze. The cutoff is marked
+because it is the only rule that decides which path owns a reading: a row on the
+wrong side of `2013-12-01T00:00:00Z` aborts the update instead of being
+quarantined.
+
+```mermaid
+graph LR
+    S[(sample<br/>60 households · seed 42)] --> P[replay producer<br/>Docker]
+    P --> K[Aiven Kafka<br/>meter-readings]
+    K --> SS[Structured Streaming<br/>availableNow]
+    SS --> B[(bronze<br/>raw append-only payloads)]
+    C([cutoff<br/>2013-12-01 UTC]):::contract -.QR-06 · fail rule.- B
+    classDef contract fill:#fdf0d5,stroke:#c8922e,color:#4a3610;
 ```
 
-- **Two ingestion paths, one cutoff.** Readings before `2013-12-01T00:00:00Z` come from files,
-  later ones from Kafka. Both land in Bronze with their source metadata. Bronze, not Kafka, is the
-  replay source.
-- **Quality rules with a quarantine.** Rules are defined once (`rules.py`). Rows that fail a drop
-  rule go to `silver.meter_readings_quarantine` with the failed rule ids. Duplicates are resolved
-  first-ingested-wins. Rule counts are table totals computed from `silver.meter_readings_evaluated`.
+**The layers.** Bronze keeps the raw payload and its source, silver checks and
+deduplicates it, gold aggregates. Which rows survive is not in the pipeline
+code — it is a row in `rules.py`, wired as an expectation.
+
+```mermaid
+graph LR
+    B[(bronze<br/>raw payload + source)] --> SI[(silver<br/>readings · quarantine)]
+    SI --> G[(gold<br/>daily · monthly facts)]
+    R[(rules.py)] -.drop · warn · fail rules.- SI
+```
+
+**What wakes it.** One daily job, and the Kafka task is the only one that leaves
+the workspace. It is marked because an Aiven outage stops there: the task fails
+within seconds, Bronze and its checkpoint stay as they were, and silver and gold
+wait for the next run.
+
+```mermaid
+graph LR
+    J([daily job<br/>06:00 UTC]) --> IK([ingest_kafka]):::gate
+    IK -.Aiven off · nothing written.- Z([bronze unchanged])
+    IK --> RF[refresh_silver_gold<br/>Lakeflow pipeline]
+    RF --> G[(silver · gold<br/>recomputed from bronze)]
+    classDef gate fill:#fdf0d5,stroke:#c8922e,color:#4a3610;
+```
+
+<details>
+<summary>Same diagram as plain text</summary>
+
+```
+┌───────────────────────┐                        ┌───────────────────────┐
+│  Historical files     │                        │  Replay producer      │
+│  17 monthly CSVs +    │                        │  (Docker)             │
+│  households           │                        │  keyed by household   │
+└───────────┬───────────┘                        └───────────┬───────────┘
+            │ databricks fs cp                               │
+┌───────────▼───────────┐                        ┌───────────▼───────────┐
+│  Unity Catalog Volume │                        │  Aiven Kafka          │
+│  landing              │                        │  meter-readings       │
+└───────────┬───────────┘                        │  2 partitions, SCRAM  │
+            │                                    └───────────┬───────────┘
+┌───────────▼───────────┐                        ┌───────────▼───────────┐
+│  Auto Loader          │                        │  Structured Streaming │
+│  availableNow         │                        │  availableNow         │
+└───────────┬───────────┘                        └───────────┬───────────┘
+            │     files before the cutoff · Kafka after (QR-06)
+            └──────────────────────────┬─────────────────────┘
+                                       │
+┌──────────────────────────────────────▼────────────────────────────────────┐
+│  Databricks · Unity Catalog (smart_meter_dev)                             │
+│                                                                           │
+│   BRONZE ───────────────► SILVER ──────────────────► GOLD                 │
+│   3 append-only tables    meter_readings             daily consumption    │
+│   raw payload + source    households                 monthly quality      │
+│   (the replay source)     quarantine (failed rules)  quality summary view │
+│                                                                           │
+│   rules.py ── every rule, wired as an expectation ──┘                     │
+└───────────────────────────────────────────────────────────────────────────┘
+                                       ▲
+                                       │ one daily job, serverless
+                              ┌────────┴─────────────────────────────────┐
+                              │  setup_catalog → ingest_files            │
+                              │                → ingest_kafka (Aiven)    │
+                              │  → refresh_silver_gold (Lakeflow)        │
+                              └──────────────────────────────────────────┘
+```
+
+</details>
+
 - **Gold facts, no labels.** Daily consumption per household and a dense household-by-month quality
   table with coverage, zero readings and gaps. Thresholds and labels belong to PEAK_MODEL.
 - **Contracts.** Every published table and the Kafka topic has a contract in `docs/contracts/`.
 - **Idempotent and UTC.** Re-running with the same input gives the same output; all times are UTC,
   and event time (`reading_ts`) is kept apart from processing time (`_ingested_at`).
-- **Deployment.** A Databricks Asset Bundle (`databricks.yml`, `resources/`) deploys a daily job
-  (`setup_catalog`, `ingest_files`, `ingest_kafka`, `refresh_silver_gold`) and the pipeline to a
-  `dev` target on Databricks Free Edition.
+- **Deployment.** A Databricks Asset Bundle (`databricks.yml`, `resources/`) deploys the job and the
+  pipeline to a `dev` target on Databricks Free Edition.
 
 Specifications: active features in [`.claude/sdd/features/`](.claude/sdd/features); shipped
 features (brainstorm, define, design, build report and the ship record) in
