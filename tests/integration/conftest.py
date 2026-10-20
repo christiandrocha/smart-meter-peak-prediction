@@ -203,7 +203,7 @@ def full_runs(workspace: Any, job: Any) -> Callable[[], list[Any]]:
 
     def find() -> list[Any]:
         runs = workspace.jobs.list_runs(
-            job_id=job.job_id, completed_only=True, expand_tasks=True, limit=50
+            job_id=job.job_id, completed_only=True, expand_tasks=True, limit=25
         )
         full = [
             r
@@ -212,6 +212,11 @@ def full_runs(workspace: Any, job: Any) -> Callable[[], list[Any]]:
             and r.state.result_state
             and r.state.result_state.value == "SUCCESS"
             and {t.task_key for t in r.tasks or []} == all_tasks
+            # an `only=` run still lists every task; the ones it skips end DISABLED
+            and all(
+                t.state and t.state.result_state and t.state.result_state.value == "SUCCESS"
+                for t in r.tasks
+            )
         ]
         return sorted(full, key=lambda r: r.start_time, reverse=True)
 
