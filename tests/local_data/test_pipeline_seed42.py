@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
+from pyspark.sql.types import StructType
 from support.harness import rows, run_update, totals
 
 from smart_meter_peak_prediction import bronze, metrics
@@ -32,7 +33,7 @@ SETTINGS = Settings()
 def _files(spark: SparkSession, pattern: str, schema) -> DataFrame:
     return (
         spark.read.option("header", "true")
-        .schema(schema.add("_corrupt", "string"))
+        .schema(StructType(list(schema.fields)).add("_corrupt", "string"))  # add() mutates
         .csv(pattern)
         .drop("_corrupt")
         .withColumn("_rescued_data", F.lit(None).cast("string"))

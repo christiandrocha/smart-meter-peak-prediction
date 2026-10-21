@@ -78,6 +78,28 @@ def test_ac29_tracked_files_contain_no_kafka_credentials() -> None:
     assert not offenders, "credential-like content in tracked files:\n" + "\n".join(offenders)
 
 
+def test_ac65_tracked_files_contain_no_databricks_token() -> None:
+    """No ``dapi`` plus 32 hex characters in a tracked file, notebooks and job files included."""
+    token = PATTERNS["Databricks token"]
+    files = tracked_files()
+    relative = {p.relative_to(ROOT).as_posix() for p in files}
+    # The scan covers the PEAK_MODEL notebooks and bundle resources (they are tracked or new).
+    for name in (
+        "notebooks/train_model.py",
+        "notebooks/score_predictions.py",
+        "resources/smart_meter_peak_model.job.yml",
+        "resources/smart_meter_peak_model_training.job.yml",
+    ):
+        assert name in relative, name
+    offenders = []
+    for path in files:
+        rel = path.relative_to(ROOT).as_posix()
+        text = read_text(path)
+        if rel != THIS_FILE and text is not None and token.search(text):
+            offenders.append(rel)  # the match itself is never printed
+    assert not offenders, "Databricks token pattern in: " + ", ".join(offenders)
+
+
 def test_ac29_env_files_and_keys_are_not_tracked() -> None:
     names = [p.relative_to(ROOT).as_posix() for p in tracked_files()]
     assert ".env" not in names

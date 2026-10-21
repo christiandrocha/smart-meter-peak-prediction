@@ -142,7 +142,9 @@ def select_training_rows(labels: pd.DataFrame, params: PeakParameters) -> pd.Dat
     for start, end in params.split_ranges().values():
         in_range |= (target >= pd.Timestamp(start)) & (target <= pd.Timestamp(end))
     keep = labels["is_eligible"].astype(bool) & labels[LABEL_COLUMN].notna() & in_range
-    return labels.loc[keep, [*KEYS, "feature_date", LABEL_COLUMN]].reset_index(drop=True)
+    selected = labels.loc[keep, [*KEYS, "feature_date", LABEL_COLUMN]].reset_index(drop=True)
+    selected[LABEL_COLUMN] = selected[LABEL_COLUMN].astype(int)  # nulls were filtered out above
+    return selected
 
 
 def assign_splits(frame: pd.DataFrame, params: PeakParameters) -> pd.DataFrame:

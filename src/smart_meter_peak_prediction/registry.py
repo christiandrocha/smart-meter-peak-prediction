@@ -87,12 +87,18 @@ def build_training_set(
     the version that is logged is the version that was read.
     """
     from databricks.feature_engineering import FeatureLookup
+    from pyspark.sql import functions as F
 
     before = table_version(spark, features_table)
-    labels_sdf = spark.createDataFrame(
-        rows.rename(columns={"feature_date": "lookup_date"})[
-            ["household_id", "target_date", "lookup_date", "label_consumption_spike"]
-        ]
+    # pandas date columns can arrive as timestamps; the lookup needs DATE keys, so cast both.
+    labels_sdf = (
+        spark.createDataFrame(
+            rows.rename(columns={"feature_date": "lookup_date"})[
+                ["household_id", "target_date", "lookup_date", "label_consumption_spike"]
+            ]
+        )
+        .withColumn("target_date", F.col("target_date").cast("date"))
+        .withColumn("lookup_date", F.col("lookup_date").cast("date"))
     )
     training_set = fe.create_training_set(
         df=labels_sdf,
