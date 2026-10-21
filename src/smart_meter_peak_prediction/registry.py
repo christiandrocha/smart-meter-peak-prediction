@@ -173,18 +173,29 @@ def library_versions() -> dict[str, str]:
 
 
 # ----------------------------------------------------------------------------- tracker
-def reload_input(reloaded: Any, sample_input: pd.DataFrame) -> pd.DataFrame:
-    """The columns the registered signature requires, in its order.
+def fe_reload_scores(fe: Any, model_uri: str, sample_input: pd.DataFrame) -> np.ndarray:
+    """Scores of a registered version for ``sample_input`` rows, in their order (G-08).
 
-    ``fe.log_model`` adds the lookup keys (``household_id``, ``target_date`` as a timestamp) to the
-    signature, so a features-only frame fails schema enforcement on reload (PR 2 gate, D-22).
+    Uses ``fe.score_batch`` with ``model_uri``, the call scoring makes. On serverless a model logged
+    with ``fe.log_model`` cannot be scored after ``mlflow.pyfunc.load_model`` (it calls
+    ``score_batch`` with a local URI, which serverless rejects; PR 2 gate, D-23).
     """
-    schema = getattr(getattr(reloaded, "metadata", None), "get_input_schema", lambda: None)()
-    names = schema.input_names() if schema is not None else list(FEATURE_COLUMNS)
-    frame = sample_input.copy()
-    if "target_date" in names:
-        frame["target_date"] = pd.to_datetime(frame["target_date"])
-    return frame[names]
+    from pyspark.sql import SparkSession
+    from pyspark.sql import functions as F
+
+    keys = sample_input[["household_id", "target_date"]].assign(
+        target_date=pd.to_datetime(sample_input["target_date"]).dt.date
+    )
+    spark = SparkSession.getActiveSession()
+    df = spark.createDataFrame(keys).withColumn("lookup_date", F.date_sub("target_date", 1))
+    scored = (
+        fe.score_batch(model_uri=model_uri, df=df, result_type="double")
+        .select("household_id", "target_date", "prediction")
+        .toPandas()
+    )
+    scored["target_date"] = pd.to_datetime(scored["target_date"]).dt.date
+    aligned = keys.merge(scored, on=["household_id", "target_date"], how="left", validate="1:1")
+    return aligned["prediction"].to_numpy(dtype="float64")
 
 
 class MlflowTracker:
@@ -200,6 +211,7 @@ class MlflowTracker:
         model_name: str,
         run_name: str = "train",
         code_paths: Sequence[str | Path] | None = None,
+        reload_scores: Callable[[str, pd.DataFrame], np.ndarray] | None = None,
     ):
         self.mlflow = mlflow
         self.client = client
@@ -208,6 +220,9 @@ class MlflowTracker:
         self.model_name = model_name
         self.run_name = run_name
         self.code_paths = [str(p) for p in (code_paths or [PACKAGE_DIR])]
+        self.reload_scores = reload_scores or (
+            lambda model_uri, frame: fe_reload_scores(self.fe, model_uri, frame)
+        )
         self._run_id: str | None = None
 
     @contextmanager
@@ -271,8 +286,10 @@ class MlflowTracker:
                 f"no version of {self.model_name} was registered by run {self._run_id}"
             )
         version = max(versions)
-        reloaded = self.mlflow.pyfunc.load_model(f"models:/{self.model_name}/{version}")
-        again = np.asarray(reloaded.predict(reload_input(reloaded, sample_input)), dtype="float64")
+        again = np.asarray(
+            self.reload_scores(f"models:/{self.model_name}/{version}", sample_input),
+            dtype="float64",
+        )
         diff = float(np.max(np.abs(again - np.asarray(expected_scores, dtype="float64"))))
         if diff != 0.0:
             raise ReloadMismatchError(

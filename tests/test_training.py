@@ -454,17 +454,17 @@ class FakeClient:
 
 
 def fake_tracker(log, reload_offset: float):
-    class Loaded:
-        def predict(self, frame):
-            return np.full(len(frame), 0.25) + reload_offset
+    def reload_scores(model_uri, frame):
+        log.append(("load", model_uri))
+        return np.full(len(frame), 0.25) + reload_offset
 
-    pyfunc = SimpleNamespace(load_model=lambda uri: (log.append(("load", uri)), Loaded())[1])
     tracker = registry.MlflowTracker(
-        mlflow=SimpleNamespace(pyfunc=pyfunc),
+        mlflow=SimpleNamespace(pyfunc=SimpleNamespace()),
         client=FakeClient(log),
         fe=FakeFe(log),
         training_set=object(),
         model_name="c.ml.m",
+        reload_scores=reload_scores,
     )
     tracker._run_id = "run-this"
     return tracker
@@ -503,32 +503,32 @@ def test_ac54_register_finds_the_version_of_this_run_with_a_name_only_filter() -
         )
 
 
-def test_ac54_reload_uses_the_registered_signature_with_the_fe_lookup_keys() -> None:
-    """``fe.log_model`` adds household_id and target_date to the signature (PR 2 gate, D-22)."""
-    seen: list = []
-    names = ["household_id", "target_date", *model.FEATURE_COLUMNS]
+def test_ac54_reload_scores_through_fe_score_batch_by_version_in_input_order(spark) -> None:
+    """G-08 scores the new version with ``fe.score_batch`` (pyfunc reload fails on serverless).
 
-    class Loaded:
-        metadata = SimpleNamespace(
-            get_input_schema=lambda: SimpleNamespace(input_names=lambda: names)
-        )
-
-        def predict(self, frame):
-            seen.append(frame)
-            return np.full(len(frame), 0.25)
-
-    log: list = []
-    tracker = fake_tracker(log, 0.0)
-    tracker.mlflow = SimpleNamespace(pyfunc=SimpleNamespace(load_model=lambda uri: Loaded()))
-    frame = make_inputs().frame[["household_id", "target_date", *model.FEATURE_COLUMNS]].head(5)
-    tracker.register_model(
-        None, sample_input=frame, expected_scores=np.full(5, 0.25), threshold=0.5
+    PR 2 gate, build deviation D-23.
+    """
+    sample = pd.DataFrame(
+        {
+            "household_id": ["MAC000002", "MAC000001", "MAC000001"],
+            "target_date": pd.to_datetime(["2013-12-02", "2013-12-02", "2013-12-01"]),
+        }
     )
-    (passed,) = seen
-    assert list(passed.columns) == names
-    assert pd.api.types.is_datetime64_any_dtype(passed["target_date"])
-    with pytest.raises(KeyError):
-        registry.reload_input(Loaded(), frame[model.FEATURE_COLUMNS])
+    calls: list = []
+
+    class Fe:
+        def score_batch(self, *, model_uri, df, result_type):
+            calls.append((model_uri, result_type, sorted(df.columns)))
+            rows = df.orderBy("household_id", "target_date").toPandas()
+            assert (rows["target_date"] - rows["lookup_date"]).map(lambda d: d.days).eq(1).all()
+            scores = {("MAC000001", "2013-12-01"): 0.1, ("MAC000001", "2013-12-02"): 0.2}
+            pairs = zip(rows.household_id, rows.target_date, strict=True)
+            rows["prediction"] = [scores.get((h, str(t)), 0.9) for h, t in pairs]
+            return spark.createDataFrame(rows)
+
+    got = registry.fe_reload_scores(Fe(), "models:/c.ml.m/3", sample)
+    assert got.tolist() == [0.9, 0.2, 0.1]
+    assert calls == [("models:/c.ml.m/3", "double", ["household_id", "lookup_date", "target_date"])]
 
 
 def test_ac54_reload_mismatch_stops_before_the_tag_and_the_alias() -> None:
