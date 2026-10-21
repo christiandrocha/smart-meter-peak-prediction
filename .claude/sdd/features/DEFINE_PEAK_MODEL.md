@@ -252,8 +252,9 @@ Each of these is open to change through `/iterate`.
 
 ## Acceptance Criteria
 
-Seed-42 figures (AC-44, AC-47) come from the brainstorm's scratch script (F-28, F-30). A committed
-local spike must reproduce them before `/design` (A-17). If it gives other numbers, the ACs change
+Seed-42 figures (AC-44, AC-47) were first computed by the brainstorm's scratch script (F-28, F-30)
+and are reproduced by `spikes/local/a17_peak_labels_eligibility.py` from the definitions in this
+document (A-17, validated 2026-10-21, ADR 0007). If it gives other numbers, the ACs change
 through `/iterate`. They are not quietly corrected in `/build`.
 
 | ID | Given | When | Then |
@@ -370,7 +371,7 @@ None. Q-18 and Q-19 are decided as D-35 and D-36.
 | A-12 | Assumption | Feature Engineering in UC works on Free Edition serverless: client installs in the job environment, `create_table` with `timeseries_columns`, `create_training_set` with `timestamp_lookup_key`, `fe.log_model`, `fe.score_batch`, lineage graph from model to feature table | **Pending, spike 05 (hard gate before `/design`)**; failure selects the 1B fallback (D-32) |
 | A-15 | Assumption | The monthly quality table supports a point-in-time window per target date | Validated 2026-10-20 (contracts, METER_INGESTION AC-24) |
 | A-16 | Assumption | Training is deterministic on serverless: two runs on the same input and seed give identical scores | **Pending, spike 05 (hard gate before `/design`)**; then AC-49 |
-| A-17 | Assumption | The seed-42 label and eligibility figures of F-28, F-30 and F-31 (33,093 labels; 16,969 / 7,170 / 5,116 eligible) are reproduced by a committed script | Pending: a local spike in `spikes/local/` before `/design`; AC-44 and AC-47 depend on it |
+| A-17 | Assumption | The seed-42 label and eligibility figures of F-28, F-30 and F-31 (33,093 labels; 16,969 / 7,170 / 5,116 eligible) are reproduced by a committed script | Validated 2026-10-21: `spikes/local/a17_peak_labels_eligibility.py` recomputes every AC-41, AC-44 and AC-47 figure from the written definitions; the AC-63 run gives 7.91% positive and 29,100 eligible labelled rows (default 29,255) (ADR 0007) |
 | A-18 | Assumption | Dark Sky `temperature` is in degrees Celsius | Pending; the profile samples (9.46 to 10.24 on a November night in London) support it; QR-18 range counts confirm it in `/build` |
 
 ---
@@ -382,7 +383,7 @@ None. Q-18 and Q-19 are decided as D-35 and D-36.
 | Problem | 3 | Concrete consumer need and a concrete gap: point-in-time evidence and lineage from governed facts to a daily score |
 | Users | 2 | The consumer is hypothetical (D-21) with no service-level expectations; operator and auditor needs are concrete |
 | Scope | 3 | Boundary with `METER_INGESTION` fixed (C-08, D-33); every out-of-scope item has a release |
-| Acceptance criteria | 2 | 32 numbered, measurable criteria covering every FR, with correctness, idempotency, data quality, point-in-time and failure paths. Not 3: the t tie rule waits on OD-08 and the seed-42 counts on A-17 |
+| Acceptance criteria | 2 | 32 numbered, measurable criteria covering every FR, with correctness, idempotency, data quality, point-in-time and failure paths. Not 3: the t tie rule waits on OD-08 |
 | Constraints | 2 | Platform limits and fallbacks are documented, but three platform assumptions (A-04, A-12, A-16) wait on spike 05, which can change tasks 2, 4 and 5 |
 | **Total** | **12/15** | Gate: 12 or more |
 
@@ -395,9 +396,9 @@ None. Q-18 and Q-19 are decided as D-35 and D-36.
     consumer written against Q-08 must use the new name.
   - On-demand training with automatic promotion (D-36) means a bad run replaces `champion` with no
     gate beyond AC-52's weak bar and AC-53's empty-month check.
-  - AC-44 and AC-47 use numbers from a scratch script outside the repository (A-17). AC-63's band
-    of 1 pp around 7.9% uses the label-analysis figure, which came from a different computation (all days of
-    the whole period).
+  - AC-44, AC-47 and AC-63 rest on one local recomputation (A-17, ADR 0007). It is independent of
+    the scratch script but written by the same project, so `/build` tests on the platform remain the
+    real check.
   - Several definitions were added here, not decided upstream (*Added in this document*):
     complete-days-only averages, as-stored values for an incomplete D, orphans left out, early stop
     on empty months. Each one is plausible, but none was confirmed by the user.
@@ -426,18 +427,16 @@ None. Q-18 and Q-19 are decided as D-35 and D-36.
     look like low-consumption days.
 - **What I would do differently:** Commit the label and eligibility script before writing numeric
   ACs, as `METER_INGESTION` did with A-13, and settle object names during the brainstorm.
-- **Next improvement:** Commit the F-26 to F-31 computation as `spikes/local/` and validate A-17.
-  Run spike 05 and record it in an ADR (AC-67). Record the label threshold choice and the label
+- **Next improvement:** Run spike 05 and record it in an ADR (AC-67). Record the label threshold choice and the label
   analysis table in an ADR, as the brainstorm risk table asks.
 
 ---
 
 ## Next Step
 
-1. Local spike for A-17 in `spikes/local/` reproduces AC-44 and AC-47.
-2. **Hard gate:** spike 05 (`spikes/databricks/05_spike_mlflow_uc.py`, A-04, A-12, A-16) passes or
-   the D-32 fallback is chosen, recorded in an ADR (FR-32).
-3. `/design .claude/sdd/features/DEFINE_PEAK_MODEL.md`
+1. **Hard gate:** spike 05 (`spikes/databricks/05_spike_mlflow_uc.py`, A-04, A-12, A-16) passes or
+   the D-32 fallback is chosen, recorded in ADR 0007 (FR-32).
+2. `/design .claude/sdd/features/DEFINE_PEAK_MODEL.md`
 
 ---
 
@@ -447,3 +446,4 @@ None. Q-18 and Q-19 are decided as D-35 and D-36.
 |---|---|---|---|
 | 2026-10-21 | Created from `BRAINSTORM_PEAK_MODEL.md` (Ready for Define): FR-18 to FR-32, NFR-10 to NFR-18, AC-36 to AC-67, QR-16 to QR-20, C-08 to C-10, A-17, A-18, Q-19 and OD-07 to OD-13 added; Q-18 answered with a proposal pending the user's confirmation. Status `Draft` | Phase 1 of the SDD workflow | `/design` blocked until Q-18 and Q-19 are confirmed and spike 05 passes or the fallback is chosen |
 | 2026-10-21 | Q-18 and Q-19 decided by the user as D-35 and D-36 (proposals accepted unchanged, including `_scored_at`); proposal markers removed; status `Ready for Design` | User confirmation | None on requirements; `/design` still gated on A-17 and spike 05 |
+| 2026-10-21 | A-17 Validated; AC intro, Self-Review and Next Step updated | Local spike `spikes/local/a17_peak_labels_eligibility.py` reproduces the AC-41, AC-44, AC-47 and AC-63 figures (ADR 0007) | None; AC figures unchanged |

@@ -12,3 +12,4 @@ Records are never deleted; a reversed decision is marked `Superseded by NNNN`.
 | 0004 | [One Lakeflow pipeline for Silver and Gold, with a rule-evaluation materialized view feeding quarantine and metrics](0004-single-lakeflow-pipeline-with-quarantine-routing.md) | Accepted | 2026-10-15 |
 | 0005 | [First-ingested-wins deduplication with `row_number()` in materialized views](0005-first-ingested-wins-cross-source-deduplication.md) | Accepted | 2026-10-15 |
 | 0006 | [Bronze tables, not Kafka, are the replay and reprocessing source](0006-bronze-tables-as-replay-source.md) | Accepted | 2026-10-15 |
+| 0007 | [PEAK_MODEL runtime and data assumptions](0007-peak-model-runtime-and-data-assumptions.md) | Proposed | 2026-10-21 |
