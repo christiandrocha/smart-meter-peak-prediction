@@ -1,0 +1,88 @@
+# Data contract: daily household features (Unity Catalog feature table, time-series column feature_date).
+# Defined in .claude/sdd/features/DEFINE_PEAK_MODEL.md (Data Contracts, Feature definitions).
+dataset: smart_meter_dev.ml.household_features_daily
+kind: table
+owner: PEAK_MODEL
+description: Features of one household dated feature day D, computed only from data dated D or earlier, used to predict day D + 1.
+grain: one row per household in silver.households per feature date D
+primary_key: [household_id, feature_date]
+timeseries_column: feature_date
+density: "dense: exactly households x dates from the study start (2012-07-01) to the latest Gold reading_date, nulls allowed in the numeric features; the as-of lookup then always finds the row dated T - 1"
+point_in_time: "a row dated D uses only data dated D or earlier; the training and scoring lookup for target date T reads the row dated T - 1"
+freshness:
+  expected_latency: 24h
+  schedule: daily, after the Silver/Gold pipeline update
+schema:
+  - name: household_id
+    type: string
+    nullable: false
+    description: Household identifier.
+  - name: feature_date
+    type: date
+    nullable: false
+    description: Feature day D (UTC calendar date).
+  - name: total_energy_kwh_1d
+    type: double
+    nullable: true
+    description: total_energy_kwh of the Gold row of D as stored (also for an incomplete day); null without a Gold row.
+  - name: max_energy_kwh_1d
+    type: double
+    nullable: true
+    description: max_energy_kwh of the Gold row of D as stored; null without a Gold row.
+  - name: avg_energy_kwh_7d
+    type: double
+    nullable: true
+    description: Mean total_energy_kwh over the complete days among the 7 days ending at D; null when none.
+  - name: avg_energy_kwh_28d
+    type: double
+    nullable: true
+    description: Mean total_energy_kwh over the complete days among the 28 days ending at D; null when none.
+  - name: median_energy_kwh_same_weekday_8w
+    type: double
+    nullable: true
+    description: D-19 baseline of T = D + 1, the median of the last baseline_day_count complete days with the weekday of T within label_lookback_weeks; null when fewer exist.
+  - name: complete_day_share_28d
+    type: double
+    nullable: false
+    description: Complete days among the 28 days ending at D, divided by 28 (days before the grid start count as not complete).
+  - name: target_weekday
+    type: int
+    nullable: true
+    description: ISO weekday of T = D + 1 (1 = Monday to 7 = Sunday).
+  - name: target_month
+    type: int
+    nullable: true
+    description: Month of T = D + 1 (1 to 12).
+  - name: acorn_group
+    type: string
+    nullable: true
+    description: Affluent, Comfortable or Adversity, from silver.households.
+  - name: tariff
+    type: string
+    nullable: true
+    description: Std or ToU, from silver.households.
+  - name: mean_temperature_c_1d
+    type: double
+    nullable: true
+    description: Mean temperature_c over the UTC hours of D (summed in a fixed order); null when there are no hours.
+  - name: temperature_hour_count_1d
+    type: int
+    nullable: false
+    description: Number of silver.weather_hourly rows in [D 00:00Z, D + 1 00:00Z); 0 when none.
+quality:
+  - id: G-10
+    rule: "one row per household and date from the study start to the latest Gold reading_date, unique keys"
+    action: fail
+  - rule: "complete_day_share_28d and temperature_hour_count_1d are not null"
+    action: fail
+properties:
+  - smart_meter.baseline_day_count
+  - smart_meter.label_lookback_weeks
+consumers:
+  - name: PEAK_MODEL training
+    usage: fe.create_training_set with timestamp_lookup_key
+  - name: PEAK_MODEL scoring
+    usage: fe.score_batch for the households eligible on T
+changes:
+  policy: additive changes allowed; breaking changes need a new version and an ADR (the name median_energy_kwh_same_weekday_8w keeps "8w" while label_lookback_weeks is a parameter)
+  version: 1
