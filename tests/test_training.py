@@ -503,6 +503,34 @@ def test_ac54_register_finds_the_version_of_this_run_with_a_name_only_filter() -
         )
 
 
+def test_ac54_reload_uses_the_registered_signature_with_the_fe_lookup_keys() -> None:
+    """``fe.log_model`` adds household_id and target_date to the signature (PR 2 gate, D-22)."""
+    seen: list = []
+    names = ["household_id", "target_date", *model.FEATURE_COLUMNS]
+
+    class Loaded:
+        metadata = SimpleNamespace(
+            get_input_schema=lambda: SimpleNamespace(input_names=lambda: names)
+        )
+
+        def predict(self, frame):
+            seen.append(frame)
+            return np.full(len(frame), 0.25)
+
+    log: list = []
+    tracker = fake_tracker(log, 0.0)
+    tracker.mlflow = SimpleNamespace(pyfunc=SimpleNamespace(load_model=lambda uri: Loaded()))
+    frame = make_inputs().frame[["household_id", "target_date", *model.FEATURE_COLUMNS]].head(5)
+    tracker.register_model(
+        None, sample_input=frame, expected_scores=np.full(5, 0.25), threshold=0.5
+    )
+    (passed,) = seen
+    assert list(passed.columns) == names
+    assert pd.api.types.is_datetime64_any_dtype(passed["target_date"])
+    with pytest.raises(KeyError):
+        registry.reload_input(Loaded(), frame[model.FEATURE_COLUMNS])
+
+
 def test_ac54_reload_mismatch_stops_before_the_tag_and_the_alias() -> None:
     log: list = []
     frame = make_inputs().frame[model.FEATURE_COLUMNS].head(5)

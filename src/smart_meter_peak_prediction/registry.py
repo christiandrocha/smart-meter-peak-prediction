@@ -173,6 +173,20 @@ def library_versions() -> dict[str, str]:
 
 
 # ----------------------------------------------------------------------------- tracker
+def reload_input(reloaded: Any, sample_input: pd.DataFrame) -> pd.DataFrame:
+    """The columns the registered signature requires, in its order.
+
+    ``fe.log_model`` adds the lookup keys (``household_id``, ``target_date`` as a timestamp) to the
+    signature, so a features-only frame fails schema enforcement on reload (PR 2 gate, D-22).
+    """
+    schema = getattr(getattr(reloaded, "metadata", None), "get_input_schema", lambda: None)()
+    names = schema.input_names() if schema is not None else list(FEATURE_COLUMNS)
+    frame = sample_input.copy()
+    if "target_date" in names:
+        frame["target_date"] = pd.to_datetime(frame["target_date"])
+    return frame[names]
+
+
 class MlflowTracker:
     """``training.Tracker`` over MLflow, the Feature Engineering client and the UC registry."""
 
@@ -258,7 +272,7 @@ class MlflowTracker:
             )
         version = max(versions)
         reloaded = self.mlflow.pyfunc.load_model(f"models:/{self.model_name}/{version}")
-        again = np.asarray(reloaded.predict(sample_input[FEATURE_COLUMNS]), dtype="float64")
+        again = np.asarray(reloaded.predict(reload_input(reloaded, sample_input)), dtype="float64")
         diff = float(np.max(np.abs(again - np.asarray(expected_scores, dtype="float64"))))
         if diff != 0.0:
             raise ReloadMismatchError(
