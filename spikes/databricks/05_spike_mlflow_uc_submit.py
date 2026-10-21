@@ -67,6 +67,12 @@ def cleanup(w: WorkspaceClient, catalog: str, schema: str, root: str, experiment
     fq = f"{catalog}.{schema}.{PREFIX}"
     for model in (f"{fq}_model_fe", f"{fq}_model_plain"):
         try:
+            # UC refuses to delete a model that still has versions: drop aliases and versions first.
+            info = w.registered_models.get(model, include_aliases=True)
+            for alias in info.aliases or []:
+                w.registered_models.delete_alias(model, alias.alias_name)
+            for version in w.model_versions.list(model):
+                w.model_versions.delete(model, version.version)
             w.registered_models.delete(model)
             print("deleted model", model)
         except Exception as exc:  # noqa: BLE001
@@ -100,7 +106,7 @@ def main() -> int:
     w = WorkspaceClient(profile=args.profile) if args.profile else WorkspaceClient()
     me = w.current_user.me().user_name
     root = f"/Users/{me}/spikes/{PREFIX}"
-    experiment = f"/Users/{me}/spikes/{PREFIX}"
+    experiment = f"/Users/{me}/spikes/{PREFIX}_experiment"
     notebook_path = f"{root}/05_spike_mlflow_uc"
     w.workspace.mkdirs(root)
     w.workspace.import_(
