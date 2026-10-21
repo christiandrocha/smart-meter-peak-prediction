@@ -21,12 +21,9 @@ Target release: v0.1, second of the two features of the end-to-end thin slice.
 cadence: on demand, each successful run moves `champion`) is decided as D-36. Both were confirmed
 by the user on 2026-10-21.
 
-**Hard gate before `/design` (separate from this document's status):** spike 05
-(`spikes/databricks/05_spike_mlflow_uc.py`) must pass for A-04 (MLflow UC registry and alias),
-A-12 (Feature Engineering on serverless) and A-16 (deterministic training), or the D-32 fallback
-(plain Delta tables with an explicit join) must be chosen. Its outcome is recorded in an ADR
-(FR-32, AC-67). A failed A-12 changes tasks 2, 4 and 5. It does not change any requirement here,
-because every FR and AC below is written to hold under both variants.
+**Spike 05 (gate before `/design`) passed on 2026-10-21:** A-04, A-12 and A-16 hold on Free
+Edition serverless (ADR 0007, Accepted; FR-32, AC-67). Variant 1A of D-32 applies. Every FR and AC
+below is still written to hold under both variants, so the 1B fallback stays available.
 
 **ID numbering.** Decision, finding, assumption and question IDs (D-, F-, A-, Q-) continue the
 project-wide series of the brainstorms. FR, NFR, AC, constraint, quality-rule and design-question
@@ -366,11 +363,11 @@ None. Q-18 and Q-19 are decided as D-35 and D-36.
 | C-08 | Constraint | The `METER_INGESTION` interface (`gold.household_daily_consumption`, `gold.household_data_quality_monthly`, `silver.households`) is read only; changes go through `/iterate` on both features; its job and pipeline are not modified (D-33) | Yes (user, 2026-10-20) |
 | C-09 | Constraint | Single-node scikit-learn; no ML dependency beyond scikit-learn, MLflow and the Databricks Feature Engineering client | Yes (brainstorm constraints) |
 | C-10 | Constraint | Batch only: no model serving endpoint and no online tables (Free Edition) | Yes (KB, verified 2026-10-06) |
-| A-04 | Assumption | MLflow registers models in UC and resolves aliases on Free Edition serverless; a scikit-learn model with a signature loads by `models:/...@champion` | **Pending, spike 05 (hard gate before `/design`)** |
+| A-04 | Assumption | MLflow registers models in UC and resolves aliases on Free Edition serverless; a scikit-learn model with a signature loads by `models:/...@champion` | Validated 2026-10-21 by spike 05 (ADR 0007): registered, alias `champion` set, load by alias reproduced the scores exactly |
 | A-07 | Assumption | Hourly weather timestamps are UTC | Validated 2026-10-20 on the file (F-20); kept true in Bronze by AC-37 |
-| A-12 | Assumption | Feature Engineering in UC works on Free Edition serverless: client installs in the job environment, `create_table` with `timeseries_columns`, `create_training_set` with `timestamp_lookup_key`, `fe.log_model`, `fe.score_batch`, lineage graph from model to feature table | **Pending, spike 05 (hard gate before `/design`)**; failure selects the 1B fallback (D-32) |
+| A-12 | Assumption | Feature Engineering in UC works on Free Edition serverless: client installs in the job environment, `create_table` with `timeseries_columns`, `create_training_set` with `timestamp_lookup_key`, `fe.log_model`, `fe.score_batch`, lineage graph from model to feature table | Validated 2026-10-21 by spike 05 (ADR 0007): every call succeeded in a serverless notebook task with `databricks-feature-engineering` 0.18.2; the training set matched the explicit join (0 differences); UC lineage lists the model downstream of the table. Variant 1A applies |
 | A-15 | Assumption | The monthly quality table supports a point-in-time window per target date | Validated 2026-10-20 (contracts, METER_INGESTION AC-24) |
-| A-16 | Assumption | Training is deterministic on serverless: two runs on the same input and seed give identical scores | **Pending, spike 05 (hard gate before `/design`)**; then AC-49 |
+| A-16 | Assumption | Training is deterministic on serverless: two runs on the same input and seed give identical scores | Validated 2026-10-21 by spike 05 (ADR 0007): bitwise-identical scores in one process and across two tasks; AC-49 stands |
 | A-17 | Assumption | The seed-42 label and eligibility figures of F-28, F-30 and F-31 (33,093 labels; 16,969 / 7,170 / 5,116 eligible) are reproduced by a committed script | Validated 2026-10-21: `spikes/local/a17_peak_labels_eligibility.py` recomputes every AC-41, AC-44 and AC-47 figure from the written definitions; the AC-63 run gives 7.91% positive and 29,100 eligible labelled rows (default 29,255) (ADR 0007) |
 | A-18 | Assumption | Dark Sky `temperature` is in degrees Celsius | Pending; the profile samples (9.46 to 10.24 on a November night in London) support it; QR-18 range counts confirm it in `/build` |
 
@@ -384,7 +381,7 @@ None. Q-18 and Q-19 are decided as D-35 and D-36.
 | Users | 2 | The consumer is hypothetical (D-21) with no service-level expectations; operator and auditor needs are concrete |
 | Scope | 3 | Boundary with `METER_INGESTION` fixed (C-08, D-33); every out-of-scope item has a release |
 | Acceptance criteria | 2 | 32 numbered, measurable criteria covering every FR, with correctness, idempotency, data quality, point-in-time and failure paths. Not 3: the t tie rule waits on OD-08 |
-| Constraints | 2 | Platform limits and fallbacks are documented, but three platform assumptions (A-04, A-12, A-16) wait on spike 05, which can change tasks 2, 4 and 5 |
+| Constraints | 2 | Platform limits and fallbacks are documented and every platform assumption is validated (A-04, A-12, A-16, ADR 0007); held at 2 because the spike used synthetic data, not the seed-42 tables |
 | **Total** | **12/15** | Gate: 12 or more |
 
 ---
@@ -407,8 +404,8 @@ None. Q-18 and Q-19 are decided as D-35 and D-36.
   - AC-62's "identical to tag `v0.1.0`" assumes the tag holds the shipped definitions and no
     follow-up has changed them on `main` since.
 - **Risks:**
-  - Spike 05 may fail A-12 (FE on Free Edition) or A-16 (determinism on serverless). The first
-    switches to the 1B fallback. The second would make AC-49 unachievable and needs `/iterate`.
+  - Spike 05 passed on synthetic data in a one-off run. A Free Edition change to the serverless
+    environment or the FE client could still break A-12 or A-16; the 1B fallback stays documented.
   - The max-F1 threshold is tuned on validation months with a 15.8% positive share and applied to
     a 13.6% test period, so flag volume and precision at t will drift by month (F-28). AC-52 only
     makes that visible.
@@ -427,16 +424,14 @@ None. Q-18 and Q-19 are decided as D-35 and D-36.
     look like low-consumption days.
 - **What I would do differently:** Commit the label and eligibility script before writing numeric
   ACs, as `METER_INGESTION` did with A-13, and settle object names during the brainstorm.
-- **Next improvement:** Run spike 05 and record it in an ADR (AC-67). Record the label threshold choice and the label
+- **Next improvement:** Record the label threshold choice and the label
   analysis table in an ADR, as the brainstorm risk table asks.
 
 ---
 
 ## Next Step
 
-1. **Hard gate:** spike 05 (`spikes/databricks/05_spike_mlflow_uc.py`, A-04, A-12, A-16) passes or
-   the D-32 fallback is chosen, recorded in ADR 0007 (FR-32).
-2. `/design .claude/sdd/features/DEFINE_PEAK_MODEL.md`
+1. `/design .claude/sdd/features/DEFINE_PEAK_MODEL.md`
 
 ---
 
@@ -447,3 +442,4 @@ None. Q-18 and Q-19 are decided as D-35 and D-36.
 | 2026-10-21 | Created from `BRAINSTORM_PEAK_MODEL.md` (Ready for Define): FR-18 to FR-32, NFR-10 to NFR-18, AC-36 to AC-67, QR-16 to QR-20, C-08 to C-10, A-17, A-18, Q-19 and OD-07 to OD-13 added; Q-18 answered with a proposal pending the user's confirmation. Status `Draft` | Phase 1 of the SDD workflow | `/design` blocked until Q-18 and Q-19 are confirmed and spike 05 passes or the fallback is chosen |
 | 2026-10-21 | Q-18 and Q-19 decided by the user as D-35 and D-36 (proposals accepted unchanged, including `_scored_at`); proposal markers removed; status `Ready for Design` | User confirmation | None on requirements; `/design` still gated on A-17 and spike 05 |
 | 2026-10-21 | A-17 Validated; AC intro, Self-Review and Next Step updated | Local spike `spikes/local/a17_peak_labels_eligibility.py` reproduces the AC-41, AC-44, AC-47 and AC-63 figures (ADR 0007) | None; AC figures unchanged |
+| 2026-10-21 | A-04, A-12 and A-16 Validated by spike 05; variant 1A of D-32 applies; gate text, Self-Review, Clarity note and Next Step updated | Spike 05 run 624093996306456 passed every check (ADR 0007, Accepted) | `/design` can start; pin `databricks-feature-engineering` and `scikit-learn` in the job environment |

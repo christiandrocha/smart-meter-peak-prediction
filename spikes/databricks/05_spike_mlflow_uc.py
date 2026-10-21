@@ -35,6 +35,7 @@ dbutils.library.restartPython()
 
 # COMMAND ----------
 
+import importlib.metadata
 import inspect
 import json
 import os
@@ -72,7 +73,7 @@ SEED = 42
 
 mlflow.set_registry_uri("databricks-uc")
 user = spark.sql("SELECT current_user()").first()[0]
-mlflow.set_experiment(f"/Users/{user}/spikes/{prefix}")
+mlflow.set_experiment(f"/Users/{user}/spikes/{prefix}_experiment")
 client = MlflowClient()
 
 results: dict = {"mode": mode, "checks": {}, "info": {}, "errors": {}}
@@ -91,7 +92,8 @@ def error(key: str, exc: BaseException) -> None:
 
 try:
     from databricks.feature_engineering import FeatureEngineeringClient, FeatureLookup
-    from databricks.feature_engineering import __version__ as fe_version
+
+    fe_version = importlib.metadata.version("databricks-feature-engineering")
 
     fe = FeatureEngineeringClient()
     fe_ok = True
@@ -215,6 +217,7 @@ if mode == "main":
         record("A-12 create_table with timeseries_columns", True, FEATURES)
     except Exception as exc:  # noqa: BLE001
         error("A-12 create_table", exc)
+        feats_sdf.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(FEATURES)
         record(
             "A-12 create_table with timeseries_columns",
             False,
@@ -223,43 +226,51 @@ if mode == "main":
 
 # COMMAND ----------
 
-# A-12: training set and point-in-time semantics.
+# A-12: training set and point-in-time semantics. The explicit join is the 1B fallback and the
+# reference the FE training set is compared with; A-04 and A-16 run on it if FE fails.
 labels_sdf = spark.table(LABELS)
+explicit = (
+    labels_sdf.join(
+        spark.table(FEATURES).withColumnRenamed("feature_date", "lookup_date"),
+        ["household_id", "lookup_date"],
+        "left",
+    )
+    .drop("lookup_date")
+    .toPandas()
+    .sort_values(KEYS)
+    .reset_index(drop=True)
+)
+explicit["target_date"] = pd.to_datetime(explicit["target_date"])
 training_set, train_df = None, None
-try:
-    training_set, train_df = training_frame(labels_sdf)
-    explicit = (
-        spark.table(LABELS)
-        .join(
-            spark.table(FEATURES).withColumnRenamed("feature_date", "lookup_date"),
-            ["household_id", "lookup_date"],
-            "left",
+if fe_ok:
+    try:
+        training_set, train_df = training_frame(labels_sdf)
+        same_rows = len(explicit) == len(train_df)
+        diff = (
+            (explicit[FEATURE_COLS].to_numpy() != train_df[FEATURE_COLS].to_numpy())
+            .any(axis=1)
+            .sum()
+            if same_rows
+            else -1
         )
-        .drop("lookup_date")
-        .toPandas()
-        .sort_values(KEYS)
-        .reset_index(drop=True)
-    )
-    explicit["target_date"] = pd.to_datetime(explicit["target_date"])
-    same_rows = len(explicit) == len(train_df)
-    diff = (
-        (explicit[FEATURE_COLS].to_numpy() != train_df[FEATURE_COLS].to_numpy()).any(axis=1).sum()
-        if same_rows
-        else -1
-    )
-    record(
-        "A-12 create_training_set with timestamp_lookup_key",
-        same_rows and diff == 0,
-        f"{len(train_df)} rows; {diff} rows differ from the explicit join "
-        "on feature_date = target_date - 1",
-    )
-except Exception as exc:  # noqa: BLE001
-    error("A-12 create_training_set", exc)
-    record(
-        "A-12 create_training_set with timestamp_lookup_key",
-        False,
-        results["errors"]["A-12 create_training_set"],
-    )
+        record(
+            "A-12 create_training_set with timestamp_lookup_key",
+            same_rows and diff == 0,
+            f"{len(train_df)} rows; {diff} rows differ from the explicit join "
+            "on feature_date = target_date - 1",
+        )
+    except Exception as exc:  # noqa: BLE001
+        error("A-12 create_training_set", exc)
+        record(
+            "A-12 create_training_set with timestamp_lookup_key",
+            False,
+            results["errors"]["A-12 create_training_set"],
+        )
+if train_df is None:
+    train_df = explicit
+results["info"]["training_data"] = (
+    "fe.create_training_set" if training_set is not None else "explicit join"
+)
 
 if mode == "main" and training_set is not None:
     # As-of semantics (informational, why FR-20 keeps the table dense): a lookup after the last
