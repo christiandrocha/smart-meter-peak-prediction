@@ -88,6 +88,9 @@ METER_INGESTION job or to the pipeline:
     run fails, and the next daily run is the retry.
   - A serverless automatic retry of `train_model` (DA-12) could register a second, identical
     version. The version is deterministic (AC-49), so `champion` still points at a correct model.
+- **Note (2026-10-21, PR 2 gate):** on serverless, `max_retries: 0` alone does not stop retries:
+  auto-optimization retried the failed training task and registered a second version. The
+  training task therefore also sets `disable_auto_optimization: true` (build deviation D-21).
 - **What would make us revisit this:**
   - a real consumer that needs readings ingested in the same run;
   - Free Edition allowing table-update triggers on materialized views (verified by a spike);

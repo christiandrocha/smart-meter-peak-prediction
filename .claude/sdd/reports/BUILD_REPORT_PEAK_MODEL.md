@@ -180,6 +180,8 @@ from. AC-65 and AC-67 are decided by tests of PR 2.
 | D-17 | Empty-Bronze stop | - | `build_weather_silver` raises when the recomputed Silver has 0 rows | The MERGE would delete every Silver row | Yes, /iterate 2026-10-21 (new guard G-12 and MERGE note) |
 | D-18 | Delegation | Named agents per entry | Implemented directly (as D-02) | - | n/a |
 | D-19 | Serverless environment | Notebook tasks with no explicit environment (spike 05 ran on the one-off default) | Both job files declare `peak_model_env` with `environment_version: "2"` and every notebook task uses it; test `test_g01_every_notebook_task_runs_on_serverless_environment_version_2` | PR 2 gate run 568274842588512: the bundle job ran on Python 3.12, `%pip install ... scikit-learn==1.3.0` built from source and failed (`metadata-generation-failed`) in `build_features`, both attempts. Probe: environments 2 and the one-off default are Python 3.11 with scikit-learn 1.3.0; 3 is Python 3.12 with 1.4.2; 4 is Python 3.12 with 1.6.1 and numpy 2.1. User chose environment 2 | Yes, /iterate 2026-10-21 (G-01, risk row, ADR 0007 note) |
+| D-20 | Version lookup after `fe.log_model` | Find the new version by run id (PR 1 review fix) | `register_model` searches with `name = '...'` only and matches `run_id` in Python; fails clearly when the run registered none; test `test_ac54_register_finds_the_version_of_this_run_with_a_name_only_filter` (the fake client now rejects other filters, as UC does) | PR 2 gate training run 833313033243922: UC rejected `name = ... and run_id = ...` with `INVALID_PARAMETER_VALUE` after the version was registered | Yes, DESIGN change log 2026-10-21 |
+| D-21 | No retry of `train_model` | `max_retries: 0` | Also `disable_auto_optimization: true`; test `test_ac53_training_task_is_never_retried_by_the_platform` | The same run had a second attempt: serverless auto-optimization retries failed tasks even with `max_retries: 0` (the deployed task shows `max_retries` unset). Each attempt registered a version: versions 1 and 2 exist with no alias | Yes, DESIGN change log 2026-10-21; ADR 0008 note |
 
 ---
 
@@ -250,6 +252,10 @@ Prerequisites: PR 2 committed and merged or at least committed on the branch, so
 
 - 2026-10-21, deploy of main `db67283` and weather upload: OK.
 - 2026-10-21, step 3, run 568274842588512: `refresh_silver_gold` (173 s), `ingest_weather` (79 s), `build_weather_silver` (25 s) and `build_labels` (60 s) succeeded; `build_features` failed in `%pip` on both attempts (Python 3.12 environment, D-19). Fixed by pinning serverless environment version 2; the gate restarts at step 3.
+- 2026-10-21, step 3 rerun, run 935178667816547 (environment 2): all five tasks succeeded. Bronze and Silver weather 21,165 rows; features and labels 36,480 rows each with unique keys; 33,093 labelled at 14.61% positive; 29,255 eligible. Features created as an FE table, MERGE inserted 36,480. DA-18 Pass: both tables carry the 90-day retention properties and the `smart_meter.*` parameters.
+- 2026-10-21, DA-15 rerun, run 211913268603650: `build_features` MERGE 0 / 0 / 0 (Pass); the table version still rose from 5 to 8 (property updates commit versions; code-review item).
+- 2026-10-21, DA-14 and AC-63, run 441478403476938 (`label_threshold=1.5`, `coverage_min=0.90` as job parameters): 2,618 of 33,093 positive (7.91%), 29,100 eligible (Pass). Run 217472839647775 restored the defaults (4,836 positives, 29,255 eligible).
+- 2026-10-21, step 4 training, run 833313033243922: failed on both attempts after registering versions 1 and 2 (D-20, D-21); `champion` not set. Fixed; the gate restarts at step 4.
 
 ---
 

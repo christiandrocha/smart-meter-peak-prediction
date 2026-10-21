@@ -246,12 +246,17 @@ class MlflowTracker:
             signature=signature,
             code_paths=self.code_paths,
         )
-        version = max(
+        # The UC registry only accepts the filter `name = '...'`, so the run is matched here.
+        versions = [
             int(v.version)
-            for v in self.client.search_model_versions(
-                f"name = '{self.model_name}' and run_id = '{self._run_id}'"
+            for v in self.client.search_model_versions(f"name = '{self.model_name}'")
+            if v.run_id == self._run_id
+        ]
+        if not versions:
+            raise RuntimeError(
+                f"no version of {self.model_name} was registered by run {self._run_id}"
             )
-        )
+        version = max(versions)
         reloaded = self.mlflow.pyfunc.load_model(f"models:/{self.model_name}/{version}")
         again = np.asarray(reloaded.predict(sample_input[FEATURE_COLUMNS]), dtype="float64")
         diff = float(np.max(np.abs(again - np.asarray(expected_scores, dtype="float64"))))

@@ -437,7 +437,14 @@ class FakeClient:
         self.log = log
 
     def search_model_versions(self, query):
-        return [SimpleNamespace(version="2"), SimpleNamespace(version="3")]
+        # Like the UC registry: only `name = '...'` is accepted (PR 2 gate, D-20).
+        if query != "name = 'c.ml.m'":
+            raise ValueError(f"INVALID_PARAMETER_VALUE: Unsupported filter query : `{query}`")
+        return [
+            SimpleNamespace(version="2", run_id="run-earlier"),
+            SimpleNamespace(version="3", run_id="run-this"),
+            SimpleNamespace(version="4", run_id="run-other"),
+        ]
 
     def set_model_version_tag(self, name, version, key, value):
         self.log.append(("tag", version, key, value))
@@ -452,13 +459,15 @@ def fake_tracker(log, reload_offset: float):
             return np.full(len(frame), 0.25) + reload_offset
 
     pyfunc = SimpleNamespace(load_model=lambda uri: (log.append(("load", uri)), Loaded())[1])
-    return registry.MlflowTracker(
+    tracker = registry.MlflowTracker(
         mlflow=SimpleNamespace(pyfunc=pyfunc),
         client=FakeClient(log),
         fe=FakeFe(log),
         training_set=object(),
         model_name="c.ml.m",
     )
+    tracker._run_id = "run-this"
+    return tracker
 
 
 def test_ac54_register_logs_reloads_then_tags_then_moves_the_alias() -> None:
@@ -474,6 +483,24 @@ def test_ac54_register_logs_reloads_then_tags_then_moves_the_alias() -> None:
     assert log[2] == ("tag", "3", "decision_threshold", "0.4321")
     assert log[3] == ("alias", "champion", 3)
     assert {"code_paths", "signature", "training_set"} <= set(log[0][1])
+
+
+def test_ac54_register_finds_the_version_of_this_run_with_a_name_only_filter() -> None:
+    """The UC registry rejects `run_id` in the filter; a newer version of another run is skipped."""
+    log: list = []
+    frame = make_inputs().frame[model.FEATURE_COLUMNS].head(5)
+    tracker = fake_tracker(log, 0.0)
+    assert (
+        tracker.register_model(
+            None, sample_input=frame, expected_scores=np.full(5, 0.25), threshold=0.5
+        ).version
+        == 3
+    )
+    tracker._run_id = "run-without-version"
+    with pytest.raises(RuntimeError, match="no version"):
+        tracker.register_model(
+            None, sample_input=frame, expected_scores=np.full(5, 0.25), threshold=0.5
+        )
 
 
 def test_ac54_reload_mismatch_stops_before_the_tag_and_the_alias() -> None:

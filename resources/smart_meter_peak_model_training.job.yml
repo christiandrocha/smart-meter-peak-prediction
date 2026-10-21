@@ -40,6 +40,9 @@ resources:
         - task_key: train_model
           timeout_seconds: 3000
           max_retries: 0
+          # Serverless auto-optimization retries failed tasks even with max_retries 0, and a
+          # retry registers a second version (PR 2 gate, build deviation D-21).
+          disable_auto_optimization: true
           environment_key: peak_model_env
           notebook_task:
             notebook_path: ../notebooks/train_model.py
