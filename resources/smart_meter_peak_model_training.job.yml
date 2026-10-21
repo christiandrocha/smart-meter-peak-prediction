@@ -1,0 +1,43 @@
+# On-demand PEAK_MODEL training job (DESIGN, Bundle and job layout; ADR 0008, D-36, D-37).
+# One task trains, evaluates and registers a model and moves alias `champion`. There is no schedule
+# or trigger and no retry (a retry would register a second identical version). Run it only when
+# no daily run is active: G-04 fails a run whose feature table changes underneath it.
+# Runs on serverless compute. No secret is needed (workspace identity only). The split bounds and
+# the seed are job parameters (FR-31, training side), read as widgets of the same name (DA-14);
+# `git_commit` is the deployed commit (G-05, DA-17).
+resources:
+  jobs:
+    smart_meter_peak_model_training:
+      name: smart_meter_peak_model_training
+      max_concurrent_runs: 1
+      timeout_seconds: 3600
+      email_notifications:
+        on_failure:
+          - ${workspace.current_user.userName}
+      parameters:
+        - name: train_start
+          default: "2012-07-29"
+        - name: train_end
+          default: "2013-07-31"
+        - name: validation_start
+          default: "2013-08-01"
+        - name: validation_end
+          default: "2013-11-30"
+        - name: test_start
+          default: "2013-12-01"
+        - name: test_end
+          default: "2014-02-27"
+        - name: random_seed
+          default: "42"
+      tasks:
+        - task_key: train_model
+          timeout_seconds: 3000
+          max_retries: 0
+          notebook_task:
+            notebook_path: ../notebooks/train_model.py
+            base_parameters:
+              src_path: ${workspace.file_path}/src
+              catalog: ${var.catalog}
+              ml_schema: ${var.ml_schema}
+              experiment_path: /Users/${workspace.current_user.userName}/smart_meter_peak_model
+              git_commit: ${bundle.git.commit}

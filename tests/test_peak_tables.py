@@ -309,6 +309,21 @@ def test_ac63_parameters_default_parse_from_widgets_and_validate() -> None:
         PeakParameters(baseline_day_count=5, label_lookback_weeks=4)
 
 
+def test_ac63_baseline_day_count_above_lookback_weeks_is_rejected() -> None:
+    """G-09: N baseline days can never be found in fewer than N weeks, so nothing would be labelled.
+
+    Guards AC-63: the label parameters are job parameters, and a combination that silently labels
+    nothing must stop the task before any table is touched.
+    """
+    with pytest.raises(ValueError, match=r"G-09.*baseline_day_count must not exceed"):
+        PeakParameters(baseline_day_count=9)  # default lookback is 8 weeks
+    with pytest.raises(ValueError, match=r"G-09.*baseline_day_count must not exceed"):
+        PeakParameters.from_mapping({"baseline_day_count": "5", "label_lookback_weeks": "4"})
+    equal = PeakParameters(baseline_day_count=6, label_lookback_weeks=6)  # boundary: allowed
+    assert equal.baseline_day_count == equal.label_lookback_weeks
+    assert PeakParameters(baseline_day_count=9, label_lookback_weeks=9).baseline_day_count == 9
+
+
 def test_ac50_training_parameters_exclude_the_scoring_only_target_date() -> None:
     logged = PeakParameters(target_date=date(2014, 2, 28)).training_parameters()
     assert "target_date" not in logged

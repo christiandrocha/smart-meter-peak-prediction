@@ -168,6 +168,18 @@ def test_ac59_range_resolves_to_89_dates(tables) -> None:
     ) == [date(2014, 2, 20)]
 
 
+def test_ac59_target_date_end_without_target_date_is_rejected() -> None:
+    """G-09: a range end needs its start; nothing would be scored otherwise (FR-28, FR-31)."""
+    with pytest.raises(ValueError, match=r"G-09.*target_date_end needs target_date"):
+        PeakParameters(target_date_end=date(2014, 2, 27))
+    with pytest.raises(ValueError, match=r"G-09.*target_date_end needs target_date"):
+        PeakParameters.from_mapping({"target_date": "", "target_date_end": "2014-02-27"})
+    # A single date and a range of one day are both fine.
+    assert PeakParameters(target_date=date(2014, 2, 27)).target_date_end is None
+    same = PeakParameters(target_date=date(2014, 2, 27), target_date_end=date(2014, 2, 27))
+    assert same.target_date_end == same.target_date
+
+
 # ----------------------------------------------------------------------------- AC-60
 def test_ac60_missing_feature_date_fails_before_write(tables) -> None:
     writer = Recorder()

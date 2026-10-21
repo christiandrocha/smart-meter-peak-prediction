@@ -484,3 +484,96 @@ def test_ac54_reload_mismatch_stops_before_the_tag_and_the_alias() -> None:
             None, sample_input=frame, expected_scores=np.full(5, 0.25), threshold=0.5
         )
     assert [entry[0] for entry in log] == ["log_model", "load"]
+
+
+# ----------------------------------------------------------------------------- AC-48 wiring
+class _FakeHistory:
+    def __init__(self, versions: list[int]):
+        self._versions = versions
+
+    def first(self) -> dict:
+        return {"version": self._versions.pop(0)}
+
+
+class _SparkWithVersions:
+    """Real local Spark for ``createDataFrame``; ``DESCRIBE HISTORY`` answers from a list."""
+
+    def __init__(self, spark, versions: list[int]):
+        self._spark = spark
+        self._versions = versions
+
+    def sql(self, statement: str) -> _FakeHistory:
+        assert statement.startswith("DESCRIBE HISTORY c.ml.features")
+        return _FakeHistory(self._versions)
+
+    def createDataFrame(self, data):  # noqa: N802  (Spark API name)
+        return self._spark.createDataFrame(data)
+
+
+def _fake_feature_engineering(monkeypatch: pytest.MonkeyPatch, seen: dict):
+    """Stand-in for ``databricks.feature_engineering`` (installed on the platform only)."""
+    import sys
+    import types
+
+    class FeatureLookup:
+        def __init__(self, **kwargs):
+            seen["lookup"] = kwargs
+
+    package = types.ModuleType("databricks")
+    module = types.ModuleType("databricks.feature_engineering")
+    module.FeatureLookup = FeatureLookup
+    package.feature_engineering = module
+    monkeypatch.setitem(sys.modules, "databricks", package)
+    monkeypatch.setitem(sys.modules, "databricks.feature_engineering", module)
+
+    class TrainingSet:
+        def load_df(self):
+            return seen["df"]
+
+    class Fe:
+        def create_training_set(self, **kwargs):
+            seen["call"] = kwargs
+            seen["df"] = kwargs["df"]
+            return TrainingSet()
+
+    return Fe()
+
+
+def test_ac48_training_set_lookup_uses_date_keys_the_spike_shape_and_guard_g04(
+    spark, monkeypatch
+) -> None:
+    """The lookup keys are DATE (not timestamp), the shape is spike 05's, and G-04 is enforced."""
+    seen: dict = {}
+    fe = _fake_feature_engineering(monkeypatch, seen)
+    rows = pd.DataFrame(
+        {
+            "household_id": ["H1", "H2"],
+            "target_date": pd.to_datetime(["2013-08-02", "2013-08-03"]),  # pandas timestamps
+            "feature_date": pd.to_datetime(["2013-08-01", "2013-08-02"]),
+            "label_consumption_spike": [0, 1],
+        }
+    )
+    training_set, frame, version = registry.build_training_set(
+        fe, _SparkWithVersions(spark, [7, 7]), rows, "c.ml.features", model.FEATURE_COLUMNS
+    )
+    assert version == 7
+    assert dict(seen["df"].dtypes) == {
+        "household_id": "string",
+        "target_date": "date",
+        "lookup_date": "date",
+        "label_consumption_spike": "bigint",
+    }
+    assert seen["lookup"] == {
+        "table_name": "c.ml.features",
+        "lookup_key": "household_id",
+        "timestamp_lookup_key": "lookup_date",
+        "feature_names": list(model.FEATURE_COLUMNS),
+    }
+    assert seen["call"]["label"] == "label_consumption_spike"
+    assert seen["call"]["exclude_columns"] == ["lookup_date"]
+    assert len(frame) == 2
+    assert training_set is not None
+    with pytest.raises(training.GuardError, match=r"G-04.*version 7 to 8"):
+        registry.build_training_set(
+            fe, _SparkWithVersions(spark, [7, 8]), rows, "c.ml.features", model.FEATURE_COLUMNS
+        )
