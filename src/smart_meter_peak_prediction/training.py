@@ -446,7 +446,7 @@ def run_training(
         tracker.log_metrics(metrics)
         registered = tracker.register_model(
             ConsumptionSpikeModel(classifier),
-            sample_input=rows_by_split["test"][FEATURE_COLUMNS],
+            sample_input=rows_by_split["test"][[*KEYS, *FEATURE_COLUMNS]],
             expected_scores=scored["test"]["score"].to_numpy(),
             threshold=choice.threshold,
         )
