@@ -385,6 +385,14 @@ def test_g01_every_notebook_task_runs_on_serverless_environment_version_2(job: d
     }
 
 
+def test_ac53_training_task_is_never_retried_by_the_platform() -> None:
+    """ADR 0008, D-21: a retry would register a second version; serverless auto-optimization
+    retries failed tasks unless it is disabled, even with ``max_retries: 0``."""
+    (train,) = TRAINING["tasks"]
+    assert train["max_retries"] == 0
+    assert train["disable_auto_optimization"] is True
+
+
 # ----------------------------------------------------------------------------- UTC, I-14, wiring
 @pytest.mark.parametrize("name", PEAK_NOTEBOOKS)
 def test_ac37_notebooks_set_and_assert_utc_and_have_no_try_except(name: str) -> None:
