@@ -369,6 +369,22 @@ def test_g01_pip_pins_equal_pinned_requirements_and_restart_precedes_path_setup(
     assert "peak_config.check_versions()" in text
 
 
+@pytest.mark.parametrize("job", [DAILY, TRAINING], ids=["daily", "training"])
+def test_g01_every_notebook_task_runs_on_serverless_environment_version_2(job: dict) -> None:
+    """ADR 0007, D-19: the pins only install on the environment spike 05 validated (Python 3.11).
+
+    Without an explicit environment the jobs get a Python 3.12 environment, where
+    scikit-learn==1.3.0 has no wheel and the %pip cell fails.
+    """
+    environments = {e["environment_key"]: e["spec"] for e in job["environments"]}
+    assert environments == {"peak_model_env": {"environment_version": "2"}}
+    notebook_tasks = [t for t in job["tasks"] if "notebook_task" in t]
+    assert notebook_tasks
+    assert {t["task_key"]: t.get("environment_key") for t in notebook_tasks} == {
+        t["task_key"]: "peak_model_env" for t in notebook_tasks
+    }
+
+
 # ----------------------------------------------------------------------------- UTC, I-14, wiring
 @pytest.mark.parametrize("name", PEAK_NOTEBOOKS)
 def test_ac37_notebooks_set_and_assert_utc_and_have_no_try_except(name: str) -> None:

@@ -58,6 +58,12 @@ was exercised by the spike as the reference join.
   environment, because the serverless default scikit-learn (1.3.0) does not follow a plain
   install. Removing a registered model needs its aliases and versions deleted first, which matters
   for test cleanup.
+- **Note (2026-10-21, PR 2 gate):** the facts above hold for serverless environment version 2,
+  the default of one-off submitted runs where spike 05 ran. Jobs deployed from the bundle without
+  an explicit environment got Python 3.12, where the `scikit-learn==1.3.0` pin has no wheel. Both
+  PEAK_MODEL jobs therefore pin `environment_version: "2"` (DESIGN G-01, build deviation D-19).
+  Environment 3 has Python 3.12, scikit-learn 1.4.2 and numpy 1.26; environment 4 has
+  scikit-learn 1.6.1 and numpy 2.1.
 - **What would make us revisit this:** a change to the label or eligibility definitions (rerun
-  A-17), a new seed or sample (rerun A-17), or a Free Edition change to serverless ML libraries
-  (rerun spike 05).
+  A-17), a new seed or sample (rerun A-17), or a Free Edition change to serverless ML libraries,
+  or the retirement of serverless environment version 2 (rerun spike 05).

@@ -179,6 +179,7 @@ from. AC-65 and AC-67 are decided by tests of PR 2.
 | D-16 | Where tables are created | DDL in `ingest_weather` | Every notebook that needs the tables calls `peak_setup.ensure_tables` (ingest_weather, build_features, build_labels, score_predictions), which imports the ML stack through `scoring` | The partial bootstrap run and reruns must not depend on order | No |
 | D-17 | Empty-Bronze stop | - | `build_weather_silver` raises when the recomputed Silver has 0 rows | The MERGE would delete every Silver row | Yes, /iterate 2026-10-21 (new guard G-12 and MERGE note) |
 | D-18 | Delegation | Named agents per entry | Implemented directly (as D-02) | - | n/a |
+| D-19 | Serverless environment | Notebook tasks with no explicit environment (spike 05 ran on the one-off default) | Both job files declare `peak_model_env` with `environment_version: "2"` and every notebook task uses it; test `test_g01_every_notebook_task_runs_on_serverless_environment_version_2` | PR 2 gate run 568274842588512: the bundle job ran on Python 3.12, `%pip install ... scikit-learn==1.3.0` built from source and failed (`metadata-generation-failed`) in `build_features`, both attempts. Probe: environments 2 and the one-off default are Python 3.11 with scikit-learn 1.3.0; 3 is Python 3.12 with 1.4.2; 4 is Python 3.12 with 1.6.1 and numpy 2.1. User chose environment 2 | Yes, /iterate 2026-10-21 (G-01, risk row, ADR 0007 note) |
 
 ---
 
@@ -244,6 +245,11 @@ Prerequisites: PR 2 committed and merged or at least committed on the branch, so
    - DA-15: `create_training_set` works on the MERGEd table. DA-16: G-08 passes (`champion_reload_max_abs_diff` 0). DA-17: the run parameter `git_commit` is 40 hex and equals the deployed commit.
 5. Full daily run: `databricks bundle run -t dev --profile dev smart_meter_peak_model` (scores 2014-02-28; exit value names feature date 2014-02-27).
 6. Record the exit values, run URLs and durations in this report. Any failed DA applies its DESIGN fallback through `/iterate` before PR 3.
+
+**Gate log.**
+
+- 2026-10-21, deploy of main `db67283` and weather upload: OK.
+- 2026-10-21, step 3, run 568274842588512: `refresh_silver_gold` (173 s), `ingest_weather` (79 s), `build_weather_silver` (25 s) and `build_labels` (60 s) succeeded; `build_features` failed in `%pip` on both attempts (Python 3.12 environment, D-19). Fixed by pinning serverless environment version 2; the gate restarts at step 3.
 
 ---
 

@@ -29,10 +29,18 @@ resources:
           default: "2014-02-27"
         - name: random_seed
           default: "42"
+      # Serverless environment version 2 (Python 3.11, scikit-learn 1.3.0 preinstalled) is the one
+      # spike 05 validated (ADR 0007). Without it the jobs get a Python 3.12 environment where the
+      # scikit-learn==1.3.0 pin has no wheel and %pip fails (PR 2 gate, build deviation D-19).
+      environments:
+        - environment_key: peak_model_env
+          spec:
+            environment_version: "2"
       tasks:
         - task_key: train_model
           timeout_seconds: 3000
           max_retries: 0
+          environment_key: peak_model_env
           notebook_task:
             notebook_path: ../notebooks/train_model.py
             base_parameters:
