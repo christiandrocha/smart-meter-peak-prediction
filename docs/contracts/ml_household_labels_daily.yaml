@@ -1,0 +1,82 @@
+# Data contract: next-day spike label and point-in-time eligibility per household and target date.
+# Defined in .claude/sdd/features/DEFINE_PEAK_MODEL.md (FR-21, FR-22, QR-19).
+dataset: smart_meter_dev.ml.household_labels_daily
+kind: table
+owner: PEAK_MODEL
+description: Label of target date T = D + 1 for one household and whether the household is eligible on T, with the reasons when it is not.
+grain: one row per household in silver.households per target date T = D + 1
+primary_key: [household_id, target_date]
+freshness:
+  expected_latency: 24h
+  schedule: daily, after the feature step
+schema:
+  - name: household_id
+    type: string
+    nullable: false
+    description: Household identifier.
+  - name: target_date
+    type: date
+    nullable: false
+    description: Target day T (UTC calendar date).
+  - name: feature_date
+    type: date
+    nullable: true
+    description: T - 1, the feature day D whose feature row predicts T.
+  - name: total_energy_kwh
+    type: double
+    nullable: true
+    description: total_energy_kwh of the Gold row of T as stored; null without a Gold row.
+  - name: baseline_energy_kwh
+    type: double
+    nullable: true
+    description: D-19 baseline of T, the median of the last baseline_day_count complete days with the weekday of T within label_lookback_weeks; null when fewer exist.
+  - name: baseline_day_count
+    type: int
+    nullable: true
+    description: Complete same-weekday days found, 0 to baseline_day_count.
+  - name: label_consumption_spike
+    type: int
+    nullable: true
+    description: 1 when total_energy_kwh is strictly greater than label_threshold x baseline_energy_kwh, 0 otherwise; null when T is not complete or the baseline day count is short.
+  - name: eligibility_month_count
+    type: int
+    nullable: true
+    description: Monthly quality rows found in the eligibility window (0 to eligibility_months).
+  - name: coverage_ratio_3m
+    type: double
+    nullable: true
+    description: Sum of observed_readings over sum of expected_readings in the window; null unless the window is complete.
+  - name: zero_share_3m
+    type: double
+    nullable: true
+    description: Sum of zero_readings over sum of observed_readings in the window; null unless the window is complete and observed readings exist.
+  - name: is_eligible
+    type: boolean
+    nullable: false
+    description: True exactly when ineligibility_reasons is empty.
+  - name: ineligibility_reasons
+    type: array<string>
+    nullable: true
+    description: insufficient_history, low_coverage and high_zero_share in this order; empty when eligible.
+quality:
+  - id: QR-19
+    rule: "label is null, 0 or 1; non-null exactly when T is complete and baseline_day_count = baseline_day_count parameter; is_eligible exactly when ineligibility_reasons is empty"
+    action: fail
+  - id: G-10
+    rule: "one row per household and target date T = D + 1 for every feature date, unique keys"
+    action: fail
+properties:
+  - smart_meter.label_threshold
+  - smart_meter.baseline_day_count
+  - smart_meter.label_lookback_weeks
+  - smart_meter.coverage_min
+  - smart_meter.zero_share_max
+  - smart_meter.eligibility_months
+consumers:
+  - name: PEAK_MODEL training
+    usage: eligible rows with a non-null label form the training set
+  - name: PEAK_MODEL scoring
+    usage: the households eligible on T are scored
+changes:
+  policy: additive changes allowed; breaking changes need a new version and an ADR; a parameter change rewrites the labels and needs a retrain
+  version: 1

@@ -1,0 +1,81 @@
+# Data contract: raw hourly weather from weather_hourly_darksky.csv (append-only Bronze).
+# Defined in .claude/sdd/features/DEFINE_PEAK_MODEL.md (Data Contracts, Inline schemas).
+dataset: smart_meter_dev.bronze.files_weather_hourly
+kind: table
+owner: PEAK_MODEL
+description: One CSV line of the Dark Sky hourly weather file as ingested by Auto Loader, every source column kept as raw text.
+grain: one row per CSV line ingested
+primary_key: [_source_file, time_raw]
+freshness:
+  expected_latency: 24h
+  schedule: on file arrival
+schema:
+  - name: time_raw
+    type: string
+    nullable: true
+    description: Source column time, text as in the file (yyyy-MM-dd HH:mm:ss, UTC).
+  - name: temperature_raw
+    type: string
+    nullable: true
+    description: Source column temperature, text.
+  - name: apparent_temperature_raw
+    type: string
+    nullable: true
+    description: Source column apparentTemperature, text.
+  - name: dew_point_raw
+    type: string
+    nullable: true
+    description: Source column dewPoint, text.
+  - name: humidity_raw
+    type: string
+    nullable: true
+    description: Source column humidity, text.
+  - name: pressure_raw
+    type: string
+    nullable: true
+    description: Source column pressure, text.
+  - name: visibility_raw
+    type: string
+    nullable: true
+    description: Source column visibility, text.
+  - name: wind_bearing_raw
+    type: string
+    nullable: true
+    description: Source column windBearing, text.
+  - name: wind_speed_raw
+    type: string
+    nullable: true
+    description: Source column windSpeed, text.
+  - name: precip_type_raw
+    type: string
+    nullable: true
+    description: Source column precipType, text.
+  - name: icon_raw
+    type: string
+    nullable: true
+    description: Source column icon, text.
+  - name: summary_raw
+    type: string
+    nullable: true
+    description: Source column summary, text.
+  - name: _rescued_data
+    type: string
+    nullable: true
+    description: Auto Loader rescued data column; null when every field matched the read schema.
+  - name: _source_file
+    type: string
+    nullable: true
+    description: Path of the landed file (file metadata).
+  - name: _ingested_at
+    type: timestamp
+    nullable: true
+    description: Bronze ingestion time in UTC.
+quality:
+  - rule: "append-only (delta.appendOnly); no rule is applied in Bronze"
+    action: warn
+consumers:
+  - name: smart_meter_dev.silver.weather_hourly
+    usage: replay source of the Silver weather step (ADR 0006 pattern)
+changes:
+  policy: additive changes allowed; breaking changes need a new version and an ADR
+  version: 1

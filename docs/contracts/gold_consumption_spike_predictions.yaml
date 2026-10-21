@@ -1,0 +1,46 @@
+# Data contract: daily consumption spike predictions (consumer-facing).
+# Defined in .claude/sdd/features/DEFINE_PEAK_MODEL.md (FR-28, FR-29, QR-20, D-21, D-23, D-24, D-35).
+dataset: smart_meter_dev.gold.consumption_spike_predictions
+kind: table
+owner: PEAK_MODEL
+description: Probability that a household consumes well above its usual level on target day T, and the yes/no flag at the decision threshold of the model version used.
+grain: one row per household eligible on T per target_date
+primary_key: [household_id, target_date]
+freshness:
+  expected_latency: 24h
+  schedule: daily, one target_date per run; no deadline beyond running after the Gold refresh (D-24)
+schema:
+  - name: household_id
+    type: string
+    nullable: false
+    description: Household identifier.
+  - name: target_date
+    type: date
+    nullable: false
+    description: Predicted day T (UTC calendar date).
+  - name: score
+    type: double
+    nullable: false
+    description: Probability of the positive class (spike), between 0 and 1; the ranking key.
+  - name: label
+    type: int
+    nullable: false
+    description: 1 exactly when score >= decision_threshold of the model version used, otherwise 0.
+  - name: model_version
+    type: int
+    nullable: false
+    description: Version of smart_meter_dev.ml.consumption_spike_model behind alias champion when the run started.
+  - name: _scored_at
+    type: timestamp
+    nullable: false
+    description: Time of the scoring run in UTC (processing time).
+quality:
+  - id: QR-20
+    rule: "(household_id, target_date) unique; score BETWEEN 0 AND 1; label = 1 exactly when score >= t of model_version"
+    action: fail
+consumers:
+  - name: demand-response team (hypothetical, D-21)
+    usage: daily list of households likely to spike on the next day; ranking by score stays possible (D-23)
+changes:
+  policy: additive changes allowed; breaking changes need a new version, an ADR and notice to the consumers; rows of a scored date are replaced as one transaction
+  version: 1

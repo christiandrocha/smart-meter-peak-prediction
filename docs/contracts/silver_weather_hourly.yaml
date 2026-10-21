@@ -1,0 +1,43 @@
+# Data contract: hourly temperature in UTC, typed and deduplicated from Bronze weather.
+# Defined in .claude/sdd/features/DEFINE_PEAK_MODEL.md (Data Contracts, Quality rules QR-16 to QR-18).
+dataset: smart_meter_dev.silver.weather_hourly
+kind: table
+owner: PEAK_MODEL
+description: Temperature of one UTC hour of the Dark Sky hourly file (single location, London).
+grain: one row per UTC hour present in the source
+primary_key: [weather_ts]
+freshness:
+  expected_latency: 24h
+  schedule: on file arrival, checked daily
+schema:
+  - name: weather_ts
+    type: timestamp
+    nullable: false
+    description: Instant of the hour in UTC, parsed from the raw time with an explicit +00:00 offset (independent of the session time zone).
+  - name: temperature_c
+    type: double
+    nullable: false
+    description: Temperature in degrees Celsius.
+  - name: _ingested_at
+    type: timestamp
+    nullable: true
+    description: Bronze ingestion time of the winning Bronze row, UTC.
+quality:
+  - id: QR-16
+    rule: "raw time parses as yyyy-MM-dd HH:mm:ss read as UTC (explicit offset)"
+    action: fail
+  - id: QR-17
+    rule: "one row per weather_ts; first ingested wins (earliest _ingested_at, smallest _source_file, then the raw values); losers are counted"
+    action: drop
+  - id: QR-18
+    rule: "temperature_c parses as a finite number"
+    action: fail
+  - id: QR-18
+    rule: "temperature_c BETWEEN -30 AND 45 (kept and counted when outside)"
+    action: warn
+consumers:
+  - name: smart_meter_dev.ml.household_features_daily
+    usage: mean_temperature_c_1d and temperature_hour_count_1d per UTC date of the feature day D
+changes:
+  policy: additive changes allowed; breaking changes need a new version and an ADR
+  version: 1
