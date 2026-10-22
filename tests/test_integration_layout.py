@@ -47,6 +47,7 @@ def test_integration_files_exist_for_every_manifest_entry() -> None:
         "test_peak_training.py",
         "test_peak_scoring.py",
         "test_peak_deployment.py",
+        "test_peak_concurrency.py",
     }
     assert (INTEGRATION / "conftest.py").is_file()
 
@@ -124,3 +125,4 @@ def test_integration_tests_are_collected_but_deselected_by_default() -> None:
     assert "tests/integration/test_peak_training.py::test_ac55_uc_lineage" in selected
     assert "tests/integration/test_peak_scoring.py::test_ac57_after_" in selected
     assert "tests/integration/test_peak_deployment.py::test_ac62_" in selected
+    assert "tests/integration/test_peak_concurrency.py::test_ac74_" in selected

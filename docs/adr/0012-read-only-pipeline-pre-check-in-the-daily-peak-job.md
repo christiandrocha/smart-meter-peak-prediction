@@ -72,6 +72,10 @@ job's identity (default notebook authentication; the retry and HTTP timeouts are
   `SKIPPED` or `INTERNAL_ERROR`.
 - A pipeline update counts as active when its state is not `COMPLETED`, `FAILED` or `CANCELED`. An
   unknown state counts as active.
+- The overall pipeline state (`pipelines.get(...).state`, added 2026-10-22 from the build review)
+  also decides: `IDLE` and `FAILED` pass; `DEPLOYING`, `STARTING`, `RUNNING`, `STOPPING`,
+  `RECOVERING`, `RESETTING` and any other or missing value count as busy; `DELETED` fails closed.
+  This covers an update missing from `latest_updates` while the pipeline runs, at no extra call.
 
 When anything is active, the task fails with a message that names the job, the run id, the pipeline,
 the update id and its state, with UTC times ending in `Z`. The message says to wait until the named

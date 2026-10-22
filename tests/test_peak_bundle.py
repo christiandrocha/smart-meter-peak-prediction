@@ -35,6 +35,7 @@ TRAINING = yaml.safe_load(TRAINING_FILE.read_text(encoding="utf-8"))["resources"
 ]
 
 PEAK_NOTEBOOKS = (
+    "check_pipeline_idle.py",
     "ingest_weather.py",
     "build_weather_silver.py",
     "build_features.py",
@@ -43,6 +44,9 @@ PEAK_NOTEBOOKS = (
     "train_model.py",
 )
 ML_NOTEBOOKS = ("build_features.py", "score_predictions.py", "train_model.py")
+
+# SHA-256 of the training job file at tag v0.2.0 (AC-78: PEAK_MODEL_CONCURRENCY must not change it).
+TRAINING_SHA256 = "ccc7c66d8324299c54567c67ce8005bce1e5c63a4a163fc62db62c950524040a"
 
 # SHA-256 of the METER_INGESTION files at tag v0.1.0 (AC-62: they must not change).
 PINNED_SHA256 = {
@@ -155,6 +159,7 @@ def test_ac62_daily_job_graph_schedule_and_pipeline_dependency() -> None:
     assert DAILY["name"] == "smart_meter_peak_model"
     t = tasks(DAILY)
     assert list(t) == [
+        "check_pipeline_idle",
         "refresh_silver_gold",
         "ingest_weather",
         "build_weather_silver",
@@ -162,7 +167,8 @@ def test_ac62_daily_job_graph_schedule_and_pipeline_dependency() -> None:
         "build_labels",
         "score_predictions",
     ]
-    assert depends(t["refresh_silver_gold"]) == []
+    assert depends(t["check_pipeline_idle"]) == []
+    assert depends(t["refresh_silver_gold"]) == ["check_pipeline_idle"]
     assert depends(t["ingest_weather"]) == []
     assert depends(t["build_weather_silver"]) == ["ingest_weather"]
     assert sorted(depends(t["build_features"])) == ["build_weather_silver", "refresh_silver_gold"]
@@ -174,6 +180,7 @@ def test_ac62_daily_job_graph_schedule_and_pipeline_dependency() -> None:
     assert max(widths.values()) <= 5
     assert max(widths.values()) == 2  # DESIGN, Concurrency
     assert "refresh_silver_gold" in ancestors(DAILY, "score_predictions")
+    assert "check_pipeline_idle" in ancestors(DAILY, "score_predictions")
     pipeline_task = t["refresh_silver_gold"]["pipeline_task"]
     assert pipeline_task["pipeline_id"] == "${resources.pipelines.smart_meter_silver_gold.id}"
     assert pipeline_task["full_refresh"] is False
@@ -185,7 +192,7 @@ def test_ac62_daily_job_graph_schedule_and_pipeline_dependency() -> None:
     assert DAILY["max_concurrent_runs"] == 1
     assert DAILY["email_notifications"]["on_failure"]
     assert DAILY["timeout_seconds"] == 7200
-    assert [t[k]["timeout_seconds"] for k in t] == [2700, 900, 900, 1800, 1800, 1800]
+    assert [t[k]["timeout_seconds"] for k in t] == [300, 2700, 900, 900, 1800, 1800, 1800]
     assert all(t[k]["timeout_seconds"] < DAILY["timeout_seconds"] for k in t)
     # Serverless: no cluster of any kind on the job or its tasks.
     assert not CLUSTER_KEYS & set(DAILY)
@@ -323,7 +330,7 @@ def test_ac63_job_parameters_reach_declared_notebook_widgets(name: str) -> None:
 
     # Notebooks only declare widgets they parse, with Settings fields or PeakParameters fields.
     known = {f.name for f in fields(Settings)} | {f.name for f in fields(PeakParameters)}
-    assert widgets - {"experiment_path", "git_commit"} <= known
+    assert widgets - {"experiment_path", "git_commit", "ingestion_job_id", "pipeline_id"} <= known
 
 
 def test_ac63_training_task_receives_git_commit_and_experiment_path() -> None:
@@ -428,6 +435,7 @@ def test_ac62_library_calls_used_by_the_notebooks_exist() -> None:
         "labels",
         "peak_config",
         "peak_setup",
+        "pipeline_guard",
         "registry",
         "scoring",
         "training",
@@ -442,3 +450,61 @@ def test_ac62_library_calls_used_by_the_notebooks_exist() -> None:
             ):
                 module = importlib.import_module(f"{package}.{node.value.id}")
                 assert hasattr(module, node.attr), f"{name}: {node.value.id}.{node.attr}"
+
+
+# ----------------------------------------------------------------------------- AC-68, AC-78
+def test_ac68_pre_check_task_precedes_the_pipeline_and_is_never_retried() -> None:
+    """ADR 0012: first task, one attempt, ids from the bundle."""
+    t = tasks(DAILY)
+    pre = t["check_pipeline_idle"]
+    assert "notebook_task" in pre
+    assert "pipeline_task" not in pre
+    assert pre["notebook_task"]["notebook_path"] == "../notebooks/check_pipeline_idle.py"
+    assert pre["max_retries"] == 0
+    assert pre["disable_auto_optimization"] is True  # max_retries 0 alone did not stop it (D-21)
+    assert pre["environment_key"] == "peak_model_env"
+    assert pre["timeout_seconds"] == 300
+    assert depends(pre) == []
+    assert depends(t["refresh_silver_gold"]) == ["check_pipeline_idle"]
+    for key in ("build_features", "build_labels", "score_predictions"):
+        assert "check_pipeline_idle" in ancestors(DAILY, key), key
+    assert depends(t["ingest_weather"]) == []  # unchanged since v0.2.0
+    assert depends(t["build_weather_silver"]) == ["ingest_weather"]
+    widths: dict[int, int] = {}
+    for level in levels(DAILY).values():
+        widths[level] = widths.get(level, 0) + 1
+    assert max(widths.values()) == 2
+    assert DAILY["schedule"]["quartz_cron_expression"] == "0 0 8 * * ?"
+    assert DAILY["schedule"]["timezone_id"] == "UTC"
+    assert DAILY["max_concurrent_runs"] == 1
+    assert pre["notebook_task"]["base_parameters"] == {
+        "src_path": "${workspace.file_path}/src",
+        "ingestion_job_id": "${resources.jobs.smart_meter_ingestion.id}",
+        "pipeline_id": "${resources.pipelines.smart_meter_silver_gold.id}",
+    }
+
+
+def test_ac78_ingestion_pipeline_and_training_definitions_unchanged_and_retry_kept() -> None:
+    for relative, expected in PINNED_SHA256.items():
+        assert hashlib.sha256((ROOT / relative).read_bytes()).hexdigest() == expected, relative
+    training = TRAINING_FILE.relative_to(ROOT).as_posix()
+    assert hashlib.sha256(TRAINING_FILE.read_bytes()).hexdigest() == TRAINING_SHA256, training
+    tag = subprocess.run(  # noqa: S603
+        ["git", "rev-parse", "--verify", "--quiet", "v0.2.0^{commit}"],  # noqa: S607
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+    )
+    if tag.returncode == 0:
+        shown = subprocess.run(  # noqa: S603
+            ["git", "show", f"v0.2.0:{training}"],  # noqa: S607
+            cwd=ROOT,
+            capture_output=True,
+            check=True,
+        ).stdout
+        assert shown == TRAINING_FILE.read_bytes()
+    refresh = tasks(DAILY)["refresh_silver_gold"]
+    assert refresh["max_retries"] == 1
+    assert refresh["min_retry_interval_millis"] == 600000
+    text = " ".join(DAILY_FILE.read_text(encoding="utf-8").split())
+    assert "is not retried" in text  # the refused update, D-41

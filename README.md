@@ -119,7 +119,7 @@ adds two jobs to the same bundle and no pipeline.
                                               ml.household_labels_daily (label, eligibility)
                                                        │
  job smart_meter_peak_model (daily 08:00 UTC)          ▼
-   refresh pipeline → weather → features, labels → score_predictions ─► gold.consumption_spike_predictions
+   check pipeline idle → refresh pipeline → weather → features, labels → score_predictions ─► gold.consumption_spike_predictions
  job smart_meter_peak_model_training (on demand) ─► MLflow run ─► UC model `champion` alias + threshold tag
 ```
 
@@ -130,8 +130,11 @@ adds two jobs to the same bundle and no pipeline.
   table versions it came from.
 - **Governed model.** One deterministic gradient boosting model per training run, registered in Unity
   Catalog and promoted with the `champion` alias; the decision threshold is a model version tag.
-- **Coexistence with ingestion.** Both jobs refresh the same pipeline, so the peak job must not run
-  while the ingestion job is running (see the runbook).
+- **Coexistence with ingestion.** Both jobs refresh the same pipeline, which allows one update at a
+  time. The peak job starts with a read-only pre-check, `check_pipeline_idle`, that fails at once,
+  naming the blocking run or update, when the ingestion job or a pipeline update is active, and
+  fails closed when it cannot read the state ([ADR 0012](docs/adr/0012-read-only-pipeline-pre-check-in-the-daily-peak-job.md);
+  see the runbook).
 
 Operations: [`docs/runbooks/peak_model.md`](docs/runbooks/peak_model.md). Contracts: the five
 `bronze_files_weather_hourly`, `silver_weather_hourly`, `ml_household_features_daily`,
@@ -140,8 +143,9 @@ Operations: [`docs/runbooks/peak_model.md`](docs/runbooks/peak_model.md). Contra
 [0007](docs/adr/0007-peak-model-runtime-and-data-assumptions.md),
 [0008](docs/adr/0008-peak-model-jobs-and-pipeline-dependency.md),
 [0009](docs/adr/0009-decision-threshold-as-model-version-tag.md),
-[0010](docs/adr/0010-consumption-spike-label-definition.md) and
-[0011](docs/adr/0011-dense-ml-tables-and-run-artifact-training-sets.md).
+[0010](docs/adr/0010-consumption-spike-label-definition.md),
+[0011](docs/adr/0011-dense-ml-tables-and-run-artifact-training-sets.md) and
+[0012](docs/adr/0012-read-only-pipeline-pre-check-in-the-daily-peak-job.md).
 
 Specifications: active features in [`.claude/sdd/features/`](.claude/sdd/features); shipped
 features (brainstorm, define, design, build report and the ship record) in
@@ -191,7 +195,7 @@ pytest -m integration tests/integration/<file>::<test>
 
 | Path | Content |
 |---|---|
-| `src/smart_meter_peak_prediction/` | Library: sampling, producer, settings, rule catalog, Bronze, Silver, Gold, metrics, weather, features, labels, training, scoring (tested) |
+| `src/smart_meter_peak_prediction/` | Library: sampling, producer, settings, rule catalog, Bronze, Silver, Gold, metrics, weather, features, labels, training, scoring, pipeline pre-check (tested) |
 | `pipelines/` | Lakeflow pipeline sources (Python wiring, SQL summary view) |
 | `notebooks/` | Job notebooks: catalog setup, file and Kafka ingestion, weather, features, labels, training, scoring |
 | `resources/`, `databricks.yml` | Asset Bundle: job, pipeline, variables, targets |
@@ -220,9 +224,10 @@ See [`docs/adr/`](docs/adr/README.md).
 - Free Edition limits apply: one active pipeline per type, five concurrent tasks, a daily compute
   quota.
 - Only the `dev` target is deployed; `prod` is documented.
-- The peak job and the ingestion job share one pipeline: a pipeline update requested while the other
-  job runs is refused and not retried, so the schedules are offset (06:00 and 08:00 UTC) and the next
-  daily run is the retry.
+- The peak job and the ingestion job share one pipeline. The peak job's pre-check refuses to start
+  while the ingestion job or a pipeline update is active, and the schedules are offset (06:00 and
+  08:00 UTC); a race between the check and the pipeline task can still end the pipeline task
+  refused, and the next daily run is the retry.
 - Roadmap: monitoring of data quality trends and model drift.
 
 ## License

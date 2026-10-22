@@ -100,6 +100,41 @@ def test_ac65_tracked_files_contain_no_databricks_token() -> None:
     assert not offenders, "Databricks token pattern in: " + ", ".join(offenders)
 
 
+def test_ac80_pre_check_has_no_secret_parameter_and_tracked_files_no_token() -> None:
+    """The pre-check authenticates as the job's identity: no secret, token or scope anywhere."""
+    import yaml
+
+    files = tracked_files()
+    relative = {p.relative_to(ROOT).as_posix() for p in files}
+    for name in (
+        "notebooks/check_pipeline_idle.py",
+        "src/smart_meter_peak_prediction/pipeline_guard.py",
+        "resources/smart_meter_peak_model.job.yml",
+    ):
+        assert name in relative, name
+    token = PATTERNS["Databricks token"]
+    offenders = [
+        p.relative_to(ROOT).as_posix()
+        for p in files
+        if p.relative_to(ROOT).as_posix() != THIS_FILE
+        and (text := read_text(p)) is not None
+        and token.search(text)
+    ]
+    assert not offenders, "Databricks token pattern in: " + ", ".join(offenders)
+
+    job = yaml.safe_load((ROOT / "resources/smart_meter_peak_model.job.yml").read_text("utf-8"))
+    daily = job["resources"]["jobs"]["smart_meter_peak_model"]
+    (pre,) = (t for t in daily["tasks"] if t["task_key"] == "check_pipeline_idle")
+    forbidden = ("secret", "token", "scope", "password", "{{secrets/")
+    for name, value in pre["notebook_task"]["base_parameters"].items():
+        for word in forbidden:
+            assert word not in name.lower(), name
+            assert word not in str(value).lower(), name
+    notebook = (ROOT / "notebooks/check_pipeline_idle.py").read_text("utf-8")
+    assert "dbutils.secrets" not in notebook
+    assert "{{secrets/" not in notebook
+
+
 def test_ac29_env_files_and_keys_are_not_tracked() -> None:
     names = [p.relative_to(ROOT).as_posix() for p in tracked_files()]
     assert ".env" not in names
