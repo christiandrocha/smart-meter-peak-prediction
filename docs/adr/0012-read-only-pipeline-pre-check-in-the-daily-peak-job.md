@@ -2,7 +2,7 @@
 
 | Attribute | Value |
 |---|---|
-| **Status** | Proposed |
+| **Status** | Accepted |
 | **Date** | 2026-10-22 |
 | **Deciders** | Christian |
 | **Related** | PEAK_MODEL_CONCURRENCY; FR-33 to FR-42, NFR-19 to NFR-23, AC-68 to AC-80; D-39, D-41 to D-45; OD-14 to OD-17; C-08, C-11, C-12; A-19 to A-24; amends ADR 0008 (task graph of `smart_meter_peak_model`); ADR 0001, 0007 |
@@ -64,8 +64,9 @@ serverless notebook task on the job environment `peak_model_env`, with `max_retr
 `ingest_weather` and `build_weather_silver` keep their dependencies.
 
 The task receives the ingestion job id and the pipeline id as bundle resource references and calls
-the library module `smart_meter_peak_prediction.pipeline_guard` with `WorkspaceClient()` under the
-job's identity. The module performs read calls only (`jobs.get`, `jobs.list`, `jobs.list_runs`,
+the library module `smart_meter_peak_prediction.pipeline_guard` with a `WorkspaceClient` under the
+job's identity (default notebook authentication; the retry and HTTP timeouts are set through
+`Config`, as spike 06 found for `databricks-sdk` 0.40.0). The module performs read calls only (`jobs.get`, `jobs.list`, `jobs.list_runs`,
 `pipelines.get`):
 - A run of the ingestion job counts as active when its life-cycle state is not `TERMINATED`,
   `SKIPPED` or `INTERNAL_ERROR`.
@@ -112,8 +113,17 @@ This decision amends the task graph of ADR 0008; the rest of ADR 0008 stands.
 
 ## Platform probe (spike 06)
 
-To be filled before the build (DESIGN_PEAK_MODEL_CONCURRENCY, DA-19 to DA-26): SDK version and
-default authentication in a serverless environment version 2 notebook; `pipelines.get` fields
-during a running update (state sequence, `creation_time` format, ordering of `latest_updates`);
-the exact-name filter of `jobs.list` with the development-mode prefix; the duration of an update
-with no new input. Result: pending.
+Spike 06 (`spikes/databricks/06_spike_pipeline_guard_probe.py`, submitted by
+`06_spike_pipeline_guard_probe_submit.py`) ran on `dev` on 2026-10-22: idle probe runs
+97142795569245 and a rerun with the `Config` form, busy probe run 727144628966036, no-op update
+`ef3a0fd1-1ad5-424c-a86c-ac0afee0acf3`.
+
+| Assumption | Result |
+|---|---|
+| DA-20 SDK and authentication in environment version 2 | Pass. `databricks-sdk` 0.40.0 is preinstalled (no `%pip`); `WorkspaceClient()` authenticates as the run-as user with no configuration; `jobs.get`, `jobs.list(name)`, `jobs.list_runs(active_only)` and `pipelines.get` all succeed. In 0.40.0 `WorkspaceClient` has no `retry_timeout_seconds` or `http_timeout_seconds` keyword (`TypeError`); both are `Config` fields, so the client is built as `WorkspaceClient(config=Config(retry_timeout_seconds=60, http_timeout_seconds=30))` |
+| DA-22 `latest_updates` during an update | Pass. `latest_updates` is newest first; the new update appeared as entry 0 within 2.4 s of `start_update`. State sequence: `CREATED` (2 s), `WAITING_FOR_RESOURCES` (5 s), `INITIALIZING` (51 s), `SETTING_UP_TABLES` (86 s), `RUNNING` (88 s), `COMPLETED` (125 s). `creation_time` is an ISO 8601 string in UTC with `Z` (for example `2026-10-22T17:54:05.206Z`), not epoch milliseconds. `pipelines.get(...).state` read `RUNNING` during the update and `IDLE` otherwise |
+| DA-23 `jobs.list(name=...)` | Pass. The filter on the deployed name `[dev christiandr] smart_meter_ingestion` returned exactly the ingestion job |
+| DA-26 update length against a pre-check started after it | Pass. An update with no new input lasted 125 s. A probe task submitted right after `start_update` started 4 s later and, 31 s after the start, read the update as `WAITING_FOR_RESOURCES` (active) |
+
+DA-19 (bundle reference to another job's id) is checked at the first deploy of the build; DA-21,
+DA-24 and DA-25 by the live tests and prior art, as the DESIGN lists.
