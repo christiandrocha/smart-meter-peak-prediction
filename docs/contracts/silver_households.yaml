@@ -1,5 +1,5 @@
 # Data contract: static household dimension (v0.1; SCD Type 2 from CDC is planned for v0.2).
-# Defined in .claude/sdd/features/DEFINE_METER_INGESTION.md (Data Contracts). Interface to PEAK_MODEL.
+# Defined in .claude/sdd/archive/METER_INGESTION/DEFINE_METER_INGESTION.md (Data Contracts). Interface to PEAK_MODEL.
 dataset: smart_meter_dev.silver.households
 kind: table
 owner: METER_INGESTION

@@ -409,7 +409,7 @@ pre-commit run --all-files                                             # AC-65 e
   - `test_peak_scoring.py`: AC-58, 59, 56: 3 passed (363 s); AC-57 pair: 2 passed (108 s); AC-60: 1 passed (106 s).
   - `test_peak_deployment.py` AC-62: failed on the first run because of two test defects, then 1 passed (9 s): `jobs.list` returns settings without the job parameters, so `_job_named` now reads the full job with `jobs.get`; the pipeline API omits `continuous` when false, so the test compares `bool(...)`. `ac66_before` rerun after the fixture change: pass.
 - AC-65: `pre-commit run --all-files` clean on the staged tree (the hook ruff v0.6.9 and the CI ruff format long asserts differently; the asserts concerned are written in a form both accept).
-- Not live by design: AC-53 (unit only), AC-61 (would delete the shared alias). Optional and not run: the AC-66 rebuild leg after `reset_peak_model_outputs.py --confirm`.
+- Not live by design: AC-53 (unit only), AC-61 (would delete the shared alias). AC-66 rebuild leg (run during `/ship`, 2026-10-22): reset dry run, then `--confirm` dropped only the three tables; `ac66_after` passed in 226 s (MERGE inserted 21,165 / 36,480 / 36,480 rows, checksums equal to the snapshot, `rebuild_after_reset` true). A scoring-only run afterwards (937391410963735, Success) scored with `champion` 7 against the rebuilt feature table.
 
 ## Self-Review
 

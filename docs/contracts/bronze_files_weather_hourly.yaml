@@ -1,5 +1,5 @@
 # Data contract: raw hourly weather from weather_hourly_darksky.csv (append-only Bronze).
-# Defined in .claude/sdd/features/DEFINE_PEAK_MODEL.md (Data Contracts, Inline schemas).
+# Defined in .claude/sdd/archive/PEAK_MODEL/DEFINE_PEAK_MODEL.md (Data Contracts, Inline schemas).
 dataset: smart_meter_dev.bronze.files_weather_hourly
 kind: table
 owner: PEAK_MODEL

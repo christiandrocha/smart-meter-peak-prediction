@@ -1,5 +1,5 @@
 # Data contract: next-day spike label and point-in-time eligibility per household and target date.
-# Defined in .claude/sdd/features/DEFINE_PEAK_MODEL.md (FR-21, FR-22, QR-19).
+# Defined in .claude/sdd/archive/PEAK_MODEL/DEFINE_PEAK_MODEL.md (FR-21, FR-22, QR-19).
 dataset: smart_meter_dev.ml.household_labels_daily
 kind: table
 owner: PEAK_MODEL

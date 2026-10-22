@@ -5,6 +5,40 @@ Entries are added by `/ship`.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-22
+
+### Added
+
+- PEAK_MODEL: a daily job predicts, for each eligible household, whether the next day's consumption
+  is a spike (strictly above 1.3 times the median of the last four complete same-weekday days within
+  eight weeks, ADR 0010). It writes `gold.consumption_spike_predictions` for the target date; the
+  default target is the day after the latest complete day (2014-02-28 on the seed-42 sample).
+- Weather ingestion from a Unity Catalog Volume into `bronze.files_weather_hourly` and
+  `silver.weather_hourly`, with a change-only MERGE and a guard against an empty source.
+- ML tables `ml.household_features_daily` and `ml.household_labels_daily`: dense per household and
+  date, point-in-time (features as of the day before the target), with the parameters recorded as
+  table properties (ADR 0011).
+- On-demand training job `smart_meter_peak_model_training`: a gradient boosting model logged to MLflow
+  with Unity Catalog feature lookups, registered as `smart_meter_dev.ml.consumption_spike_model`.
+  Promotion uses the `champion` alias; the decision threshold is a version tag (ADR 0009).
+- Daily job `smart_meter_peak_model` (08:00 UTC) that runs the shared Silver and Gold pipeline first.
+- Operations runbook `docs/runbooks/peak_model.md` and a guarded, user-run reset script
+  `scripts/reset_peak_model_outputs.py`.
+- Data contracts for the five PEAK_MODEL tables in `docs/contracts/` and ADRs 0007 to 0011.
+
+### Changed
+
+- Contract header comments and the PEAK_MODEL runbook point to the archived design documents under
+  `.claude/sdd/archive/`. No schema changed.
+
+### Known limits
+
+- The peak job and the ingestion job share one pipeline. An update requested while the other one
+  runs is refused and the task ends `INTERNAL_ERROR`, which the job does not retry; the next daily
+  run is the retry (runbook, Concurrency).
+- Training runs on demand only, without retries. Retry-sensitive steps depend on the idempotent
+  writes and on the alias, not on single-attempt execution.
+
 ## [0.1.0] - 2026-10-20
 
 ### Added

@@ -1,5 +1,5 @@
 # Data contract: daily consumption per household (materialized view). Interface to PEAK_MODEL.
-# Defined in .claude/sdd/features/DEFINE_METER_INGESTION.md (Data Contracts).
+# Defined in .claude/sdd/archive/METER_INGESTION/DEFINE_METER_INGESTION.md (Data Contracts).
 dataset: smart_meter_dev.gold.household_daily_consumption
 kind: table
 object_type: materialized view

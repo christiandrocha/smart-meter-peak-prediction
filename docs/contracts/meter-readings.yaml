@@ -1,5 +1,5 @@
 # Kafka topic contract for half-hourly smart meter readings.
-# Defined in .claude/sdd/features/DEFINE_METER_INGESTION.md (Data Contracts).
+# Defined in .claude/sdd/archive/METER_INGESTION/DEFINE_METER_INGESTION.md (Data Contracts).
 dataset: meter-readings
 kind: topic
 owner: METER_INGESTION

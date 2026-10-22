@@ -1,5 +1,5 @@
 # Data contract: monthly data quality facts per household (source of truth for data quality).
-# Defined in .claude/sdd/features/DEFINE_METER_INGESTION.md (Data Contracts, Q-11). Interface to PEAK_MODEL.
+# Defined in .claude/sdd/archive/METER_INGESTION/DEFINE_METER_INGESTION.md (Data Contracts, Q-11). Interface to PEAK_MODEL.
 dataset: smart_meter_dev.gold.household_data_quality_monthly
 kind: table
 object_type: materialized view

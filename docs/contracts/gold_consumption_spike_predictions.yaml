@@ -1,5 +1,5 @@
 # Data contract: daily consumption spike predictions (consumer-facing).
-# Defined in .claude/sdd/features/DEFINE_PEAK_MODEL.md (FR-28, FR-29, QR-20, D-21, D-23, D-24, D-35).
+# Defined in .claude/sdd/archive/PEAK_MODEL/DEFINE_PEAK_MODEL.md (FR-28, FR-29, QR-20, D-21, D-23, D-24, D-35).
 dataset: smart_meter_dev.gold.consumption_spike_predictions
 kind: table
 owner: PEAK_MODEL

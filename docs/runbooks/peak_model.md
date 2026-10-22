@@ -2,7 +2,7 @@
 
 How to deploy, bootstrap, train, score, verify, reset and clean up the PEAK_MODEL feature: the
 daily next-day consumption spike model on top of the METER_INGESTION Gold tables. It targets the
-`dev` bundle target on Databricks Free Edition. Design: `.claude/sdd/features/DESIGN_PEAK_MODEL.md`.
+`dev` bundle target on Databricks Free Edition. Design: `.claude/sdd/archive/PEAK_MODEL/DESIGN_PEAK_MODEL.md`.
 Decisions: ADR 0007 to 0011. Contracts: `docs/contracts/` (`bronze_files_weather_hourly`,
 `silver_weather_hourly`, `ml_household_features_daily`, `ml_household_labels_daily`,
 `gold_consumption_spike_predictions`). The ingestion side is in `docs/runbooks/meter_ingestion.md`.

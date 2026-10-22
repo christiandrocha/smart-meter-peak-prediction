@@ -146,7 +146,8 @@ Operations: [`docs/runbooks/peak_model.md`](docs/runbooks/peak_model.md). Contra
 Specifications: active features in [`.claude/sdd/features/`](.claude/sdd/features); shipped
 features (brainstorm, define, design, build report and the ship record) in
 [`.claude/sdd/archive/`](.claude/sdd/archive), for example
-[`METER_INGESTION`](.claude/sdd/archive/METER_INGESTION). Decisions:
+[`METER_INGESTION`](.claude/sdd/archive/METER_INGESTION) and
+[`PEAK_MODEL`](.claude/sdd/archive/PEAK_MODEL). Decisions:
 [`docs/adr/`](docs/adr/README.md).
 
 ## Getting started
