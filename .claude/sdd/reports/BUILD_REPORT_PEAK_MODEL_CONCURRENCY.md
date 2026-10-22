@@ -9,11 +9,11 @@
 | **Feature** | PEAK_MODEL_CONCURRENCY |
 | **Date** | 2026-10-22 |
 | **Source** | DESIGN_PEAK_MODEL_CONCURRENCY.md (status Ready for Build) |
-| **Status** | In Progress |
+| **Status** | Complete |
 
 Allowed status values: `In Progress`, `Blocked`, `Complete`.
 
-The status stays `In Progress`: AC-74 to AC-77 and the deployed part of AC-68 need the user's run on `dev`.
+Status `Complete` (2026-10-22): every AC passes locally and AC-68 (deployed part) and AC-74 to AC-77 pass live on `dev` (see *Live run*).
 
 ---
 
@@ -50,16 +50,16 @@ The daily job `smart_meter_peak_model` now starts with a read-only task `check_p
 
 | AC | Result | Evidence |
 |---|---|---|
-| AC-68 | Pass (local); deployed part Not run | `test_ac68_pre_check_task_precedes_the_pipeline_and_is_never_retried`, `test_ac62_daily_job_graph_schedule_and_pipeline_dependency`. Deployed: `pytest -m integration tests/integration/test_peak_deployment.py` after deploy and AC-76 |
+| AC-68 | Pass (local and live) | `test_ac68_pre_check_task_precedes_the_pipeline_and_is_never_retried`, `test_ac62_daily_job_graph_schedule_and_pipeline_dependency`. Live: `test_peak_deployment.py` passed (deployed task graph, ids, `disable_auto_optimization`) |
 | AC-69 | Pass | `test_ac69_*` in `tests/test_pipeline_guard.py` |
 | AC-70 | Pass | `test_ac70_*` |
 | AC-71 | Pass | `test_ac71_both_blockers_are_named` |
 | AC-72 | Pass | `test_ac72_*` |
 | AC-73 | Pass | `test_ac73_*` (15 unreadable cases, client failure, redaction, `Config` keywords) |
-| AC-74 | Not run | live, needs the user's run (commands below) |
-| AC-75 | Not run | live |
-| AC-76 | Not run | live |
-| AC-77 | Not run | live |
+| AC-74 | Pass (live) | `test_ac74_*`: ingestion run 907941063610421 active; peak run 442472208123583 refused by `check_pipeline_idle` in 17 s naming run 907941063610421; the ingestion run's own `refresh_silver_gold` ran and succeeded |
+| AC-75 | Pass (live) | `test_ac75_*`: no-op update 862edaf3-f7cb-44b3-ba5d-a43f9f396cc6; peak run 518509146277520 refused naming the update (state `WAITING_FOR_RESOURCES`, pipeline state `RUNNING`); no new update created |
+| AC-76 | Pass (live) | `test_ac76_*`: idle full run 506830153412867 succeeded on first attempts, 500 s; `check_pipeline_idle` 32 s (target at most 120 s) |
+| AC-77 | Pass (live) | `test_ac77_*`: rerun 8054105796227 after the refusal succeeded (418 s, `check_pipeline_idle` 18 s); predictions for 2014-02-28 (58 rows) differ only in `_scored_at` |
 | AC-78 | Pass | `test_ac78_ingestion_pipeline_and_training_definitions_unchanged_and_retry_kept`, `test_ac62_bundle_has_exactly_one_pipeline...` |
 | AC-79 | Pass | `tests/test_peak_concurrency_docs.py` (3 tests) |
 | AC-80 | Pass | `test_ac80_pre_check_has_no_secret_parameter_and_tracked_files_no_token` |
@@ -111,6 +111,14 @@ The daily job `smart_meter_peak_model` now starts with a read-only task `check_p
 
 ---
 
+## Live run (`dev`, 2026-10-22)
+
+- Deploy of `4714acb`: `bundle validate` exit 0, `bundle deploy` exit 0. DA-19 Pass: the deployed `check_pipeline_idle` task received `ingestion_job_id` 801565150507596 and the pipeline id `b72d0498-56c0-42be-982e-3e4c200778ad` from the bundle references; `max_retries` 0, `disable_auto_optimization` true, timeout 300 s; `refresh_silver_gold` depends on it.
+- AC-76 (531 s), AC-74 (226 s, Aiven Kafka service on, U-02), AC-77 (442 s): pass. AC-75 and `test_peak_deployment.py` first errored in setup because the CLI profile's refresh token had expired (no Databricks call made); after the user re-authenticated they passed (129 s and 9 s).
+- AC-74 message (run 442472208123583): "check_pipeline_idle stopped the run before refresh_silver_gold: the shared pipeline is busy (checked at 2026-10-22T19:13:31Z). Blocking: job smart_meter_ingestion (job id 801565150507596): active run 907941063610421, state RUNNING, started 2026-10-22T19:13:14Z".
+- AC-75 message (run 518509146277520): "... pipeline smart_meter_silver_gold (pipeline id b72d0498-...): update 862edaf3-f7cb-44b3-ba5d-a43f9f396cc6, state WAITING_FOR_RESOURCES, pipeline state RUNNING, created 2026-10-22T19:27:14Z".
+- DA-21 (an active run is listed by `active_only`) and DA-25 (one attempt with auto-optimization off) hold in AC-74 and AC-75.
+
 ## Live commands (user-run on `dev`)
 
 ```bash
@@ -128,4 +136,4 @@ pytest -m integration tests/integration/test_peak_deployment.py              # A
 
 ## Next Step
 
-Run the live commands, record the results, then `/ship PEAK_MODEL_CONCURRENCY`.
+`/ship PEAK_MODEL_CONCURRENCY` after PRs #23, #24 and #25 merge.

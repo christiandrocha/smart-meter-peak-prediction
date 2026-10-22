@@ -129,5 +129,5 @@ Spike 06 (`spikes/databricks/06_spike_pipeline_guard_probe.py`, submitted by
 | DA-23 `jobs.list(name=...)` | Pass. The filter on the deployed name `[dev christiandr] smart_meter_ingestion` returned exactly the ingestion job |
 | DA-26 update length against a pre-check started after it | Pass. An update with no new input lasted 125 s. A probe task submitted right after `start_update` started 4 s later and, 31 s after the start, read the update as `WAITING_FOR_RESOURCES` (active) |
 
-DA-19 (bundle reference to another job's id) is checked at the first deploy of the build; DA-21,
+DA-19 (bundle reference to another job's id) passed at the first deploy of the build (2026-10-22: the deployed task received the ingestion job id and the pipeline id); DA-21,
 DA-24 and DA-25 by the live tests and prior art, as the DESIGN lists.
