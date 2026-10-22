@@ -5,6 +5,31 @@ Entries are added by `/ship`.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-22
+
+### Added
+
+- Pre-check task `check_pipeline_idle` in the daily job `smart_meter_peak_model`. It runs first, has
+  no retries and reads the state of the ingestion job and of the shared pipeline
+  `smart_meter_silver_gold` without writing anything. When either is busy, or when its state cannot
+  be read, it fails at once and names the blocking run or update. `refresh_silver_gold` runs only
+  after it succeeds (ADR 0012).
+- Integration tests `tests/integration/test_peak_concurrency.py` for the busy, idle and rerun cases.
+
+### Changed
+
+- Daily job graph: the pre-check precedes the shared pipeline task, which is unchanged. An overlap
+  with an ingestion run now fails on the pre-check task with a message that names the blocking run,
+  instead of an unnamed `INTERNAL_ERROR` on the pipeline task. The next daily run is the retry.
+  The runbook (Concurrency) describes the pre-check (ADR 0008 dated note, ADR 0012).
+- The pre-check task and its notebook run on serverless environment version 2 (`peak_model_env`).
+  Auto-optimization is off for the task and the platform does not retry it.
+
+### Unchanged
+
+- The ingestion job `smart_meter_ingestion`, the pipeline `smart_meter_silver_gold` and the training
+  job `smart_meter_peak_model_training` keep their definitions.
+
 ## [0.2.0] - 2026-10-22
 
 ### Added

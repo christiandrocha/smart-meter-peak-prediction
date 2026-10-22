@@ -1,6 +1,6 @@
 [project]
 name = "smart-meter-peak-prediction"
-version = "0.2.0"
+version = "0.3.0"
 description = "Household-level consumption peak prediction on a Databricks lakehouse, with streaming ingestion and governed ML features"
 readme = "README.md"
 requires-python = ">=3.11"
