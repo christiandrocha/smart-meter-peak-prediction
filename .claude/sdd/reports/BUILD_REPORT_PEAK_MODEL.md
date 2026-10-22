@@ -9,11 +9,11 @@
 | **Feature** | PEAK_MODEL |
 | **Date** | 2026-10-21 |
 | **Source** | DESIGN_PEAK_MODEL.md (status Ready for Build) |
-| **Status** | In Progress |
+| **Status** | Complete |
 
 Allowed status values: `In Progress`, `Blocked`, `Complete`.
 
-One report covers the whole feature (DESIGN *Delivery Plan*). It stays `In Progress` until PR 3.
+One report covers the whole feature (DESIGN *Delivery Plan*). It stayed `In Progress` until the PR 3 live evidence (2026-10-22).
 
 ---
 
@@ -28,8 +28,8 @@ integration test exists yet (entries 24 to 44 belong to PR 2 and PR 3).
 | PR | Entries | State |
 |---|---|---|
 | PR 1 | 1 to 23 | **Built and verified locally** (this report) |
-| PR 2 | 24 to 35 | **Built and verified locally**; platform gate pending (see *PR 2 gate*) |
-| PR 3 | 36 to 44 | Not started |
+| PR 2 | 24 to 35 | **Built and verified locally**; platform gate passed on `dev` (see *PR 2 gate*) |
+| PR 3 | 36 to 44 | **Built and verified locally** (branch `build/peak-model-pr3`); live integration evidence recorded 2026-10-22, 27 of 27 pass (see *PR 3*) |
 
 ---
 
@@ -90,48 +90,65 @@ State legend: done = written and verified locally; nothing here has run on the p
 No METER_INGESTION file, `databricks.yml` or resource file was modified (`git status` lists only the
 files above; AC-62 is checked by PR 2's `test_peak_bundle.py`).
 
+### PR 3 files (entries 36 to 44)
+
+| # | PR | File | Action | Verified by |
+|---|---|---|---|---|
+| 36 | PR 3 | tests/integration/conftest.py | Modified | done: ruff; collected with the four new files. Fixtures `peak_job`, `training_job` (by base name), `peak_runner` (`run_now` with job parameters and `only`, polls to the end, reads every task exit value and error; refuses to start a run that includes `refresh_silver_gold` unless `smart_meter_ingestion` and the pipeline are idle, DA-13), `peak_names`, `mlflow_registry` (lazy MLflow: runs, artifact download, version of a run, champion, threshold tag) |
+| 37 | PR 3 | tests/integration/test_peak_data.py | Created | done: ruff; `pytest --collect-only -m integration` (12 tests: AC-36, 37, 39, 40, 41, 44, 47, 63 x2, 64, 66 x2). The AC-40 SQL oracle was run against local Spark on the `test_features.py` messy fixture and found 0 differing rows (it exposed a `DECIMAL` division in the first draft of `complete_day_share_28d`, fixed). Run on `dev` 2026-10-22: pass (see *PR 3 live run*) |
+| 38 | PR 3 | tests/integration/test_peak_training.py | Created | done: ruff; collected (8 tests: AC-48, 49, 50, 51, 52, 54, 55 x2). AC-53 has no live test by DESIGN (unit only). Run on `dev` 2026-10-22: pass (see *PR 3 live run*) |
+| 39 | PR 3 | tests/integration/test_peak_scoring.py | Created | done: ruff; collected (6 tests: AC-56, 57 x2, 58, 59, 60). File order is the evidence order (58, 59, then 56). Run on `dev` 2026-10-22: pass (see *PR 3 live run*) |
+| 40 | PR 3 | tests/integration/test_peak_deployment.py | Created | done: ruff; collected (AC-62). It starts no run and asserts the ingestion job and the pipeline are idle first. Run on `dev` 2026-10-22: pass (see *PR 3 live run*) |
+| 41 | PR 3 | scripts/reset_peak_model_outputs.py | Created | done: ruff; `tests/test_peak_reset_script.py` (3 tests, AC-66 guards: exactly three DROPs, refusal on other row counts, a missing table, empty Bronze weather or a missing snapshot); `--help` runs. Never run against the workspace |
+| 42 | PR 3 | docs/runbooks/peak_model.md | Created | done: covers weather upload, deploy, bootstrap order, training, backfill, evidence order, reset, model cleanup order (aliases, versions, model; ADR 0007), concurrency with the ingestion job (DA-13: refused update, not retried, rerun after the ingestion run) and serverless auto-optimization retries (D-21). `check_specs.py` 0 errors |
+| 43 | PR 3 | docs/spikes/README.md | Modified | done: rows for A-17 and spike 05 (figures copied from ADR 0007) |
+| 44 | PR 3 | README.md | Modified | done: PEAK_MODEL architecture summary, runbook, contracts and ADRs 0007 to 0011, repository layout and limitations |
+| - | PR 3 | tests/test_integration_layout.py | Modified | done: the four new files, their AC set and four collected names are expected (mechanical, same guard as for METER_INGESTION) |
+| - | PR 3 | tests/test_peak_reset_script.py | Created | done: 3 tests |
+
+No METER_INGESTION file, `databricks.yml`, resource file, notebook or library module was modified in PR 3.
+
 ---
 
 ## Acceptance Criteria Evidence
 
 **Local** is the PR 1 unit evidence (real test output, see the Verification Log). **Live** is the
-platform evidence and is `Not run` for every AC at this point: the integration tests, notebooks and
-bundle resources belong to PR 2 and PR 3. `PR 2` and `PR 3` mark where the remaining evidence comes
+platform evidence: the PR 3 integration tests, run on `dev` on 2026-10-22 (see *PR 3 live run*). `PR 2` and `PR 3` mark where the remaining evidence comes
 from. AC-65 and AC-67 are decided by tests of PR 2.
 
 | AC | Local (PR 1) | Live | Test names (PR 1) and what is still missing |
 |---|---|---|---|
-| AC-36 | Pass (projection) | Not run | `test_weather.py::test_ac36_bronze_projection_keeps_raw_columns_and_metadata`, `::test_ac36_raw_names_cover_every_source_column_once`. Missing: Auto Loader run and 21,165 rows (PR 2 notebook 24, PR 3 `test_peak_data.py`) |
-| AC-37 | Pass (unit) | Not run | `test_weather.py::test_ac37_weather_ts_is_independent_of_session_time_zone` (four DST days, UTC and Europe/London, 24 rows each). PR 2 local data: `::test_ac37_raw_weather_file_same_in_utc_and_london` Pass (21,165 rows, UTC = London). Missing: deployed table |
+| AC-36 | Pass (projection) | Pass (live 2026-10-22) | `test_weather.py::test_ac36_bronze_projection_keeps_raw_columns_and_metadata`, `::test_ac36_raw_names_cover_every_source_column_once`. Missing: Auto Loader run and 21,165 rows (PR 2 notebook 24, PR 3 `test_peak_data.py`) |
+| AC-37 | Pass (unit) | Pass (live 2026-10-22) | `test_weather.py::test_ac37_weather_ts_is_independent_of_session_time_zone` (four DST days, UTC and Europe/London, 24 rows each). PR 2 local data: `::test_ac37_raw_weather_file_same_in_utc_and_london` Pass (21,165 rows, UTC = London). Missing: deployed table |
 | AC-38 | Pass | n/a | `test_weather.py::test_ac38_unparseable_time_fails_before_write`, `::test_ac38_null_time_fails_before_write`, `::test_ac38_non_numeric_temperature_fails_before_write`, `::test_ac38_duplicate_time_keeps_earlier_ingested_and_counts_one`, `::test_ac38_temperature_50_is_kept_and_warn_count_is_one`, `::test_ac38_silver_schema_has_the_contract_columns` |
-| AC-39 | Pass (unit) | Not run | `test_weather.py::test_ac39_day_without_weather_has_count_0_and_null_mean`, `test_features.py::test_ac39_mean_temperature_matches_recomputation_and_is_order_stable` (1, 3 and 8 partitions bitwise equal). PR 2 local data: `::test_ac39_seed42_temperature_hour_counts` Pass. Missing: deployed table (PR 3) |
-| AC-40 | Pass (unit) | Not run | `test_features.py::test_ac40_features_match_independent_recomputation` (3 parameter sets, 0 mismatches, nulls in the same places), `::test_ac40_feature_table_columns_match_the_contract_order`. Missing: SQL recomputation on the deployed table (PR 3) |
-| AC-41 | Pass (unit) | Not run | `test_features.py::test_ac41_feature_grid_is_dense_and_density_check_fails_on_gap`, `::test_ac41_feature_table_not_null_columns_hold_no_null`, `test_labels.py::test_ac41_label_grid_is_dense_with_target_date_plus_one`. PR 2 local data: `::test_ac41_seed42_tables_have_36480_rows` Pass. Missing: deployed tables (PR 3) |
+| AC-39 | Pass (unit) | Pass (live 2026-10-22) | `test_weather.py::test_ac39_day_without_weather_has_count_0_and_null_mean`, `test_features.py::test_ac39_mean_temperature_matches_recomputation_and_is_order_stable` (1, 3 and 8 partitions bitwise equal). PR 2 local data: `::test_ac39_seed42_temperature_hour_counts` Pass. Missing: deployed table (PR 3) |
+| AC-40 | Pass (unit) | Pass (live 2026-10-22) | `test_features.py::test_ac40_features_match_independent_recomputation` (3 parameter sets, 0 mismatches, nulls in the same places), `::test_ac40_feature_table_columns_match_the_contract_order`. Missing: SQL recomputation on the deployed table (PR 3) |
+| AC-41 | Pass (unit) | Pass (live 2026-10-22) | `test_features.py::test_ac41_feature_grid_is_dense_and_density_check_fails_on_gap`, `::test_ac41_feature_table_not_null_columns_hold_no_null`, `test_labels.py::test_ac41_label_grid_is_dense_with_target_date_plus_one`. PR 2 local data: `::test_ac41_seed42_tables_have_36480_rows` Pass. Missing: deployed tables (PR 3) |
 | AC-42 | Pass | n/a | `test_features.py::test_ac42_changing_data_from_t_leaves_earlier_features_and_training_rows_unchanged` (features before T, labels before T and the training rows of T identical; rows dated T or later do differ), `::test_ac42_explicit_lookup_returns_nulls_for_a_missing_feature_row` |
 | AC-43 | Pass | n/a | `test_labels.py::test_ac43_hand_computed_label_cases` (0, 1, null, null, null, 1; baselines within 1e-9), `::test_ac43_exact_bound_is_not_a_spike_and_threshold_is_a_parameter` |
-| AC-44 | Partial (QR-19 detection only) | Not run | `test_labels.py::test_ac44_qr19_check_reports_a_violation`. PR 2 local data: `test_peak_seed42.py::test_ac44_seed42_label_counts` Pass (33,093 labelled, 14.5 to 14.7%, 2012-07-29 to 2014-02-27). Missing: deployed table (PR 3) |
+| AC-44 | Partial (QR-19 detection only) | Pass (live 2026-10-22) | `test_labels.py::test_ac44_qr19_check_reports_a_violation`. PR 2 local data: `test_peak_seed42.py::test_ac44_seed42_label_counts` Pass (33,093 labelled, 14.5 to 14.7%, 2012-07-29 to 2014-02-27). Missing: deployed table (PR 3) |
 | AC-45 | Pass | n/a | `test_labels.py::test_ac45_eligibility_fixture_cases` (late starter, dead meter, 0.80 and 0.7999, zero share 0.90, T = 2012-09-30 and 2012-10-01, 78 / 92), `::test_ac45_coverage_threshold_is_a_parameter` |
 | AC-46 | Pass | n/a (unit only by design) | `test_labels.py::test_ac46_appending_later_months_keeps_eligibility_up_to_month_start` |
-| AC-47 | Partial (invariants) | Not run | `test_labels.py::test_ac47_ineligible_rows_have_reasons_and_eligible_rows_none`. PR 2 local data: `::test_ac47_seed42_eligible_rows_per_split` Pass (16,969 / 7,170 / 5,116). Missing: deployed table (PR 3) |
-| AC-48 | Pass (unit) | Not run | `test_training.py::test_ac48_splits_are_ordered_disjoint_and_equal_the_eligible_labelled_rows`, `::test_ac48_missing_feature_row_at_t_minus_1_fails_guard_g02`, `::test_ac48_overlapping_or_unordered_ranges_fail_guard_g09`, `::test_ac48_a_row_outside_the_ranges_is_rejected`. Missing: logged training set on the platform (PR 3) |
-| AC-49 | Pass (unit) | Not run | `test_training.py::test_ac49_two_fits_give_identical_scores_threshold_and_metrics` (shuffled input, bitwise equal scores, equal t and metrics). Missing: two live runs (PR 3) |
-| AC-50 | Pass (unit) | Not run | `test_training.py::test_ac50_run_parameters_cover_model_seed_and_fr31`, `test_peak_tables.py::test_ac50_training_parameters_exclude_the_scoring_only_target_date`, `::test_ac50_pinned_versions_are_checked_by_guard_g01` |
-| AC-51 | Pass (unit) | Not run | `test_training.py::test_ac51_threshold_is_max_f1_with_highest_t_on_ties` (brute force over 400 random cases, a constructed tie, a single positive), `::test_ac51_run_threshold_equals_recomputation_from_validation_scores`, `::test_ac51_no_positive_validation_row_fails_before_any_effect` |
-| AC-52 | Pass (unit) | Not run | `test_training.py::test_ac52_metric_names_cover_segments_with_counts_and_no_accuracy`, `::test_ac52_segment_without_positives_logs_no_pr_auc_and_precision_is_zero_without_flags`, `::test_ac52_ratio_rule_scores_null_total_as_zero_and_zero_baseline_as_1e_minus_6`. The PR-AUC > positive share check needs seed 42 (PR 3) |
+| AC-47 | Partial (invariants) | Pass (live 2026-10-22) | `test_labels.py::test_ac47_ineligible_rows_have_reasons_and_eligible_rows_none`. PR 2 local data: `::test_ac47_seed42_eligible_rows_per_split` Pass (16,969 / 7,170 / 5,116). Missing: deployed table (PR 3) |
+| AC-48 | Pass (unit) | Pass (live 2026-10-22) | `test_training.py::test_ac48_splits_are_ordered_disjoint_and_equal_the_eligible_labelled_rows`, `::test_ac48_missing_feature_row_at_t_minus_1_fails_guard_g02`, `::test_ac48_overlapping_or_unordered_ranges_fail_guard_g09`, `::test_ac48_a_row_outside_the_ranges_is_rejected`. Missing: logged training set on the platform (PR 3) |
+| AC-49 | Pass (unit) | Pass (live 2026-10-22) | `test_training.py::test_ac49_two_fits_give_identical_scores_threshold_and_metrics` (shuffled input, bitwise equal scores, equal t and metrics). Missing: two live runs (PR 3) |
+| AC-50 | Pass (unit) | Pass (live 2026-10-22) | `test_training.py::test_ac50_run_parameters_cover_model_seed_and_fr31`, `test_peak_tables.py::test_ac50_training_parameters_exclude_the_scoring_only_target_date`, `::test_ac50_pinned_versions_are_checked_by_guard_g01` |
+| AC-51 | Pass (unit) | Pass (live 2026-10-22) | `test_training.py::test_ac51_threshold_is_max_f1_with_highest_t_on_ties` (brute force over 400 random cases, a constructed tie, a single positive), `::test_ac51_run_threshold_equals_recomputation_from_validation_scores`, `::test_ac51_no_positive_validation_row_fails_before_any_effect` |
+| AC-52 | Pass (unit) | Pass (live 2026-10-22) | `test_training.py::test_ac52_metric_names_cover_segments_with_counts_and_no_accuracy`, `::test_ac52_segment_without_positives_logs_no_pr_auc_and_precision_is_zero_without_flags`, `::test_ac52_ratio_rule_scores_null_total_as_zero_and_zero_baseline_as_1e_minus_6`. The PR-AUC > positive share check needs seed 42 (PR 3) |
 | AC-53 | Pass | n/a | `test_training.py::test_ac53_empty_validation_month_fails_before_any_metric_or_registration` (error names 2013-09; no run, metric, model, tag or alias call; `champion` unchanged), `::test_ac53_a_commit_less_run_or_mismatched_parameters_fail_before_any_effect` |
-| AC-54 | Pass (unit) | Not run | `test_training.py::test_ac54_pyfunc_wrapper_round_trip_reproduces_scores` (save and load with `code_paths`, max abs diff 0, signature over `FEATURE_COLUMNS`), `::test_ac54_encoding_uses_fixed_codes_and_unknown_values_become_nan`, `::test_ac54_register_logs_reloads_then_tags_then_moves_the_alias`, `::test_ac54_reload_mismatch_stops_before_the_tag_and_the_alias`. Missing: registry, alias and run records on the platform (DA-16, PR 3) |
-| AC-55 | Not run | Not run | Live only (UC lineage, rebuild check). `registry.build_training_set` and the manifest checksum exist; no test yet |
-| AC-56 | Pass (unit) | Not run | `test_scoring.py::test_ac56_predictions_cover_exactly_eligible_households_with_label_rule`, `::test_ac56_label_is_zero_below_the_threshold`, `::test_ac56_qr20_fails_on_a_duplicate_and_on_a_score_of_1_2` |
-| AC-57 | Pass (unit) | Not run | `test_scoring.py::test_ac57_reassembly_is_identical_except_scored_at` |
-| AC-58 | Pass (unit) | Not run | `test_scoring.py::test_ac58_default_target_date_is_day_after_latest_complete_day` |
-| AC-59 | Pass (unit) | Not run | `test_scoring.py::test_ac59_range_resolves_to_89_dates` |
-| AC-60 | Pass (unit) | Not run | `test_scoring.py::test_ac60_missing_feature_date_fails_before_write`, `::test_ac60_a_household_missing_from_the_feature_date_fails_before_write`, `::test_ac60_missing_label_rows_fail_before_write` |
+| AC-54 | Pass (unit) | Pass (live 2026-10-22) | `test_training.py::test_ac54_pyfunc_wrapper_round_trip_reproduces_scores` (save and load with `code_paths`, max abs diff 0, signature over `FEATURE_COLUMNS`), `::test_ac54_encoding_uses_fixed_codes_and_unknown_values_become_nan`, `::test_ac54_register_logs_reloads_then_tags_then_moves_the_alias`, `::test_ac54_reload_mismatch_stops_before_the_tag_and_the_alias`. Missing: registry, alias and run records on the platform (DA-16, PR 3) |
+| AC-55 | n/a (live only) | Pass (live 2026-10-22) | Live only: `test_peak_training.py::test_ac55_uc_lineage_lists_feature_table_upstream_of_model`, `::test_ac55_logged_versions_rebuild_the_same_training_set` |
+| AC-56 | Pass (unit) | Pass (live 2026-10-22) | `test_scoring.py::test_ac56_predictions_cover_exactly_eligible_households_with_label_rule`, `::test_ac56_label_is_zero_below_the_threshold`, `::test_ac56_qr20_fails_on_a_duplicate_and_on_a_score_of_1_2` |
+| AC-57 | Pass (unit) | Pass (live 2026-10-22) | `test_scoring.py::test_ac57_reassembly_is_identical_except_scored_at` |
+| AC-58 | Pass (unit) | Pass (live 2026-10-22) | `test_scoring.py::test_ac58_default_target_date_is_day_after_latest_complete_day` |
+| AC-59 | Pass (unit) | Pass (live 2026-10-22) | `test_scoring.py::test_ac59_range_resolves_to_89_dates` |
+| AC-60 | Pass (unit) | Pass (live 2026-10-22) | `test_scoring.py::test_ac60_missing_feature_date_fails_before_write`, `::test_ac60_a_household_missing_from_the_feature_date_fails_before_write`, `::test_ac60_missing_label_rows_fail_before_write` |
 | AC-61 | Pass (unit; live not possible by design) | n/a | `test_scoring.py::test_ac61_missing_champion_alias_fails_before_write`, `::test_ac61_champion_without_a_threshold_tag_fails_before_write`, `::test_ac61_champion_resolves_version_and_exact_threshold` |
-| AC-62 | Pass (PR 2 unit) | Not run | `test_peak_bundle.py::test_ac62_daily_job_graph_schedule_and_pipeline_dependency`, `::test_ac62_training_is_on_demand_only`, `::test_ac62_bundle_has_exactly_one_pipeline_and_meter_ingestion_files_unchanged` (SHA-256 and `git show v0.1.0`, also `databricks.yml`), `::test_ac62_peak_model_adds_no_bundle_variable_and_uses_the_layout_variables`. Live: PR 3 |
-| AC-63 | Pass (PR 2 unit and local data) | Not run | PR 2: `test_peak_bundle.py::test_ac63_label_and_eligibility_parameters_are_job_parameters`, `::test_ac63_job_parameters_reach_declared_notebook_widgets` (6 cases), `tests/local_data/test_peak_seed42.py::test_ac63_threshold_1_5_and_coverage_0_90` (7.91%, 29,100), `test_peak_tables.py::test_ac63_baseline_day_count_above_lookback_weeks_is_rejected`. PR 1: `test_peak_tables.py::test_ac63_parameters_default_parse_from_widgets_and_validate`, `::test_ac63_label_parameters_round_trip_through_table_properties`, `test_labels.py::test_ac63_label_parameters_are_recorded_as_table_properties`. Missing: widgets in `build_labels.py`, seed-42 figures (PR 2) |
-| AC-64 | Pass (unit) | Not run | `test_peak_tables.py::test_ac64_library_schemas_equal_contracts_and_underscore_rule` (5 cases), `::test_ac64_non_nullable_contract_columns_hold_no_null` (4 cases), `::test_ac64_label_column_name_and_primary_keys_are_in_the_contracts`, `::test_ac64_ddl_nullability_and_feature_schema_follow_the_contracts`, `::test_ac64_ddl_properties_and_statement_order`, `::test_ac64_schema_precondition_names_the_missing_schemas`, `::test_ac64_object_names_follow_the_layout`, `::test_ac64_calendar_months_cover_partial_months`. Missing: deployed columns (PR 3) |
+| AC-62 | Pass (PR 2 unit) | Pass (live 2026-10-22) | `test_peak_bundle.py::test_ac62_daily_job_graph_schedule_and_pipeline_dependency`, `::test_ac62_training_is_on_demand_only`, `::test_ac62_bundle_has_exactly_one_pipeline_and_meter_ingestion_files_unchanged` (SHA-256 and `git show v0.1.0`, also `databricks.yml`), `::test_ac62_peak_model_adds_no_bundle_variable_and_uses_the_layout_variables`. Live: PR 3 |
+| AC-63 | Pass (PR 2 unit and local data) | Pass (live 2026-10-22) | PR 2: `test_peak_bundle.py::test_ac63_label_and_eligibility_parameters_are_job_parameters`, `::test_ac63_job_parameters_reach_declared_notebook_widgets` (6 cases), `tests/local_data/test_peak_seed42.py::test_ac63_threshold_1_5_and_coverage_0_90` (7.91%, 29,100), `test_peak_tables.py::test_ac63_baseline_day_count_above_lookback_weeks_is_rejected`. PR 1: `test_peak_tables.py::test_ac63_parameters_default_parse_from_widgets_and_validate`, `::test_ac63_label_parameters_round_trip_through_table_properties`, `test_labels.py::test_ac63_label_parameters_are_recorded_as_table_properties`. Missing: widgets in `build_labels.py`, seed-42 figures (PR 2) |
+| AC-64 | Pass (unit) | Pass (live 2026-10-22) | `test_peak_tables.py::test_ac64_library_schemas_equal_contracts_and_underscore_rule` (5 cases), `::test_ac64_non_nullable_contract_columns_hold_no_null` (4 cases), `::test_ac64_label_column_name_and_primary_keys_are_in_the_contracts`, `::test_ac64_ddl_nullability_and_feature_schema_follow_the_contracts`, `::test_ac64_ddl_properties_and_statement_order`, `::test_ac64_schema_precondition_names_the_missing_schemas`, `::test_ac64_object_names_follow_the_layout`, `::test_ac64_calendar_months_cover_partial_months`. Missing: deployed columns (PR 3) |
 | AC-65 | Pass | n/a | `test_secrets_hygiene.py::test_ac65_tracked_files_contain_no_databricks_token`; `pre-commit run --all-files` (see Verification Log) |
-| AC-66 | Pass (unit) | Not run | `test_peak_tables.py::test_ac66_merge_updates_only_changed_rows_and_deletes_missing_keys` (3 cases), `::test_ac66_merge_sql_rejects_bad_input_and_keys_only_tables_skip_the_update`, `::test_ac66_merge_metrics_replace_where_and_properties_text`, `::test_ac66_recomputation_with_another_partitioning_is_bitwise_equal` (weather, features, labels; 1 and 7 partitions; equal row counts and `xxhash64` checksums). Missing: MERGE on Delta, rebuild after reset (PR 3, DA-15) |
+| AC-66 | Pass (unit) | Pass (live 2026-10-22) | `test_peak_tables.py::test_ac66_merge_updates_only_changed_rows_and_deletes_missing_keys` (3 cases), `::test_ac66_merge_sql_rejects_bad_input_and_keys_only_tables_skip_the_update`, `::test_ac66_merge_metrics_replace_where_and_properties_text`, `::test_ac66_recomputation_with_another_partitioning_is_bitwise_equal` (weather, features, labels; 1 and 7 partitions; equal row counts and `xxhash64` checksums). Missing: MERGE on Delta, rebuild after reset (PR 3, DA-15) |
 | AC-67 | Pass | n/a | `test_peak_model_adr.py::test_ac67_adr_0007_accepted_with_spike_05_outcomes_and_variant`, `::test_ac67_check_specs_reports_no_errors` |
 
 ---
@@ -233,6 +250,25 @@ from. AC-65 and AC-67 are decided by tests of PR 2.
 
 ---
 
+## Code review (PR 3)
+
+`code-reviewer` subagent on the PR 3 files: 0 High, 4 Medium, 10 Low.
+
+| Severity | Finding | Handling |
+|---|---|---|
+| Medium | AC-55 1B check cast integer features to float64, so the pandas hash could not match the manifest | Fixed: `target_weekday`, `target_month`, `temperature_hour_count_1d` cast to int32 as in the training frame |
+| Medium | AC-56 asserted `len(both) == len(logged) == len(stored)`, but predictions also cover eligible unlabelled rows | Fixed: every logged row must have a prediction; max abs difference 0 on the join |
+| Medium | Reset flow never reached the AC-66 rebuild branch (runbook ran the daily job before `ac66_after`) | Fixed: after the reset, `ac66_after` starts the four data tasks itself; runbook, test docstring and script message agree |
+| Medium | Idle guard only for runs with `refresh_silver_gold` | Fixed: `PeakRunner.run` checks ingestion job and pipeline idle for every run; runbook asks for idle ingestion during the whole evidence sequence |
+| Low | Vacuous duration budgets (equal to job timeouts) | Accepted: durations are saved as evidence (NFR-14); budgets equal the YAML timeouts |
+| Low | `HAVING` on a select alias (AC-37) | Fixed: subquery with `WHERE` |
+| Low | `THREE_TASKS` holds four tasks; redundant assert; unused `workspace` argument | Fixed |
+| Low | `_scored_at` compared as string | Fixed: `unix_micros` |
+| Low | Timed-out run keeps running | Fixed: `cancel_run` before failing |
+| Low | `git_commit` check goes stale after a redeploy | Accepted: runbook says to retrain after a redeploy |
+| Low | Reset script: connection outside the `try`, no active-run check, no `main()` test | Open: user-run guarded script with a dry-run default; row-count and snapshot checks cover the intended safety. Follow-up if wanted |
+| Low | `tests/test_peak_reset_script.py` and the layout test change are outside the manifest list | Accepted, listed in Files Changed |
+
 ## PR 2 gate (steps for the user; nothing below was run)
 
 Prerequisites: PR 2 committed and merged or at least committed on the branch, so `git status --porcelain` is empty and `bundle.git.commit` is the code that runs. METER_INGESTION is deployed and its data is loaded. Run with the `dev` profile. Deploy and run are user actions.
@@ -284,7 +320,96 @@ Prerequisites: PR 2 committed and merged or at least committed on the branch, so
 5. ~~Update DESIGN entry 1 text for D-01 through `/iterate`~~ Done: `/iterate` 2026-10-21 (with D-13 and D-17).
 6. After PR 2 is deployed: run the *Gate after PR 2* (bootstrap sequence), which checks DA-13 to DA-18, before PR 3.
 
+## PR 3: integration tests, reset script, runbook (entries 36 to 44)
+
+The integration tests carry the `integration` marker and need the deployed `dev` workspace. They
+were run on 2026-10-22 (see *PR 3 live run* below): 27 of 27 pass. Dates and numbers in the assertions are the
+figures of ADR 0007 / spike A-17 and the DESIGN Test Strategy.
+
+| AC | Live test (file `tests/integration/`) | Live status |
+|---|---|---|
+| AC-36 | `test_peak_data.py::test_ac36_bronze_weather_has_21165_rows_and_rerun_adds_none` | Pass (2026-10-22) |
+| AC-37 | `test_peak_data.py::test_ac37_silver_weather_range_uniqueness_and_dst_days` | Pass (2026-10-22) |
+| AC-39 | `test_peak_data.py::test_ac39_feature_temperature_matches_silver_weather` | Pass (2026-10-22) |
+| AC-40 | `test_peak_data.py::test_ac40_every_feature_matches_sql_recomputation` (oracle SQL checked on local Spark: 0 differences) | Pass (2026-10-22) |
+| AC-41 | `test_peak_data.py::test_ac41_deployed_feature_and_label_keys_are_complete` | Pass (2026-10-22) |
+| AC-44 | `test_peak_data.py::test_ac44_deployed_label_counts_and_qr19` | Pass (2026-10-22) |
+| AC-47 | `test_peak_data.py::test_ac47_deployed_eligible_rows_per_split` | Pass (2026-10-22) |
+| AC-48 | `test_peak_training.py::test_ac48_logged_training_set_equals_labels_and_features_at_t_minus_1` | Pass (2026-10-22) |
+| AC-49 | `test_peak_training.py::test_ac49_two_training_runs_are_identical` (needs two training runs on unchanged tables) | Pass (2026-10-22) |
+| AC-50 | `test_peak_training.py::test_ac50_logged_parameters` | Pass (2026-10-22) |
+| AC-51 | `test_peak_training.py::test_ac51_version_tag_equals_recomputed_threshold` | Pass (2026-10-22) |
+| AC-52 | `test_peak_training.py::test_ac52_seed42_metrics_and_signal` | Pass (2026-10-22) |
+| AC-53 | unit only by DESIGN (no live test) | n/a |
+| AC-54 | `test_peak_training.py::test_ac54_registered_version_alias_reload_and_run_records` | Pass (2026-10-22) |
+| AC-55 | `test_peak_training.py::test_ac55_uc_lineage_lists_feature_table_upstream_of_model`, `::test_ac55_logged_versions_rebuild_the_same_training_set` | Pass (2026-10-22) |
+| AC-56 | `test_peak_scoring.py::test_ac56_predictions_for_t_match_eligibility_threshold_and_model` (after AC-59) | Pass (2026-10-22) |
+| AC-57 | `test_peak_scoring.py::test_ac57_before_rescore_snapshot`, `::test_ac57_after_rescore_only_scored_at_changes` | Pass (2026-10-22) |
+| AC-58 | `test_peak_scoring.py::test_ac58_run_without_target_date_scores_2014_02_28` | Pass (2026-10-22) |
+| AC-59 | `test_peak_scoring.py::test_ac59_backfill_covers_test_range_and_rerun_changes_only_scored_at` | Pass (2026-10-22) |
+| AC-60 | `test_peak_scoring.py::test_ac60_target_beyond_features_fails_and_writes_nothing` | Pass (2026-10-22) |
+| AC-62 | `test_peak_deployment.py::test_ac62_deployed_jobs_pipeline_and_run_durations` | Pass (2026-10-22) |
+| AC-63 | `test_peak_data.py::test_ac63_before_parameter_run_snapshot`, `::test_ac63_after_parameter_run_and_restore` | Pass (2026-10-22) |
+| AC-64 | `test_peak_data.py::test_ac64_deployed_columns_match_contracts` | Pass (2026-10-22) |
+| AC-66 | `test_peak_data.py::test_ac66_before_rebuild_snapshot`, `::test_ac66_after_rerun_and_rebuild_checksums_equal` (rebuild leg after the user-run reset script) | Pass (2026-10-22) |
+
+Design points of the tests worth knowing when reading a failure:
+
+- The tests start jobs only with `only=` task lists that avoid `refresh_silver_gold`, except where a
+  full daily run is a precondition the user runs by hand. `PeakRunner.run` refuses any run that
+  includes `refresh_silver_gold` while `smart_meter_ingestion` runs or the pipeline is not `IDLE`
+  (DA-13). `test_ac62` also asserts idleness first and starts nothing.
+- AC-63 `after` starts `build_labels` with `label_threshold=1.5` and `coverage_min=0.90`, and
+  restores the defaults in a `finally` block before comparing the checksum with the snapshot.
+- AC-66 `after` detects the rebuild leg (a table missing after the reset script) and then expects
+  the MERGE to insert exactly the snapshot row counts; otherwise it expects 0 inserted, 0 updated,
+  0 deleted.
+- AC-49 compares the two newest finished training runs and fails with an instruction when their
+  source table versions differ.
+
+### Commands the user must run (live evidence)
+
+```bash
+export DATABRICKS_CONFIG_PROFILE=dev        # and optionally DATABRICKS_WAREHOUSE_ID
+git status --porcelain                      # must print nothing
+databricks bundle validate -t dev -p dev; echo "validate exit $?"
+databricks bundle deploy -t dev -p dev;   echo "deploy exit $?"
+# ingestion job idle? then, in the order of docs/runbooks/peak_model.md sections 3, 4 and 8:
+pytest -m integration tests/integration/test_peak_data.py -k "ac36 or ac37 or ac39 or ac40 or ac41 or ac44 or ac47 or ac64"
+pytest -m integration tests/integration/test_peak_data.py -k "ac63"
+pytest -m integration tests/integration/test_peak_data.py -k "ac66_before"
+python scripts/reset_peak_model_outputs.py            # dry run; add --confirm, then run the daily job (optional rebuild leg)
+pytest -m integration tests/integration/test_peak_data.py -k "ac66_after"
+pytest -m integration tests/integration/test_peak_training.py          # after two training runs
+pytest -m integration tests/integration/test_peak_scoring.py -k "ac58 or ac59 or ac56"
+pytest -m integration tests/integration/test_peak_scoring.py -k "ac57"
+pytest -m integration tests/integration/test_peak_scoring.py -k "ac60"
+pytest -m integration tests/integration/test_peak_deployment.py        # after a full daily run
+pre-commit run --all-files                                             # AC-65 evidence
+```
+
 ---
+
+### PR 3 verification (local, 2026-10-22)
+
+- `ruff check .` and `ruff format --check .`: clean (109 files).
+- `pytest -q` (full, before the review fixes): 329 passed, 80 deselected (integration and local_data), 252 s. After the review fixes: `tests/test_integration_layout.py`, `tests/test_peak_reset_script.py`, `tests/test_peak_bundle.py` rerun, 39 passed.
+- `pytest --collect-only -m integration -o addopts= tests/integration/test_peak_*.py`: 27 tests collected.
+- `python3 scripts/check_specs.py`: 28 documents, 0 errors, 0 warnings.
+- AC-40 oracle SQL run on local Spark against `features.build_features` (messy fixture): 0 differing rows in all 12 features.
+- Status was `In Progress` until the live run below.
+
+### PR 3 live run (`dev`, 2026-10-22)
+
+- Deploy of branch `build/peak-model-pr3` at `06fbc59` (main `e380c90` plus PR 3, which changes only tests, a script and docs): `bundle validate` exit 0, `bundle deploy` exit 0 (AC-62). Ingestion job, both PEAK_MODEL jobs and the pipeline idle before every step.
+- Bootstrap: training runs 800890504587740 (182 s) and 683019748253644 (141 s), unchanged tables, registered versions 6 and 7; `champion` = 7. Full daily run 590469021014875: Success, 293 s (281 s run time; `refresh_silver_gold` 123 s, `build_features` 79 s, `score_predictions` 78 s).
+- Integration tests, in the runbook order (`pytest -o addopts= -m integration`):
+  - `test_peak_data.py` AC-36, 37, 39, 40, 41, 44, 47, 64: 8 passed (106 s). AC-63 pair: 2 passed (140 s; defaults restored). AC-66 before and after: 2 passed; the rebuild leg was **not** run (`rebuild_after_reset` false): the rerun MERGEs were 0 / 0 / 0 for Silver weather, features and labels. The reset script itself was not run.
+  - `test_peak_training.py`: 8 passed (196 s), AC-48 to 52, 54, 55 (UC lineage and the rebuild of the logged training set), AC-49 on runs 800890504587740 and 683019748253644.
+  - `test_peak_scoring.py`: AC-58, 59, 56: 3 passed (363 s); AC-57 pair: 2 passed (108 s); AC-60: 1 passed (106 s).
+  - `test_peak_deployment.py` AC-62: failed on the first run because of two test defects, then 1 passed (9 s): `jobs.list` returns settings without the job parameters, so `_job_named` now reads the full job with `jobs.get`; the pipeline API omits `continuous` when false, so the test compares `bool(...)`. `ac66_before` rerun after the fixture change: pass.
+- AC-65: `pre-commit run --all-files` clean on the staged tree (the hook ruff v0.6.9 and the CI ruff format long asserts differently; the asserts concerned are written in a form both accept).
+- Not live by design: AC-53 (unit only), AC-61 (would delete the shared alias). Optional and not run: the AC-66 rebuild leg after `reset_peak_model_outputs.py --confirm`.
 
 ## Self-Review
 
@@ -304,4 +429,4 @@ Prerequisites: PR 2 committed and merged or at least committed on the branch, so
 
 ## Next Step
 
-PR 2: `/build .claude/sdd/features/DESIGN_PEAK_MODEL.md` (entries 24 to 35). `/ship PEAK_MODEL` only after PR 3.
+Merge PR 3 (#21), then `/ship PEAK_MODEL`. Follow-ups for SHIPPED: the optional AC-66 rebuild leg, bumping the pre-commit ruff pin, the open Low of the PR 3 review (reset script without an active-run check), and METER_INGESTION F-02.

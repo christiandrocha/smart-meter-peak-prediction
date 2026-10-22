@@ -21,6 +21,11 @@ the extended ``manifest.json`` written by ``scripts/prepare_sample.py build`` (d
 
 Time is UTC end to end: the fixtures fail when the warehouse session time zone is not UTC.
 Snapshots for before/after tests are JSON files in ``out/evidence/`` (git-ignored).
+
+PEAK_MODEL (manifest 36 to 40) adds fixtures for its two jobs (found by base name), a runner that
+starts them with job parameters and ``only=`` and reads the task exit values, the MLflow client and
+artifact download, and registry reads. ``mlflow`` is imported lazily, so collecting needs neither
+it nor the SDK. The runbook is ``docs/runbooks/peak_model.md``.
 """
 
 from __future__ import annotations
@@ -28,9 +33,10 @@ from __future__ import annotations
 import json
 import os
 import re
+import tempfile
 import time
 from collections.abc import Callable
-from dataclasses import fields
+from dataclasses import dataclass, fields
 from datetime import timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -39,7 +45,7 @@ from typing import Any
 import pytest
 import yaml
 
-from smart_meter_peak_prediction import metrics
+from smart_meter_peak_prediction import metrics, peak_config
 from smart_meter_peak_prediction.config import Settings
 from smart_meter_peak_prediction.rules import DROP_RULE_PRECEDENCE
 
@@ -51,6 +57,8 @@ CONTRACTS_DIR = ROOT / "docs" / "contracts"
 
 JOB_NAME = "smart_meter_ingestion"
 PIPELINE_NAME = "smart_meter_silver_gold"
+PEAK_JOB_NAME = "smart_meter_peak_model"
+TRAINING_JOB_NAME = "smart_meter_peak_model_training"
 DEV_PREFIX = re.compile(r"^\[dev [^\]]+\] ")  # development-mode display prefix (AC-28)
 
 STATEMENT_TIMEOUT_S = 900
@@ -353,3 +361,225 @@ def assert_rule_totals_consistent(sql: Sql, settings: Settings) -> Callable[[], 
         return totals
 
     return check
+
+
+# ----------------------------------------------------------------------------- PEAK_MODEL jobs
+def _job_named(workspace: Any, name: str) -> Any:
+    found = [
+        j
+        for j in workspace.jobs.list(expand_tasks=True)
+        if j.settings and strip_dev_prefix(j.settings.name or "") == name
+    ]
+    listed = _only(found, f"job named {name} (development prefix stripped)")
+    # jobs.list returns abbreviated settings without the job parameters; read the full job
+    return workspace.jobs.get(listed.job_id)
+
+
+@pytest.fixture(scope="session")
+def peak_job(workspace: Any) -> Any:
+    """The daily job ``smart_meter_peak_model``, by base name."""
+    return _job_named(workspace, PEAK_JOB_NAME)
+
+
+@pytest.fixture(scope="session")
+def training_job(workspace: Any) -> Any:
+    """The on-demand job ``smart_meter_peak_model_training``, by base name."""
+    return _job_named(workspace, TRAINING_JOB_NAME)
+
+
+@dataclass
+class PeakRun:
+    """A finished job run: its state and the parsed notebook exit value of every task."""
+
+    run: Any
+    outputs: dict[str, dict[str, Any]]
+    errors: dict[str, str]
+
+    @property
+    def result_state(self) -> str:
+        state = self.run.state
+        return state.result_state.value if state and state.result_state else ""
+
+    @property
+    def url(self) -> str:
+        return self.run.run_page_url or ""
+
+
+class PeakRunner:
+    """Start a PEAK_MODEL job with job parameters and ``only=`` and wait for it to end.
+
+    Every run first checks that the ingestion job and the pipeline are idle. A pipeline update
+    requested while the ingestion job runs is refused and the task ends INTERNAL_ERROR without a
+    retry (DA-13), and the other tasks read Gold, which must be stable.
+    """
+
+    TERMINAL = ("TERMINATED", "SKIPPED", "INTERNAL_ERROR")
+
+    def __init__(self, client: Any, ingestion_job_id: int, pipeline_id: str) -> None:
+        self.client = client
+        self.ingestion_job_id = ingestion_job_id
+        self.pipeline_id = pipeline_id
+
+    def assert_ingestion_idle(self) -> None:
+        active = list(self.client.jobs.list_runs(job_id=self.ingestion_job_id, active_only=True))
+        assert not active, (
+            f"smart_meter_ingestion is running (run {active[0].run_id}); a pipeline update now "
+            "would be refused (DA-13). Wait for it to end and run the test again"
+        )
+        state = self.client.pipelines.get(self.pipeline_id).state
+        status = state.value if state else "IDLE"
+        assert status == "IDLE", f"pipeline smart_meter_silver_gold is {status}, not IDLE"
+
+    def run(
+        self,
+        job: Any,
+        *,
+        params: dict[str, str] | None = None,
+        only: list[str] | None = None,
+        expect: str = "SUCCESS",
+        timeout: timedelta = timedelta(minutes=60),
+    ) -> PeakRun:
+        tasks = {t.task_key for t in job.settings.tasks}
+        assert set(only or []) <= tasks, f"unknown task in only={only}"
+        self.assert_ingestion_idle()  # also for runs without the pipeline task: Gold must be stable
+        kwargs: dict[str, Any] = {"job_id": job.job_id}
+        if params:
+            kwargs["job_parameters"] = params
+        if only is not None:
+            kwargs["only"] = only
+        run_id = self.client.jobs.run_now(**kwargs).run_id
+        deadline = time.monotonic() + timeout.total_seconds()
+        run = self.client.jobs.get_run(run_id)
+        while run.state.life_cycle_state.value not in self.TERMINAL:
+            if time.monotonic() > deadline:
+                self.client.jobs.cancel_run(run_id)
+                pytest.fail(f"run {run_id} did not end in {timeout}; cancelled")
+            time.sleep(15)
+            run = self.client.jobs.get_run(run_id)
+        result = run.state.result_state.value if run.state.result_state else ""
+        ended = f"run of {only or 'all tasks'} ended {result!r}: {run.run_page_url}"
+        assert result == expect, ended
+        outputs: dict[str, dict[str, Any]] = {}
+        errors: dict[str, str] = {}
+        for task in run.tasks or []:
+            if not task.state or not task.state.result_state:
+                continue
+            if task.state.result_state.value == "DISABLED" or (
+                only is not None and task.task_key not in only
+            ):
+                continue
+            output = self.client.jobs.get_run_output(task.run_id)
+            if output.notebook_output and output.notebook_output.result:
+                outputs[task.task_key] = json.loads(output.notebook_output.result)
+            if output.error:
+                errors[task.task_key] = f"{output.error} {output.error_trace or ''}"
+        return PeakRun(run=run, outputs=outputs, errors=errors)
+
+
+@pytest.fixture(scope="session")
+def peak_runner(workspace: Any, job: Any, pipeline: Any) -> PeakRunner:
+    return PeakRunner(workspace, job.job_id, pipeline.pipeline_id)
+
+
+@dataclass
+class PeakNames:
+    model: str
+    features: str
+    labels: str
+    predictions: str
+    bronze_weather: str
+    silver_weather: str
+    experiment: str
+
+
+@pytest.fixture(scope="session")
+def peak_names(workspace: Any, settings: Settings) -> PeakNames:
+    user = workspace.current_user.me().user_name
+    return PeakNames(
+        model=peak_config.model_name(settings),
+        features=peak_config.features_table(settings),
+        labels=peak_config.labels_table(settings),
+        predictions=peak_config.predictions_table(settings),
+        bronze_weather=peak_config.bronze_weather_table(settings),
+        silver_weather=peak_config.silver_weather_table(settings),
+        experiment=peak_config.experiment_path(user),
+    )
+
+
+# ----------------------------------------------------------------------------- MLflow
+class Mlflow:
+    """MLflow tracking and the UC registry of the workspace, read-only helpers for the tests."""
+
+    def __init__(self, names: PeakNames) -> None:
+        import mlflow
+        from mlflow import MlflowClient
+
+        mlflow.set_tracking_uri("databricks")
+        mlflow.set_registry_uri("databricks-uc")
+        self.mlflow = mlflow
+        self.client = MlflowClient()
+        self.names = names
+        self._scratch = tempfile.TemporaryDirectory(prefix="peak_artifacts_")
+        self.scratch_dir = self._scratch.name
+
+    def training_runs(self) -> list[Any]:
+        """Finished runs of the experiment, newest first."""
+        experiment = self.client.get_experiment_by_name(self.names.experiment)
+        assert experiment is not None, f"no MLflow experiment {self.names.experiment}: train first"
+        return list(
+            self.client.search_runs(
+                [experiment.experiment_id],
+                filter_string="attributes.status = 'FINISHED'",
+                order_by=["attributes.start_time DESC"],
+                max_results=50,
+            )
+        )
+
+    def latest_run(self) -> Any:
+        runs = self.training_runs()
+        assert runs, "no finished training run: run the training job (runbook)"
+        return runs[0]
+
+    def artifact(self, run_id: str, name: str) -> Path:
+        folder = Path(self._scratch.name) / run_id
+        folder.mkdir(exist_ok=True)
+        path = folder / name
+        if not path.exists():
+            self.mlflow.artifacts.download_artifacts(
+                run_id=run_id, artifact_path=name, dst_path=str(folder)
+            )
+        return path
+
+    def parquet(self, run_id: str, name: str) -> Any:
+        import pandas as pd
+
+        return pd.read_parquet(self.artifact(run_id, name))
+
+    def version_of_run(self, run_id: str) -> int:
+        found = [
+            int(v.version)
+            for v in self.client.search_model_versions(f"name = '{self.names.model}'")
+            if v.run_id == run_id
+        ]
+        assert found, f"run {run_id} registered no version of {self.names.model}"
+        return max(found)
+
+    def champion_version(self) -> int:
+        return int(
+            self.client.get_model_version_by_alias(
+                self.names.model, peak_config.CHAMPION_ALIAS
+            ).version
+        )
+
+    def threshold(self, version: int) -> float:
+        tags = self.client.get_model_version(self.names.model, str(version)).tags or {}
+        assert peak_config.THRESHOLD_TAG in tags, f"version {version} has no decision_threshold"
+        return float(tags[peak_config.THRESHOLD_TAG])
+
+
+@pytest.fixture(scope="session")
+def mlflow_registry(peak_names: PeakNames) -> Mlflow:
+    try:
+        return Mlflow(peak_names)
+    except ImportError:
+        pytest.fail("mlflow is missing; install it with: pip install -e '.[integration]'")
