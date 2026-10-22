@@ -178,7 +178,7 @@ def test_ac62_daily_job_graph_schedule_and_pipeline_dependency() -> None:
     assert pipeline_task["pipeline_id"] == "${resources.pipelines.smart_meter_silver_gold.id}"
     assert pipeline_task["full_refresh"] is False
     assert t["refresh_silver_gold"]["max_retries"] == 1
-    assert t["refresh_silver_gold"]["min_retry_interval_millis"] == 600000  # DA-13
+    assert t["refresh_silver_gold"]["min_retry_interval_millis"] == 600000  # FAILED only (DA-13)
     schedule = DAILY["schedule"]
     assert schedule["quartz_cron_expression"] == "0 0 8 * * ?"
     assert schedule["timezone_id"] == "UTC"
