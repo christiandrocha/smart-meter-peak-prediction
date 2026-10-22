@@ -93,6 +93,10 @@ METER_INGESTION job or to the pipeline:
 - **Note (2026-10-21, PR 2 gate):** on serverless, `max_retries: 0` alone does not stop retries:
   auto-optimization retried the failed training task and registered a second version. The
   training task therefore also sets `disable_auto_optimization: true` (build deviation D-21).
+- **Note (2026-10-22, PEAK_MODEL_CONCURRENCY):** the daily graph now starts with a read-only task
+  `check_pipeline_idle` that `refresh_silver_gold` depends on ([ADR 0012](0012-read-only-pipeline-pre-check-in-the-daily-peak-job.md)).
+  A visible overlap with the ingestion job no longer reaches the pipeline; the refused-update
+  consequence above applies to the race window only. The other decisions of this ADR stand.
 - **What would make us revisit this:**
   - a real consumer that needs readings ingested in the same run;
   - Free Edition allowing table-update triggers on materialized views (verified by a spike);

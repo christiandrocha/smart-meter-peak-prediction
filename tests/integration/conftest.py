@@ -45,7 +45,7 @@ from typing import Any
 import pytest
 import yaml
 
-from smart_meter_peak_prediction import metrics, peak_config
+from smart_meter_peak_prediction import metrics, peak_config, pipeline_guard
 from smart_meter_peak_prediction.config import Settings
 from smart_meter_peak_prediction.rules import DROP_RULE_PRECEDENCE
 
@@ -408,12 +408,15 @@ class PeakRun:
 class PeakRunner:
     """Start a PEAK_MODEL job with job parameters and ``only=`` and wait for it to end.
 
-    Every run first checks that the ingestion job and the pipeline are idle. A pipeline update
-    requested while the ingestion job runs is refused and the task ends INTERNAL_ERROR without a
-    retry (DA-13), and the other tasks read Gold, which must be stable.
+    Every run first checks that the ingestion job and the pipeline are idle, with the same
+    ``pipeline_guard.check`` as the daily job's pre-check (one definition of "active", ADR 0012),
+    unless ``require_idle=False`` (the busy-case tests of PEAK_MODEL_CONCURRENCY). A pipeline
+    update requested while the ingestion job runs is refused and the task ends INTERNAL_ERROR
+    without a retry (DA-13), and the other tasks read Gold, which must be stable.
     """
 
-    TERMINAL = ("TERMINATED", "SKIPPED", "INTERNAL_ERROR")
+    TERMINAL = tuple(sorted(pipeline_guard.TERMINAL_RUN_STATES))
+    NEVER_RAN = ("DISABLED", "UPSTREAM_FAILED", "UPSTREAM_CANCELED")
 
     def __init__(self, client: Any, ingestion_job_id: int, pipeline_id: str) -> None:
         self.client = client
@@ -421,11 +424,9 @@ class PeakRunner:
         self.pipeline_id = pipeline_id
 
     def assert_ingestion_idle(self) -> None:
-        active = list(self.client.jobs.list_runs(job_id=self.ingestion_job_id, active_only=True))
-        assert not active, (
-            f"smart_meter_ingestion is running (run {active[0].run_id}); a pipeline update now "
-            "would be refused (DA-13). Wait for it to end and run the test again"
-        )
+        report = pipeline_guard.check(self.client, self.ingestion_job_id, self.pipeline_id)
+        msg = "the shared pipeline is not idle (DA-13); wait and run again:\n" + report.message()
+        assert report.ok, msg
         state = self.client.pipelines.get(self.pipeline_id).state
         status = state.value if state else "IDLE"
         assert status == "IDLE", f"pipeline smart_meter_silver_gold is {status}, not IDLE"
@@ -438,10 +439,12 @@ class PeakRunner:
         only: list[str] | None = None,
         expect: str = "SUCCESS",
         timeout: timedelta = timedelta(minutes=60),
+        require_idle: bool = True,
     ) -> PeakRun:
         tasks = {t.task_key for t in job.settings.tasks}
         assert set(only or []) <= tasks, f"unknown task in only={only}"
-        self.assert_ingestion_idle()  # also for runs without the pipeline task: Gold must be stable
+        if require_idle:
+            self.assert_ingestion_idle()  # also without the pipeline task: Gold must be stable
         kwargs: dict[str, Any] = {"job_id": job.job_id}
         if params:
             kwargs["job_parameters"] = params
@@ -464,7 +467,7 @@ class PeakRunner:
         for task in run.tasks or []:
             if not task.state or not task.state.result_state:
                 continue
-            if task.state.result_state.value == "DISABLED" or (
+            if task.state.result_state.value in self.NEVER_RAN or (
                 only is not None and task.task_key not in only
             ):
                 continue
@@ -474,6 +477,47 @@ class PeakRunner:
             if output.error:
                 errors[task.task_key] = f"{output.error} {output.error_trace or ''}"
         return PeakRun(run=run, outputs=outputs, errors=errors)
+
+    # ------------------------------------------------------------------ concurrency helpers
+    def start_ingestion_run(self) -> int:
+        """Start ``smart_meter_ingestion`` from an idle state and return its run id."""
+        self.assert_ingestion_idle()
+        return self.client.jobs.run_now(job_id=self.ingestion_job_id).run_id
+
+    def wait_life_cycle(
+        self, run_id: int, states: tuple[str, ...], timeout: timedelta = timedelta(minutes=20)
+    ) -> Any:
+        """Poll a run until its life-cycle state is one of ``states``; fail if it ended first."""
+        deadline = time.monotonic() + timeout.total_seconds()
+        while True:
+            run = self.client.jobs.get_run(run_id)
+            state = run.state.life_cycle_state.value
+            if state in states:
+                return run
+            if state in self.TERMINAL:
+                pytest.fail(f"run {run_id} ended ({state}) before reaching {states}")
+            if time.monotonic() > deadline:
+                pytest.fail(f"run {run_id} did not reach {states} in {timeout}")
+            time.sleep(5)
+
+    def wait_ended(self, run_id: int, timeout: timedelta = timedelta(minutes=60)) -> Any:
+        """Poll a run until it is over and return it."""
+        deadline = time.monotonic() + timeout.total_seconds()
+        while True:
+            run = self.client.jobs.get_run(run_id)
+            if run.state.life_cycle_state.value in self.TERMINAL:
+                return run
+            if time.monotonic() > deadline:
+                pytest.fail(f"run {run_id} did not end in {timeout}")
+            time.sleep(15)
+
+    @staticmethod
+    def task_runs_by_key(run: Any) -> dict[str, list[Any]]:
+        """Task runs of a job run grouped by task key (more than one entry means a retry)."""
+        grouped: dict[str, list[Any]] = {}
+        for task in run.tasks or []:
+            grouped.setdefault(task.task_key, []).append(task)
+        return grouped
 
 
 @pytest.fixture(scope="session")

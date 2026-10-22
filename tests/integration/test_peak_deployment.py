@@ -2,7 +2,8 @@
 
 Prerequisites (evidence for the build report): ``databricks bundle validate -t dev`` and
 ``databricks bundle deploy -t dev`` from a clean tree (exit codes recorded), then one successful
-run of each job (runbook "Bootstrap order" and "Training").
+run of each job (runbook "Bootstrap order" and "Training"). The latest full daily run must include
+the pre-check ``check_pipeline_idle``: AC-76 of ``test_peak_concurrency.py`` provides it.
 
 The test starts no run. It checks first that ``smart_meter_ingestion`` and the Silver/Gold pipeline
 are idle, so it cannot be confused by (or collide with) a running ingestion job; a pipeline update
@@ -21,6 +22,7 @@ pytestmark = pytest.mark.integration
 ROOT = Path(__file__).resolve().parents[2]
 RESOURCES = ROOT / "resources"
 DAILY_TASKS = (
+    "check_pipeline_idle",
     "refresh_silver_gold",
     "ingest_weather",
     "build_weather_silver",
@@ -53,6 +55,8 @@ def _task_view(task) -> dict:
         "timeout_seconds": task.timeout_seconds,
         "max_retries": task.max_retries or 0,
         "min_retry_interval_millis": task.min_retry_interval_millis or 0,
+        # the API omits a boolean left at false, so compare with the default applied
+        "disable_auto_optimization": bool(task.disable_auto_optimization),
     }
 
 
@@ -62,6 +66,7 @@ def _yaml_task_view(task: dict) -> dict:
         "timeout_seconds": task.get("timeout_seconds"),
         "max_retries": task.get("max_retries", 0),
         "min_retry_interval_millis": task.get("min_retry_interval_millis", 0),
+        "disable_auto_optimization": bool(task.get("disable_auto_optimization", False)),
     }
 
 
@@ -123,6 +128,12 @@ def test_ac62_deployed_jobs_pipeline_and_run_durations(
     assert {t.task_key for t in peak_job.settings.tasks} == set(DAILY_TASKS)
     assert {t.task_key for t in training_job.settings.tasks} == set(TRAINING_TASKS)
     assert training_job.settings.schedule is None  # on demand only (D-36)
+
+    # DA-19: the bundle references resolved to the ids of the deployed objects (AC-68)
+    (pre_check,) = (t for t in peak_job.settings.tasks if t.task_key == "check_pipeline_idle")
+    ids = pre_check.notebook_task.base_parameters
+    assert ids["ingestion_job_id"] == str(job.job_id)
+    assert ids["pipeline_id"] == pipeline.pipeline_id
 
     # exactly one pipeline in the bundle, and the METER_INGESTION objects equal their YAML
     names = [strip_dev_prefix(p.name or "") for p in workspace.pipelines.list_pipelines()]

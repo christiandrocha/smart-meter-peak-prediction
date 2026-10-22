@@ -72,6 +72,10 @@ job's identity (default notebook authentication; the retry and HTTP timeouts are
   `SKIPPED` or `INTERNAL_ERROR`.
 - A pipeline update counts as active when its state is not `COMPLETED`, `FAILED` or `CANCELED`. An
   unknown state counts as active.
+- The overall pipeline state (`pipelines.get(...).state`, added 2026-10-22 from the build review)
+  also decides: `IDLE` and `FAILED` pass; `DEPLOYING`, `STARTING`, `RUNNING`, `STOPPING`,
+  `RECOVERING`, `RESETTING` and any other or missing value count as busy; `DELETED` fails closed.
+  This covers an update missing from `latest_updates` while the pipeline runs, at no extra call.
 
 When anything is active, the task fails with a message that names the job, the run id, the pipeline,
 the update id and its state, with UTC times ending in `Z`. The message says to wait until the named
@@ -125,5 +129,5 @@ Spike 06 (`spikes/databricks/06_spike_pipeline_guard_probe.py`, submitted by
 | DA-23 `jobs.list(name=...)` | Pass. The filter on the deployed name `[dev christiandr] smart_meter_ingestion` returned exactly the ingestion job |
 | DA-26 update length against a pre-check started after it | Pass. An update with no new input lasted 125 s. A probe task submitted right after `start_update` started 4 s later and, 31 s after the start, read the update as `WAITING_FOR_RESOURCES` (active) |
 
-DA-19 (bundle reference to another job's id) is checked at the first deploy of the build; DA-21,
+DA-19 (bundle reference to another job's id) passed at the first deploy of the build (2026-10-22: the deployed task received the ingestion job id and the pipeline id); DA-21,
 DA-24 and DA-25 by the live tests and prior art, as the DESIGN lists.

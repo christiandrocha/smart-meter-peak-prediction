@@ -1,6 +1,7 @@
-# Daily PEAK_MODEL job (DESIGN, Bundle and job layout; ADR 0008). It refreshes the shared
-# Silver/Gold pipeline, ingests the weather file, rebuilds the feature and label tables and scores
-# the households eligible on the target date with the `champion` model. It has no training task:
+# Daily PEAK_MODEL job (DESIGN, Bundle and job layout; ADR 0008, ADR 0012). It first checks that
+# the shared pipeline is idle (check_pipeline_idle), then refreshes the shared Silver/Gold
+# pipeline, ingests the weather file, rebuilds the feature and label tables and scores the
+# households eligible on the target date with the `champion` model. It has no training task:
 # training is the separate on-demand job `smart_meter_peak_model_training` (D-36, D-37).
 # Tasks run on serverless compute. No secret is needed (workspace identity only).
 # The schedule is paused by development mode. Job parameters (FR-31) reach the notebooks as widgets
@@ -43,10 +44,28 @@ resources:
           spec:
             environment_version: "2"
       tasks:
-        # One retry after 10 minutes for a transient failed update. An update refused because the
-        # ingestion job is running ends in INTERNAL_ERROR and is not retried; the next daily run is
-        # the retry (DA-13, ADR 0008).
+        # Read-only pre-check (ADR 0012): fails at once, naming the blocking ingestion run or
+        # pipeline update, when the shared pipeline is busy; fails closed when the state cannot be
+        # read. Never retried: max_retries 0 alone does not stop a serverless retry (D-21).
+        - task_key: check_pipeline_idle
+          timeout_seconds: 300
+          max_retries: 0
+          disable_auto_optimization: true
+          environment_key: peak_model_env
+          notebook_task:
+            notebook_path: ../notebooks/check_pipeline_idle.py
+            base_parameters:
+              src_path: ${workspace.file_path}/src
+              ingestion_job_id: ${resources.jobs.smart_meter_ingestion.id}
+              pipeline_id: ${resources.pipelines.smart_meter_silver_gold.id}
+
+        # One retry after 10 minutes for a transient FAILED update (D-41). An update refused
+        # because another update is in progress ends INTERNAL_ERROR and is not retried;
+        # check_pipeline_idle prevents the visible cases, and a retry does not rerun the pre-check
+        # (ADR 0012).
         - task_key: refresh_silver_gold
+          depends_on:
+            - task_key: check_pipeline_idle
           timeout_seconds: 2700
           max_retries: 1
           min_retry_interval_millis: 600000

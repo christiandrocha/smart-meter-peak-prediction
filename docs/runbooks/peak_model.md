@@ -14,7 +14,8 @@ local machine                       Databricks (serverless, target dev, catalog 
 -------------                       --------------------------------------------------------------
 weather CSV --databricks fs cp-->   Volume landing/weather/
                                     job smart_meter_peak_model (daily 08:00 UTC, paused in dev mode)
-                                     refresh_silver_gold -> existing pipeline smart_meter_silver_gold
+                                     check_pipeline_idle (read-only; fails if ingestion or a pipeline update is active)
+                                     refresh_silver_gold (after the check) -> existing pipeline smart_meter_silver_gold
                                      ingest_weather -> build_weather_silver
                                      build_features (after both), build_labels (after the pipeline)
                                      score_predictions (champion model) -> gold.consumption_spike_predictions
@@ -34,30 +35,46 @@ weather CSV --databricks fs cp-->   Volume landing/weather/
 
 ## Concurrency with the ingestion job
 
-**Do not run the peak daily job, or any run that includes `refresh_silver_gold`
-(`--only refresh_silver_gold` included), while `smart_meter_ingestion` is running.** Both jobs
-refresh the same pipeline, and a pipeline allows one update at a time. The second update is refused
-with "Pipeline update already in progress.", the task ends `INTERNAL_ERROR`, and it is **not
-retried** (DA-13 failed at the PR 2 gate: the task `max_retries: 1` covers transient `FAILED`
-updates only). What to do:
+Both jobs refresh the same pipeline, and a pipeline allows one update at a time. The daily job
+therefore starts with the task `check_pipeline_idle` (ADR 0012), a read-only pre-check that runs
+under the job's identity before `refresh_silver_gold`. It reads the active runs of
+`smart_meter_ingestion` and the latest updates of `smart_meter_silver_gold`, never waits and never
+retries (`max_retries: 0`, auto-optimization off, 300 s timeout; it normally takes well under a
+minute, at most 120 s measured).
 
-1. The schedules are offset on purpose: ingestion at 06:00 UTC, peak at 08:00 UTC. A manual run is
-   the usual cause of an overlap. Check first:
-   `databricks jobs list-runs --job-id <ingestion job id> --active-only -p dev` must list nothing.
-2. If a peak run was refused, wait for the ingestion run to end, then rerun the peak job (or, to
-   repeat only the step, `--only refresh_silver_gold` and the tasks behind it). Nothing was
-   written by the refused task, so the rerun is safe. In production use the next daily run is the
-   retry.
-3. The integration tests need the ingestion job idle for the whole sequence, even for tasks that
-   skip the pipeline, because they compare against Gold. In normal operation, tasks that do not run the pipeline (`ingest_weather`, `build_weather_silver`, `build_features`,
-   `build_labels`, `score_predictions` run alone with `--only`, and the training job) can overlap
-   the ingestion job. The task limit holds: at most 2 + 2 tasks run at once, below the Free
-   Edition limit of 5.
-4. Run training only when no daily run is active. The training job fails with a guard error
-   (G-04) if the feature table changes underneath it.
+- **Busy.** When an ingestion run or a pipeline update is active, the task fails at once. Its
+  error lists every blocker on its own line: the job and the **run id** with its state and start
+  time, or the pipeline and the **update id** with its state and creation time, all in UTC with
+  `Z`. `refresh_silver_gold`, `build_features`, `build_labels` and `score_predictions` end
+  `UPSTREAM_FAILED` and did not start. `ingest_weather` and `build_weather_silver` still run.
+- **Unreadable.** When the task cannot establish the state (an id that is missing or not resolved,
+  a job or pipeline that is not found, has another name or is not unique, an API error, a denied
+  permission), it fails closed and the message names what it could not read. It never reports
+  success on a guess.
+- **Action.** Wait until the run or update named in the message ends, then rerun
+  `smart_meter_peak_model`. Nothing was written by the refused run, so rerunning is safe. Without
+  action, the next scheduled run (08:00 UTC) is the retry. To check by hand:
+  `databricks jobs list-runs --job-id <ingestion job id> --active-only -p dev` must list nothing.
+- **Race window.** The check cannot close the gap between its read and the start of the pipeline
+  task. If an overlap starts in those seconds, `refresh_silver_gold` still ends `INTERNAL_ERROR`
+  ("Pipeline update already in progress.") without a retry: rerun as above. The task retry
+  (`max_retries: 1`, 600 s) covers transient `FAILED` updates only and does not rerun the pre-check.
+- **`--only`.** A run that omits `check_pipeline_idle` bypasses the check. Every `--only` list
+  that contains `refresh_silver_gold` must contain `check_pipeline_idle` as well, for example
+  `--only check_pipeline_idle,refresh_silver_gold` to repeat only the refresh step and the check.
+  Lists without the pipeline task (for example `--only score_predictions`) need no pre-check.
+- **Overlap of other tasks.** Tasks that do not run the pipeline (`ingest_weather`,
+  `build_weather_silver`, `build_features`, `build_labels`, `score_predictions` run alone with
+  `--only`, and the training job) can overlap the ingestion job. At most 2 + 2 tasks run at once,
+  below the Free Edition limit of 5.
+- **Training.** Run training only when no daily run is active. The training job fails with a guard
+  error (G-04) if the feature table changes underneath it. It has no pre-check.
 
-The integration tests that start a run (`tests/integration/`) check that the ingestion job and the
-pipeline are idle first and fail with this advice if they are not.
+The integration tests need the shared pipeline idle for the whole sequence, even for tasks that skip the pipeline, because they compare against Gold, which must be stable. The ones that start a run (`tests/integration/`) use the same check
+(`pipeline_guard.check`) on the ingestion job and the pipeline first and fail with the same
+message if they are not idle. The ids are bundle references, so the check always targets the
+objects of the deployed target; to read them: `databricks jobs get <peak job id> -p dev` shows the
+task parameters `ingestion_job_id` and `pipeline_id`.
 
 ## Serverless auto-optimization and retries
 
@@ -110,7 +127,7 @@ a first scoring step without one fails with an error naming the alias (AC-61).
 
    ```bash
    databricks bundle run -t dev -p dev smart_meter_peak_model \
-       --only refresh_silver_gold,ingest_weather,build_weather_silver,build_features,build_labels
+       --only check_pipeline_idle,refresh_silver_gold,ingest_weather,build_weather_silver,build_features,build_labels
    ```
 
 2. Training, twice (the second run is the AC-49 comparison), with no build in between:
@@ -188,6 +205,20 @@ pytest -m integration tests/integration/test_peak_scoring.py -k "ac60"
 pytest -m integration tests/integration/test_peak_deployment.py          # after a full daily run
 ```
 
+The pre-check tests (PEAK_MODEL_CONCURRENCY) start jobs on `dev`. Deploy first, then run them in
+this order, one at a time (AC-77 needs the snapshots of AC-76 and AC-74; AC-75 last):
+
+```bash
+pytest -m integration tests/integration/test_peak_concurrency.py -k "ac76"   # full run, idle
+pytest -m integration tests/integration/test_peak_concurrency.py -k "ac74"   # starts smart_meter_ingestion; Aiven Kafka service on
+pytest -m integration tests/integration/test_peak_concurrency.py -k "ac77"   # rerun after the refusal
+pytest -m integration tests/integration/test_peak_concurrency.py -k "ac75"   # one no-op pipeline update
+```
+
+The Aiven Kafka service must be on for AC-74, so the started ingestion run reaches its own
+`refresh_silver_gold` (U-02). With the service off, the test still checks the pre-check but the
+ingestion run fails at `ingest_kafka` and sends a failure email.
+
 Snapshots go to `out/evidence/` (git-ignored); copy the output into the build report. AC-61
 (missing alias) is not run live because it would delete the alias of the shared model; the
 bootstrap order above shows the same failure when no model exists yet. AC-65 is
@@ -235,7 +266,9 @@ scoring fails until the training job has run again. Tables are dropped with the 
 
 | Symptom | Cause and action |
 |---|---|
-| `refresh_silver_gold` ends `INTERNAL_ERROR` after about 2 s, "Pipeline update already in progress." | The ingestion job was running. Not retried. Wait for it to end, then rerun (Concurrency) |
+| `check_pipeline_idle` fails, "the shared pipeline is busy" | An ingestion run or pipeline update is active; the message names the run id or update id. Wait for it to end, then rerun `smart_meter_peak_model` (Concurrency). The tasks behind it show `UPSTREAM_FAILED` |
+| `check_pipeline_idle` fails, "could not establish the pipeline state" | Fail closed: the message names what could not be read (id not resolved, object not found or renamed, duplicate job name, permission or API error). Fix the cause (redeploy the bundle for ids), then rerun |
+| `refresh_silver_gold` ends `INTERNAL_ERROR` after about 2 s, "Pipeline update already in progress.", although `check_pipeline_idle` passed | The race window: an overlap started between the check and the pipeline task. Not retried. Wait for the other run to end, then rerun (Concurrency) |
 | `%pip` fails building scikit-learn | The task is not on `peak_model_env` (Python 3.12 has no 1.3.0 wheel). Redeploy the bundle (D-19) |
 | Scoring fails naming the alias `champion`, or the tag `decision_threshold` | No trained model yet: run the training job (bootstrap step 2) |
 | Scoring fails naming a missing feature date | `target_date - 1` is later than the last feature date: run `build_features` or pick an earlier date |
