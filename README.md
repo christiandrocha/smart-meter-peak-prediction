@@ -109,6 +109,40 @@ graph LR
 - **Deployment.** A Databricks Asset Bundle (`databricks.yml`, `resources/`) deploys the job and the
   pipeline to a `dev` target on Databricks Free Edition.
 
+**The peak model (PEAK_MODEL).** A daily path on top of the Gold tables predicts, for each eligible
+household, whether the next day's consumption will exceed 1.3 times its same-weekday baseline. It
+adds two jobs to the same bundle and no pipeline.
+
+```text
+ Gold (read-only) ─┐
+ weather CSV ──► Bronze ─► Silver weather ─┴─► ml.household_features_daily (UC feature table)
+                                              ml.household_labels_daily (label, eligibility)
+                                                       │
+ job smart_meter_peak_model (daily 08:00 UTC)          ▼
+   refresh pipeline → weather → features, labels → score_predictions ─► gold.consumption_spike_predictions
+ job smart_meter_peak_model_training (on demand) ─► MLflow run ─► UC model `champion` alias + threshold tag
+```
+
+- **Dense, rebuildable tables.** Features and labels are recomputed in full on every run and written
+  with a change-only MERGE, so a rerun changes 0 rows and a rebuild reproduces the same content.
+- **Point-in-time training.** Splits are temporal (train, validation, test by date); the training set
+  joins the label of day T to the feature row of day T - 1 and is kept as a run artifact with the
+  table versions it came from.
+- **Governed model.** One deterministic gradient boosting model per training run, registered in Unity
+  Catalog and promoted with the `champion` alias; the decision threshold is a model version tag.
+- **Coexistence with ingestion.** Both jobs refresh the same pipeline, so the peak job must not run
+  while the ingestion job is running (see the runbook).
+
+Operations: [`docs/runbooks/peak_model.md`](docs/runbooks/peak_model.md). Contracts: the five
+`bronze_files_weather_hourly`, `silver_weather_hourly`, `ml_household_features_daily`,
+`ml_household_labels_daily` and `gold_consumption_spike_predictions` files in
+[`docs/contracts/`](docs/contracts). Decisions: ADRs
+[0007](docs/adr/0007-peak-model-runtime-and-data-assumptions.md),
+[0008](docs/adr/0008-peak-model-jobs-and-pipeline-dependency.md),
+[0009](docs/adr/0009-decision-threshold-as-model-version-tag.md),
+[0010](docs/adr/0010-consumption-spike-label-definition.md) and
+[0011](docs/adr/0011-dense-ml-tables-and-run-artifact-training-sets.md).
+
 Specifications: active features in [`.claude/sdd/features/`](.claude/sdd/features); shipped
 features (brainstorm, define, design, build report and the ship record) in
 [`.claude/sdd/archive/`](.claude/sdd/archive), for example
@@ -156,15 +190,16 @@ pytest -m integration tests/integration/<file>::<test>
 
 | Path | Content |
 |---|---|
-| `src/smart_meter_peak_prediction/` | Library: sampling, producer, settings, rule catalog, Bronze, Silver, Gold, metrics (tested) |
+| `src/smart_meter_peak_prediction/` | Library: sampling, producer, settings, rule catalog, Bronze, Silver, Gold, metrics, weather, features, labels, training, scoring (tested) |
 | `pipelines/` | Lakeflow pipeline sources (Python wiring, SQL summary view) |
-| `notebooks/` | Job notebooks: catalog setup, file ingestion, Kafka ingestion |
+| `notebooks/` | Job notebooks: catalog setup, file and Kafka ingestion, weather, features, labels, training, scoring |
 | `resources/`, `databricks.yml` | Asset Bundle: job, pipeline, variables, targets |
 | `docker/producer/` | Replay producer image |
 | `config/` | Sample plan, pinned household selection and reference manifest |
 | `tests/` | Unit tests, `tests/local_data` (needs raw data), `tests/integration` (needs a deployed workspace) |
 | `docs/contracts/` | Data contracts of the tables and the Kafka topic |
-| `docs/runbooks/` | Operations runbook |
+| `docs/runbooks/` | Operations runbooks: meter ingestion, peak model |
+| `scripts/` | Spec checks, data profiling, sampling, guarded reset of the peak model tables |
 | `.claude/sdd/` | Feature specifications (brainstorm, define, design, build) |
 | `docs/adr/` | Architecture decision records |
 | `docs/profiling/` | Data profiles of the sources |
@@ -184,7 +219,10 @@ See [`docs/adr/`](docs/adr/README.md).
 - Free Edition limits apply: one active pipeline per type, five concurrent tasks, a daily compute
   quota.
 - Only the `dev` target is deployed; `prod` is documented.
-- Roadmap: PEAK_MODEL (features, training sets, models), then monitoring of data quality trends.
+- The peak job and the ingestion job share one pipeline: a pipeline update requested while the other
+  job runs is refused and not retried, so the schedules are offset (06:00 and 08:00 UTC) and the next
+  daily run is the retry.
+- Roadmap: monitoring of data quality trends and model drift.
 
 ## License
 

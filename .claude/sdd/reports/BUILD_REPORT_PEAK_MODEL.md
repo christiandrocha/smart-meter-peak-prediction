@@ -29,7 +29,7 @@ integration test exists yet (entries 24 to 44 belong to PR 2 and PR 3).
 |---|---|---|
 | PR 1 | 1 to 23 | **Built and verified locally** (this report) |
 | PR 2 | 24 to 35 | **Built and verified locally**; platform gate pending (see *PR 2 gate*) |
-| PR 3 | 36 to 44 | Not started |
+| PR 3 | 36 to 44 | **Built and verified locally** (branch `build/peak-model-pr3`); live integration evidence is user-run (see *PR 3*) |
 
 ---
 
@@ -89,6 +89,24 @@ State legend: done = written and verified locally; nothing here has run on the p
 
 No METER_INGESTION file, `databricks.yml` or resource file was modified (`git status` lists only the
 files above; AC-62 is checked by PR 2's `test_peak_bundle.py`).
+
+### PR 3 files (entries 36 to 44)
+
+| # | PR | File | Action | Verified by |
+|---|---|---|---|---|
+| 36 | PR 3 | tests/integration/conftest.py | Modified | done: ruff; collected with the four new files. Fixtures `peak_job`, `training_job` (by base name), `peak_runner` (`run_now` with job parameters and `only`, polls to the end, reads every task exit value and error; refuses to start a run that includes `refresh_silver_gold` unless `smart_meter_ingestion` and the pipeline are idle, DA-13), `peak_names`, `mlflow_registry` (lazy MLflow: runs, artifact download, version of a run, champion, threshold tag) |
+| 37 | PR 3 | tests/integration/test_peak_data.py | Created | done: ruff; `pytest --collect-only -m integration` (12 tests: AC-36, 37, 39, 40, 41, 44, 47, 63 x2, 64, 66 x2). The AC-40 SQL oracle was run against local Spark on the `test_features.py` messy fixture and found 0 differing rows (it exposed a `DECIMAL` division in the first draft of `complete_day_share_28d`, fixed). Not run on Databricks |
+| 38 | PR 3 | tests/integration/test_peak_training.py | Created | done: ruff; collected (8 tests: AC-48, 49, 50, 51, 52, 54, 55 x2). AC-53 has no live test by DESIGN (unit only). Not run on Databricks |
+| 39 | PR 3 | tests/integration/test_peak_scoring.py | Created | done: ruff; collected (6 tests: AC-56, 57 x2, 58, 59, 60). File order is the evidence order (58, 59, then 56). Not run on Databricks |
+| 40 | PR 3 | tests/integration/test_peak_deployment.py | Created | done: ruff; collected (AC-62). It starts no run and asserts the ingestion job and the pipeline are idle first. Not run on Databricks |
+| 41 | PR 3 | scripts/reset_peak_model_outputs.py | Created | done: ruff; `tests/test_peak_reset_script.py` (3 tests, AC-66 guards: exactly three DROPs, refusal on other row counts, a missing table, empty Bronze weather or a missing snapshot); `--help` runs. Never run against the workspace |
+| 42 | PR 3 | docs/runbooks/peak_model.md | Created | done: covers weather upload, deploy, bootstrap order, training, backfill, evidence order, reset, model cleanup order (aliases, versions, model; ADR 0007), concurrency with the ingestion job (DA-13: refused update, not retried, rerun after the ingestion run) and serverless auto-optimization retries (D-21). `check_specs.py` 0 errors |
+| 43 | PR 3 | docs/spikes/README.md | Modified | done: rows for A-17 and spike 05 (figures copied from ADR 0007) |
+| 44 | PR 3 | README.md | Modified | done: PEAK_MODEL architecture summary, runbook, contracts and ADRs 0007 to 0011, repository layout and limitations |
+| - | PR 3 | tests/test_integration_layout.py | Modified | done: the four new files, their AC set and four collected names are expected (mechanical, same guard as for METER_INGESTION) |
+| - | PR 3 | tests/test_peak_reset_script.py | Created | done: 3 tests |
+
+No METER_INGESTION file, `databricks.yml`, resource file, notebook or library module was modified in PR 3.
 
 ---
 
@@ -233,6 +251,25 @@ from. AC-65 and AC-67 are decided by tests of PR 2.
 
 ---
 
+## Code review (PR 3)
+
+`code-reviewer` subagent on the PR 3 files: 0 High, 4 Medium, 10 Low.
+
+| Severity | Finding | Handling |
+|---|---|---|
+| Medium | AC-55 1B check cast integer features to float64, so the pandas hash could not match the manifest | Fixed: `target_weekday`, `target_month`, `temperature_hour_count_1d` cast to int32 as in the training frame |
+| Medium | AC-56 asserted `len(both) == len(logged) == len(stored)`, but predictions also cover eligible unlabelled rows | Fixed: every logged row must have a prediction; max abs difference 0 on the join |
+| Medium | Reset flow never reached the AC-66 rebuild branch (runbook ran the daily job before `ac66_after`) | Fixed: after the reset, `ac66_after` starts the four data tasks itself; runbook, test docstring and script message agree |
+| Medium | Idle guard only for runs with `refresh_silver_gold` | Fixed: `PeakRunner.run` checks ingestion job and pipeline idle for every run; runbook asks for idle ingestion during the whole evidence sequence |
+| Low | Vacuous duration budgets (equal to job timeouts) | Accepted: durations are saved as evidence (NFR-14); budgets equal the YAML timeouts |
+| Low | `HAVING` on a select alias (AC-37) | Fixed: subquery with `WHERE` |
+| Low | `THREE_TASKS` holds four tasks; redundant assert; unused `workspace` argument | Fixed |
+| Low | `_scored_at` compared as string | Fixed: `unix_micros` |
+| Low | Timed-out run keeps running | Fixed: `cancel_run` before failing |
+| Low | `git_commit` check goes stale after a redeploy | Accepted: runbook says to retrain after a redeploy |
+| Low | Reset script: connection outside the `try`, no active-run check, no `main()` test | Open: user-run guarded script with a dry-run default; row-count and snapshot checks cover the intended safety. Follow-up if wanted |
+| Low | `tests/test_peak_reset_script.py` and the layout test change are outside the manifest list | Accepted, listed in Files Changed |
+
 ## PR 2 gate (steps for the user; nothing below was run)
 
 Prerequisites: PR 2 committed and merged or at least committed on the branch, so `git status --porcelain` is empty and `bundle.git.commit` is the code that runs. METER_INGESTION is deployed and its data is loaded. Run with the `dev` profile. Deploy and run are user actions.
@@ -284,7 +321,85 @@ Prerequisites: PR 2 committed and merged or at least committed on the branch, so
 5. ~~Update DESIGN entry 1 text for D-01 through `/iterate`~~ Done: `/iterate` 2026-10-21 (with D-13 and D-17).
 6. After PR 2 is deployed: run the *Gate after PR 2* (bootstrap sequence), which checks DA-13 to DA-18, before PR 3.
 
+## PR 3: integration tests, reset script, runbook (entries 36 to 44)
+
+The integration tests carry the `integration` marker and were **not run by the build agent**: they
+need the deployed `dev` workspace and are run by the user. Live status of every AC they cover is
+`Not run` until the user records the output below. Dates and numbers in the assertions are the
+figures of ADR 0007 / spike A-17 and the DESIGN Test Strategy.
+
+| AC | Live test (file `tests/integration/`) | Live status |
+|---|---|---|
+| AC-36 | `test_peak_data.py::test_ac36_bronze_weather_has_21165_rows_and_rerun_adds_none` | Not run |
+| AC-37 | `test_peak_data.py::test_ac37_silver_weather_range_uniqueness_and_dst_days` | Not run |
+| AC-39 | `test_peak_data.py::test_ac39_feature_temperature_matches_silver_weather` | Not run |
+| AC-40 | `test_peak_data.py::test_ac40_every_feature_matches_sql_recomputation` (oracle SQL checked on local Spark: 0 differences) | Not run |
+| AC-41 | `test_peak_data.py::test_ac41_deployed_feature_and_label_keys_are_complete` | Not run |
+| AC-44 | `test_peak_data.py::test_ac44_deployed_label_counts_and_qr19` | Not run |
+| AC-47 | `test_peak_data.py::test_ac47_deployed_eligible_rows_per_split` | Not run |
+| AC-48 | `test_peak_training.py::test_ac48_logged_training_set_equals_labels_and_features_at_t_minus_1` | Not run |
+| AC-49 | `test_peak_training.py::test_ac49_two_training_runs_are_identical` (needs two training runs on unchanged tables) | Not run |
+| AC-50 | `test_peak_training.py::test_ac50_logged_parameters` | Not run |
+| AC-51 | `test_peak_training.py::test_ac51_version_tag_equals_recomputed_threshold` | Not run |
+| AC-52 | `test_peak_training.py::test_ac52_seed42_metrics_and_signal` | Not run |
+| AC-53 | unit only by DESIGN (no live test) | n/a |
+| AC-54 | `test_peak_training.py::test_ac54_registered_version_alias_reload_and_run_records` | Not run |
+| AC-55 | `test_peak_training.py::test_ac55_uc_lineage_lists_feature_table_upstream_of_model`, `::test_ac55_logged_versions_rebuild_the_same_training_set` | Not run |
+| AC-56 | `test_peak_scoring.py::test_ac56_predictions_for_t_match_eligibility_threshold_and_model` (after AC-59) | Not run |
+| AC-57 | `test_peak_scoring.py::test_ac57_before_rescore_snapshot`, `::test_ac57_after_rescore_only_scored_at_changes` | Not run |
+| AC-58 | `test_peak_scoring.py::test_ac58_run_without_target_date_scores_2014_02_28` | Not run |
+| AC-59 | `test_peak_scoring.py::test_ac59_backfill_covers_test_range_and_rerun_changes_only_scored_at` | Not run |
+| AC-60 | `test_peak_scoring.py::test_ac60_target_beyond_features_fails_and_writes_nothing` | Not run |
+| AC-62 | `test_peak_deployment.py::test_ac62_deployed_jobs_pipeline_and_run_durations` | Not run |
+| AC-63 | `test_peak_data.py::test_ac63_before_parameter_run_snapshot`, `::test_ac63_after_parameter_run_and_restore` | Not run |
+| AC-64 | `test_peak_data.py::test_ac64_deployed_columns_match_contracts` | Not run |
+| AC-66 | `test_peak_data.py::test_ac66_before_rebuild_snapshot`, `::test_ac66_after_rerun_and_rebuild_checksums_equal` (rebuild leg after the user-run reset script) | Not run |
+
+Design points of the tests worth knowing when reading a failure:
+
+- The tests start jobs only with `only=` task lists that avoid `refresh_silver_gold`, except where a
+  full daily run is a precondition the user runs by hand. `PeakRunner.run` refuses any run that
+  includes `refresh_silver_gold` while `smart_meter_ingestion` runs or the pipeline is not `IDLE`
+  (DA-13). `test_ac62` also asserts idleness first and starts nothing.
+- AC-63 `after` starts `build_labels` with `label_threshold=1.5` and `coverage_min=0.90`, and
+  restores the defaults in a `finally` block before comparing the checksum with the snapshot.
+- AC-66 `after` detects the rebuild leg (a table missing after the reset script) and then expects
+  the MERGE to insert exactly the snapshot row counts; otherwise it expects 0 inserted, 0 updated,
+  0 deleted.
+- AC-49 compares the two newest finished training runs and fails with an instruction when their
+  source table versions differ.
+
+### Commands the user must run (live evidence)
+
+```bash
+export DATABRICKS_CONFIG_PROFILE=dev        # and optionally DATABRICKS_WAREHOUSE_ID
+git status --porcelain                      # must print nothing
+databricks bundle validate -t dev -p dev; echo "validate exit $?"
+databricks bundle deploy -t dev -p dev;   echo "deploy exit $?"
+# ingestion job idle? then, in the order of docs/runbooks/peak_model.md sections 3, 4 and 8:
+pytest -m integration tests/integration/test_peak_data.py -k "ac36 or ac37 or ac39 or ac40 or ac41 or ac44 or ac47 or ac64"
+pytest -m integration tests/integration/test_peak_data.py -k "ac63"
+pytest -m integration tests/integration/test_peak_data.py -k "ac66_before"
+python scripts/reset_peak_model_outputs.py            # dry run; add --confirm, then run the daily job (optional rebuild leg)
+pytest -m integration tests/integration/test_peak_data.py -k "ac66_after"
+pytest -m integration tests/integration/test_peak_training.py          # after two training runs
+pytest -m integration tests/integration/test_peak_scoring.py -k "ac58 or ac59 or ac56"
+pytest -m integration tests/integration/test_peak_scoring.py -k "ac57"
+pytest -m integration tests/integration/test_peak_scoring.py -k "ac60"
+pytest -m integration tests/integration/test_peak_deployment.py        # after a full daily run
+pre-commit run --all-files                                             # AC-65 evidence
+```
+
 ---
+
+### PR 3 verification (local, 2026-10-22)
+
+- `ruff check .` and `ruff format --check .`: clean (109 files).
+- `pytest -q` (full, before the review fixes): 329 passed, 80 deselected (integration and local_data), 252 s. After the review fixes: `tests/test_integration_layout.py`, `tests/test_peak_reset_script.py`, `tests/test_peak_bundle.py` rerun, 39 passed.
+- `pytest --collect-only -m integration -o addopts= tests/integration/test_peak_*.py`: 27 tests collected.
+- `python3 scripts/check_specs.py`: 28 documents, 0 errors, 0 warnings.
+- AC-40 oracle SQL run on local Spark against `features.build_features` (messy fixture): 0 differing rows in all 12 features.
+- Status stays `In Progress`: entries 36 to 44 are built and reviewed (no High), but the live AC evidence above is `Not run`. Set `Complete` when the user has recorded it or accepted the gaps.
 
 ## Self-Review
 
@@ -304,4 +419,4 @@ Prerequisites: PR 2 committed and merged or at least committed on the branch, so
 
 ## Next Step
 
-PR 2: `/build .claude/sdd/features/DESIGN_PEAK_MODEL.md` (entries 24 to 35). `/ship PEAK_MODEL` only after PR 3.
+The user runs the PR 3 live commands and records the output here; then set status `Complete` and `/ship PEAK_MODEL`.

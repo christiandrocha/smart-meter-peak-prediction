@@ -19,6 +19,9 @@ INTEGRATION = ROOT / "tests" / "integration"
 # Acceptance criteria with an integration test in the DESIGN Test Strategy (manifest 54 to 58).
 EXPECTED_ACS = {5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 18, 19, 20, 21, 22, 24, 25, 26, 27, 28, 30}
 EXPECTED_ACS |= {31, 34, 35}
+# PEAK_MODEL (manifest 37 to 40); AC-53 has a unit test only (DESIGN Test Strategy).
+EXPECTED_ACS |= {36, 37, 39, 40, 41, 44, 47, 48, 49, 50, 51, 52, 54, 55, 56, 57, 58, 59, 60}
+EXPECTED_ACS |= {62, 63, 64, 66}
 TEST_FILES = sorted(INTEGRATION.glob("test_*.py"))
 AC_NAME = re.compile(r"^test_ac(\d{2})_")
 
@@ -40,6 +43,10 @@ def test_integration_files_exist_for_every_manifest_entry() -> None:
         "test_gold_tables.py",
         "test_reprocessing.py",
         "test_deployment.py",
+        "test_peak_data.py",
+        "test_peak_training.py",
+        "test_peak_scoring.py",
+        "test_peak_deployment.py",
     }
     assert (INTEGRATION / "conftest.py").is_file()
 
@@ -113,3 +120,7 @@ def test_integration_tests_are_collected_but_deselected_by_default() -> None:
     selected = _collect("-m", "integration", "-o", "addopts=", "tests/integration")
     assert "tests/integration/test_silver_tables.py::test_ac11_" in selected
     assert "tests/integration/test_reprocessing.py::test_ac27_after_" in selected
+    assert "tests/integration/test_peak_data.py::test_ac66_after_" in selected
+    assert "tests/integration/test_peak_training.py::test_ac55_uc_lineage" in selected
+    assert "tests/integration/test_peak_scoring.py::test_ac57_after_" in selected
+    assert "tests/integration/test_peak_deployment.py::test_ac62_" in selected
