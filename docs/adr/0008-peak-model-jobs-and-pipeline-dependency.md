@@ -66,8 +66,9 @@ METER_INGESTION job or to the pipeline:
   - `score_predictions` follows `build_features` and `build_labels`.
   - The widest level of the graph has 2 tasks.
   - The schedule is 08:00 UTC, two hours after the ingestion job's 06:00 UTC, so the two pipeline
-    starts do not normally overlap. The pipeline task has one retry after 10 minutes, to get past
-    an update that the ingestion job has in progress.
+    starts do not normally overlap. The pipeline task has one retry after 10 minutes, for
+    transient failed updates only. An update refused because the ingestion job has one in
+    progress ends in `INTERNAL_ERROR` and is not retried (DA-13, PR 2 gate 2026-10-22).
 - **`smart_meter_peak_model_training` (on demand).** One notebook task, `train_model`, with no
   schedule and `max_retries: 0`. It reads the feature and label tables that the daily job keeps
   current and registers one version per successful run (D-36).
@@ -84,8 +85,9 @@ METER_INGESTION job or to the pipeline:
     refreshes Gold from the Bronze data that already exists.
   - Two job names to operate instead of one; the user accepted this as D-37 (DEFINE D-35, FR-30,
     AC-62 updated through `/iterate` on 2026-10-21).
-  - If an update from the ingestion job is still running after the retry interval, the PEAK_MODEL
-    run fails, and the next daily run is the retry.
+  - If an update from the ingestion job is running when the PEAK_MODEL run starts, the update is
+    refused ("Pipeline update already in progress.") and the run fails without a retry. The
+    next daily run is the retry; the runbook says not to run both jobs at once.
   - A serverless automatic retry of `train_model` (DA-12) could register a second, identical
     version. The version is deterministic (AC-49), so `champion` still points at a correct model.
 - **Note (2026-10-21, PR 2 gate):** on serverless, `max_retries: 0` alone does not stop retries:
@@ -94,4 +96,5 @@ METER_INGESTION job or to the pipeline:
 - **What would make us revisit this:**
   - a real consumer that needs readings ingested in the same run;
   - Free Edition allowing table-update triggers on materialized views (verified by a spike);
-  - the pipeline refusing concurrent update requests in a way the retry cannot absorb.
+  - refused concurrent updates becoming frequent (observed at the PR 2 gate: the retry does not
+    absorb them, so the schedule offset is the only protection).
