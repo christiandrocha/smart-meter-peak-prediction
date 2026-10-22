@@ -37,7 +37,7 @@ The daily job `smart_meter_peak_model` now starts with a read-only task `check_p
 | 11 | tests/integration/test_peak_deployment.py | Modified | collects; `DAILY_TASKS`, `disable_auto_optimization` views, DA-19 id assertion |
 | 12 | tests/integration/test_peak_concurrency.py | Created | collects (4 tests, marker `integration`); not run |
 | 13 | docs/runbooks/peak_model.md | Modified | `test_ac79_*` |
-| 14 | docs/adr/0012-...md | Unchanged | ADR text matches the code; DA-19 result still to be added after the deploy (open) |
+| 14 | docs/adr/0012-...md | Unchanged | ADR text matches the code; G-21 bullet added (U-05) and the DA-19 pass recorded after the deploy (2026-10-22) |
 | 15 | docs/adr/README.md | Unchanged | row for 0012 `Accepted` checked by `test_ac79_*` |
 | 16 | docs/adr/0008-...md | Modified | dated note; `test_ac79_*` |
 | 17 | tests/test_peak_concurrency_docs.py | Created | 3 passed |
