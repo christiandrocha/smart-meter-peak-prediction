@@ -370,7 +370,9 @@ def _job_named(workspace: Any, name: str) -> Any:
         for j in workspace.jobs.list(expand_tasks=True)
         if j.settings and strip_dev_prefix(j.settings.name or "") == name
     ]
-    return _only(found, f"job named {name} (development prefix stripped)")
+    listed = _only(found, f"job named {name} (development prefix stripped)")
+    # jobs.list returns abbreviated settings without the job parameters; read the full job
+    return workspace.jobs.get(listed.job_id)
 
 
 @pytest.fixture(scope="session")

@@ -129,8 +129,9 @@ def test_ac62_deployed_jobs_pipeline_and_run_durations(
     assert names.count("smart_meter_silver_gold") == 1
     deployed = workspace.pipelines.get(pipeline.pipeline_id).spec
     expected = _yaml_pipeline()
-    assert deployed.serverless is expected["serverless"]
-    assert deployed.continuous is expected["continuous"]
+    # the API omits a boolean left at its default (false), so compare with the default applied
+    assert bool(deployed.serverless) is expected["serverless"]
+    assert bool(deployed.continuous) is expected["continuous"]
     assert deployed.channel == expected["channel"]
     assert deployed.configuration["spark.sql.session.timeZone"] == "UTC"
     _assert_job_matches_yaml(
