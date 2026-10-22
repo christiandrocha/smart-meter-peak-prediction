@@ -1,5 +1,5 @@
 # Data contract: daily household features (Unity Catalog feature table, time-series column feature_date).
-# Defined in .claude/sdd/features/DEFINE_PEAK_MODEL.md (Data Contracts, Feature definitions).
+# Defined in .claude/sdd/archive/PEAK_MODEL/DEFINE_PEAK_MODEL.md (Data Contracts, Feature definitions).
 dataset: smart_meter_dev.ml.household_features_daily
 kind: table
 owner: PEAK_MODEL

@@ -64,6 +64,12 @@ was exercised by the spike as the reference join.
   PEAK_MODEL jobs therefore pin `environment_version: "2"` (DESIGN G-01, build deviation D-19).
   Environment 3 has Python 3.12, scikit-learn 1.4.2 and numpy 1.26; environment 4 has
   scikit-learn 1.6.1 and numpy 2.1.
+- **Note (2026-10-22, PR 2 gate, D-23):** on serverless, a model logged with `fe.log_model` can be
+  scored only through `fe.score_batch(model_uri="models:/<name>/<version>")`.
+  `mlflow.pyfunc.load_model` followed by `predict` calls `score_batch` with a local URI, which
+  serverless rejects. Both the training reload check (G-08, `registry.fe_reload_scores`) and
+  scoring use `fe.score_batch` by version; a probe on version 4 reproduced its 5,116 logged test
+  scores with a maximum absolute difference of 0.
 - **What would make us revisit this:** a change to the label or eligibility definitions (rerun
   A-17), a new seed or sample (rerun A-17), or a Free Edition change to serverless ML libraries,
   or the retirement of serverless environment version 2 (rerun spike 05).

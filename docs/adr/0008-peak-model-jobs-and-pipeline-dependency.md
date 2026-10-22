@@ -2,7 +2,7 @@
 
 | Attribute | Value |
 |---|---|
-| **Status** | Proposed |
+| **Status** | Accepted |
 | **Date** | 2026-10-21 |
 | **Deciders** | Christian |
 | **Related** | PEAK_MODEL; FR-18, FR-19, FR-28, FR-30, NFR-13, NFR-14; AC-36, AC-38, AC-62; D-24, D-33, D-36; OD-07, OD-11, OD-12; ADR 0001, 0003, 0004, 0007 |

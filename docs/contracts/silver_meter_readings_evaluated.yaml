@@ -1,5 +1,5 @@
 # Data contract: evaluation table behind Silver and the quarantine. An ops dataset: not an input of PEAK_MODEL.
-# Defined in .claude/sdd/features/DESIGN_METER_INGESTION.md (Data Model, OD-02, DA-01 fallback, manifest 30a).
+# Defined in .claude/sdd/archive/METER_INGESTION/DESIGN_METER_INGESTION.md (Data Model, OD-02, DA-01 fallback, manifest 30a).
 dataset: smart_meter_dev.silver.meter_readings_evaluated
 kind: table
 object_type: materialized view recomputed over bronze.files_meter_readings and bronze.kafka_meter_readings

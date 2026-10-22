@@ -1,5 +1,5 @@
 # Data contract: hourly temperature in UTC, typed and deduplicated from Bronze weather.
-# Defined in .claude/sdd/features/DEFINE_PEAK_MODEL.md (Data Contracts, Quality rules QR-16 to QR-18).
+# Defined in .claude/sdd/archive/PEAK_MODEL/DEFINE_PEAK_MODEL.md (Data Contracts, Quality rules QR-16 to QR-18).
 dataset: smart_meter_dev.silver.weather_hourly
 kind: table
 owner: PEAK_MODEL
