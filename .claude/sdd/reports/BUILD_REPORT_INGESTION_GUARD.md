@@ -74,10 +74,10 @@ Unit evidence is from `.venv/bin/pytest` (493 passed, 89 deselected, 0 failures;
 | AC-92 | Pass | `test_ac92_shipped_guard_tests_are_byte_identical_to_v030`, `test_ac92_guard_module_changes_are_additions_only` (SequenceMatcher with tag v0.3.0), `test_ac92_peak_mode_signatures_and_output_are_unchanged` (tagged module registered in `sys.modules` before `exec`; also compared with embedded golden values) |
 | AC-93 | Pass | `test_secrets_hygiene.py::test_ac93_*`, `test_ingestion_guard.py::test_ac93_library_imports_no_sdk_and_never_sleeps` |
 | AC-94 | Pass | Live, 2026-10-23: `bundle validate` and `bundle deploy -t dev` from a clean tree (`f661ee5`) exit 0, no cycle error; `test_ac94_deployed_ingestion_job_equals_the_yaml` passed (6 s) |
-| AC-95 | Pending | Live (Aiven off) |
-| AC-96 | Pending | Live (Aiven on) |
+| AC-95 | Pending | Live (Aiven off), last in the plan |
+| AC-96 | Pass | Live, 2026-10-23, `test_ac96_full_run_passes_the_check_and_every_task_succeeds_once` passed (531 s), first run after the Kafka reset on the new Aiven free service (topic held 247,569 messages: partition 0 106,791, partition 1 140,778). The same run satisfies the shipped `test_ac28_*` and `test_ac30_*` (both passed) |
 | AC-97 | Pass | Live, 2026-10-23, `test_ac97_check_refuses_while_an_update_is_active_and_the_rerun_succeeds` passed (208 s). Refused run 303996116036137: the check failed after 34 s on its first attempt, naming update `856b017d-c522-45db-8129-35605f661cf3`, state `WAITING_FOR_RESOURCES`, pipeline state `RUNNING`, created 2026-10-23T18:37:07Z, checked 18:37:34Z (27 s after creation); `refresh_silver_gold` did not start. Rerun 581887386545638: check `idle` in 17 s, `refresh_silver_gold` SUCCESS in 51 s. Read from the Jobs API (the test saves no timing file, I-04) |
-| AC-98 | Pending | Live |
+| AC-98 | Pending | Live. Peak suite started 2026-10-23: `test_ac76_*` passed (485 s) against v0.4.0. Still to run: `test_ac74_*`, `test_ac77_*`, `test_ac75_*`, then `test_ac98_*` and `tests/integration/test_peak_deployment.py` |
 | AC-99 | Pass | `test_ingestion_guard_docs.py` (4 tests); `check_specs.py` 0 errors |
 
 ---
@@ -115,7 +115,7 @@ Unit evidence is from `.venv/bin/pytest` (493 passed, 89 deselected, 0 failures;
 
 | ID | Issue | Severity | Follow-up |
 |---|---|---|---|
-| I-01 | Live ACs AC-94 to AC-98 not run (no deploy, run or Aiven change in this session) | High (gate) | Live-test plan below; status stays In Progress until done |
+| I-01 | Live ACs | High (gate) | 2026-10-23: AC-94, AC-96, AC-97 pass, AC-28/AC-30 and AC-76 pass on v0.4.0. Open: AC-74, AC-77, AC-75, AC-98, `test_peak_deployment.py`, then AC-95 (Aiven off). Status stays In Progress |
 | I-02 | Review (Medium): AC-97 rerun and wait robustness | Medium | Fixed (D-05) |
 | I-03 | Review (Medium): AC-98 stale evidence | Medium | Fixed (D-06) |
 | I-04 | Review (Medium): AC-97 timing margin is not recorded as evidence (DA-31 pending) | Medium | Accepted: the first live pass was not marginal (the check read the update 27 s after creation, still `WAITING_FOR_RESOURCES`); timing read from the Jobs API and recorded under AC-97. DA-31 validated on dev |
@@ -123,6 +123,7 @@ Unit evidence is from `.venv/bin/pytest` (493 passed, 89 deselected, 0 failures;
 | I-06 | Review (Low): `_only_lists` regex stops at a space after a comma | Low | Not changed (the same regex is in the shipped AC-79 test); runbook lists have no spaces |
 | I-07 | Review (Low): bundle test docstring named the old live file | Low | Fixed |
 | I-08 | DESIGN named `test_ingestion_guard.py` for the live tests | Low | Fixed: DESIGN Change Log entry 2026-10-23 (D-01) |
+| I-09 | The Aiven Kafka service was on a 30-day trial, not the free plan (ADR 0002), and was powered off when the trial ended (2026-10-23) | Medium (environment) | Replaced by a free-plan service: the four `smart_meter` secrets rewritten, topic `meter-readings` with 2 partitions, Bronze Kafka reset (table dropped, `kafka_meter_readings` checkpoint deleted) and one full replay (247,569 messages), checked by a read-only probe from Databricks. The free service powers off after 24 h without traffic, which empties the topic: before resuming the Kafka-on tests on another day, check the topic count and redo the Kafka reset if it is empty |
 | I-09 | The ingestion YAML digest pin is tied to the final file content | Low | Recompute `INGESTION_SHA256` if the YAML is edited again |
 
 ---
