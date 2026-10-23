@@ -97,6 +97,11 @@ METER_INGESTION job or to the pipeline:
   `check_pipeline_idle` that `refresh_silver_gold` depends on ([ADR 0012](0012-read-only-pipeline-pre-check-in-the-daily-peak-job.md)).
   A visible overlap with the ingestion job no longer reaches the pipeline; the refused-update
   consequence above applies to the race window only. The other decisions of this ADR stand.
+- **Note (2026-10-23, INGESTION_GUARD):** the ingestion job now checks the pipeline before its own
+  `refresh_silver_gold` and `ingest_kafka` sets `disable_auto_optimization: true`
+  ([ADR 0013](0013-pipeline-only-pre-check-in-the-ingestion-job.md)). "METER_INGESTION stays
+  byte-identical" now holds for the pipeline and `databricks.yml` only; the ingestion job file
+  differs from `v0.1.0` by the check, its environment and that one setting.
 - **What would make us revisit this:**
   - a real consumer that needs readings ingested in the same run;
   - Free Edition allowing table-update triggers on materialized views (verified by a spike);

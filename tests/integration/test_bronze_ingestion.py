@@ -1,8 +1,10 @@
-"""Bronze ingestion on the deployed dev environment (AC-05 to AC-08, AC-10, AC-29).
+"""Bronze ingestion on the deployed dev environment (AC-05 to AC-08, AC-10, AC-29, AC-95).
 
 Run order (runbook): files tests after the first ``ingest_files``; Kafka tests after the first
 full replay and job run and *before* the AC-09 replay, because they assert the exact seed-42
-counts. The AC-10 pair needs the Aiven service powered off for the failed run.
+counts. The AC-10 pair needs the Aiven service powered off for the failed run. AC-95
+(INGESTION_GUARD) reads the same failed run afterwards: one attempt of ``ingest_kafka`` and a check
+that never started.
 """
 
 from __future__ import annotations
@@ -17,6 +19,8 @@ pytestmark = pytest.mark.integration
 
 STREAM_TASK = "ingest_kafka"
 MAX_FAILED_TASK_SECONDS = 900  # AC-10: a broker outage fails the task within 15 minutes
+CHECK_TASK = "check_silver_gold_idle"
+REFRESH_TASK = "refresh_silver_gold"
 
 
 def _file_counts(sql, settings) -> dict[str, int]:
@@ -90,30 +94,59 @@ def test_ac10_before_outage_snapshot(workspace, sql, settings, evidence) -> None
     )
 
 
+def _result(task) -> str:
+    return task.state.result_state.value if task.state and task.state.result_state else ""
+
+
+def _failed_kafka_run_id(workspace, job, saved_at_ms: int) -> int | None:
+    """Id of the newest job run after the snapshot in which ``ingest_kafka`` failed or timed out."""
+    for run in workspace.jobs.list_runs(job_id=job.job_id, expand_tasks=True, limit=25):
+        if run.start_time and run.start_time < saved_at_ms:
+            break
+        for task in run.tasks or []:
+            if task.task_key == STREAM_TASK and _result(task) in ("FAILED", "TIMEDOUT"):
+                return run.run_id
+    return None
+
+
 def test_ac10_failed_kafka_run_left_bronze_and_checkpoint_unchanged(
     workspace, sql, settings, job, evidence
 ) -> None:
     """After a job run with Aiven off: the task failed within 15 minutes, nothing changed."""
     before = evidence.load("ac10_before_outage", "test_ac10_before_outage_snapshot")
-    failed = None
-    for run in workspace.jobs.list_runs(job_id=job.job_id, expand_tasks=True, limit=25):
-        if run.start_time and run.start_time < before["saved_at_ms"]:
-            break
-        for task in run.tasks or []:
-            result = task.state.result_state.value if task.state and task.state.result_state else ""
-            if task.task_key == STREAM_TASK and result in ("FAILED", "TIMEDOUT"):
-                failed = task
-                break
-        if failed:
-            break
+    run_id = _failed_kafka_run_id(workspace, job, before["saved_at_ms"])
     no_run = "no failed ingest_kafka run after the snapshot: run the job with Aiven off"
-    assert failed is not None, no_run
+    assert run_id is not None, no_run
+    # one read of the run: every attempt of a task is its own entry (FR-52, DA-33)
+    attempts = [t for t in workspace.jobs.get_run(run_id).tasks or [] if t.task_key == STREAM_TASK]
+    assert len(attempts) == 1, f"ingest_kafka ran {len(attempts)} times in run {run_id}, not once"
+    failed = attempts[0]
     seconds = (failed.end_time - failed.start_time) / 1000
     assert seconds <= MAX_FAILED_TASK_SECONDS, f"the task needed {seconds:.0f} s to fail"
     assert (
         sql.scalar(f"SELECT count(*) FROM {settings.bronze_kafka_readings}") == before["kafka_rows"]
     )
     assert _checkpoint_offsets(workspace, settings) == before["checkpoint_offsets"]
+
+
+def test_ac95_failed_kafka_run_has_one_attempt_and_skips_the_check(
+    workspace, job, evidence
+) -> None:
+    """INGESTION_GUARD: the outage run has one ``ingest_kafka`` attempt, no check, no refresh."""
+    before = evidence.load("ac10_before_outage", "test_ac10_before_outage_snapshot")
+    run_id = _failed_kafka_run_id(workspace, job, before["saved_at_ms"])
+    no_run = "no failed ingest_kafka run after the snapshot: run the job, Aiven off"
+    assert run_id is not None, no_run
+    grouped: dict[str, list] = {}
+    for task in workspace.jobs.get_run(run_id).tasks or []:
+        grouped.setdefault(task.task_key, []).append(task)
+    kafka = grouped[STREAM_TASK]
+    assert len(kafka) == 1, f"ingest_kafka ran {len(kafka)} times in run {run_id}"
+    assert (kafka[0].attempt_number or 0) == 0
+    assert _result(kafka[0]) in ("FAILED", "TIMEDOUT")
+    for key in (CHECK_TASK, REFRESH_TASK):
+        assert len(grouped.get(key, [])) == 1, f"{key}: expected one entry in run {run_id}"
+        assert _result(grouped[key][0]) == "UPSTREAM_FAILED", key
 
 
 def test_ac29_failed_stream_error_does_not_leak_credentials(workspace) -> None:

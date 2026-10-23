@@ -206,7 +206,7 @@ def pipeline(workspace: Any) -> Any:
 
 @pytest.fixture
 def full_runs(workspace: Any, job: Any) -> Callable[[], list[Any]]:
-    """Successful runs of all four tasks, newest first (partial ``only=`` runs are excluded)."""
+    """Successful runs of every task, newest first (partial ``only=`` runs are excluded)."""
     all_tasks = {t.task_key for t in job.settings.tasks}
 
     def find() -> list[Any]:

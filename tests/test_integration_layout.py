@@ -22,6 +22,8 @@ EXPECTED_ACS |= {31, 34, 35}
 # PEAK_MODEL (manifest 37 to 40); AC-53 has a unit test only (DESIGN Test Strategy).
 EXPECTED_ACS |= {36, 37, 39, 40, 41, 44, 47, 48, 49, 50, 51, 52, 54, 55, 56, 57, 58, 59, 60}
 EXPECTED_ACS |= {62, 63, 64, 66}
+# INGESTION_GUARD (manifest 12, 13).
+EXPECTED_ACS |= {94, 95, 96, 97, 98}
 TEST_FILES = sorted(INTEGRATION.glob("test_*.py"))
 AC_NAME = re.compile(r"^test_ac(\d{2})_")
 
@@ -48,6 +50,7 @@ def test_integration_files_exist_for_every_manifest_entry() -> None:
         "test_peak_scoring.py",
         "test_peak_deployment.py",
         "test_peak_concurrency.py",
+        "test_ingestion_guard_live.py",
     }
     assert (INTEGRATION / "conftest.py").is_file()
 
@@ -126,3 +129,4 @@ def test_integration_tests_are_collected_but_deselected_by_default() -> None:
     assert "tests/integration/test_peak_scoring.py::test_ac57_after_" in selected
     assert "tests/integration/test_peak_deployment.py::test_ac62_" in selected
     assert "tests/integration/test_peak_concurrency.py::test_ac74_" in selected
+    assert "tests/integration/test_ingestion_guard_live.py::test_ac97_" in selected

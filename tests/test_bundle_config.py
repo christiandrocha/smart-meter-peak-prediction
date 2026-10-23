@@ -97,8 +97,15 @@ def test_ac28_no_more_than_five_concurrent_tasks() -> None:
     for key in graph:
         widths[level(key)] = widths.get(level(key), 0) + 1
     assert max(widths.values()) <= 5
-    assert len(tasks()) == 4
-    assert list(tasks()) == ["setup_catalog", "ingest_files", "ingest_kafka", "refresh_silver_gold"]
+    assert max(widths.values()) == 2  # INGESTION_GUARD: the check and the refresh run alone
+    assert len(tasks()) == 5
+    assert list(tasks()) == [
+        "setup_catalog",
+        "ingest_files",
+        "ingest_kafka",
+        "check_silver_gold_idle",
+        "refresh_silver_gold",
+    ]
 
 
 def _depends(task: dict) -> list[str]:
@@ -110,13 +117,14 @@ def test_ac28_task_dependencies_and_pipeline_task() -> None:
     assert _depends(t["setup_catalog"]) == []
     assert _depends(t["ingest_files"]) == ["setup_catalog"]
     assert _depends(t["ingest_kafka"]) == ["setup_catalog"]
-    assert sorted(_depends(t["refresh_silver_gold"])) == ["ingest_files", "ingest_kafka"]
+    assert sorted(_depends(t["check_silver_gold_idle"])) == ["ingest_files", "ingest_kafka"]
+    assert _depends(t["refresh_silver_gold"]) == ["check_silver_gold_idle"]
     assert t["refresh_silver_gold"]["pipeline_task"]["pipeline_id"] == (
         "${resources.pipelines.smart_meter_silver_gold.id}"
     )
     assert t["refresh_silver_gold"]["pipeline_task"]["full_refresh"] is False
-    assert [t[k]["timeout_seconds"] for k in t] == [600, 1800, 840, 2700]
-    assert [t[k]["max_retries"] for k in t] == [1, 1, 0, 0]
+    assert [t[k]["timeout_seconds"] for k in t] == [600, 1800, 840, 300, 2700]
+    assert [t[k]["max_retries"] for k in t] == [1, 1, 0, 0, 0]
 
 
 def test_ac28_layout_variables_match_sample_plan() -> None:
@@ -210,7 +218,20 @@ def test_ac10_kafka_task_fails_within_15_minutes() -> None:
     kafka = tasks()["ingest_kafka"]
     assert kafka["timeout_seconds"] <= 900
     assert kafka["max_retries"] == 0
-    assert "ingest_kafka" in _depends(tasks()["refresh_silver_gold"])
+    assert kafka["disable_auto_optimization"] is True  # FR-43: one attempt on serverless
+    assert "ingest_kafka" in _ancestors("refresh_silver_gold")
+
+
+def _ancestors(key: str) -> set[str]:
+    """Every task that must finish before ``key`` (D-58: the direct dependency is the check now)."""
+    seen: set[str] = set()
+    todo = list(_depends(tasks()[key]))
+    while todo:
+        current = todo.pop()
+        if current not in seen:
+            seen.add(current)
+            todo.extend(_depends(tasks()[current]))
+    return seen
 
 
 def test_ac10_notebooks_and_pipeline_have_no_try_except() -> None:
@@ -325,7 +346,10 @@ def test_ac30_job_timeout_within_60_minutes() -> None:
     assert all(t["timeout_seconds"] < job()["timeout_seconds"] for t in tasks().values())
 
 
-@pytest.mark.parametrize("name", ["setup_catalog.py", "ingest_files.py", "ingest_kafka.py"])
+@pytest.mark.parametrize(
+    "name",
+    ["setup_catalog.py", "ingest_files.py", "ingest_kafka.py", "check_silver_gold_idle.py"],
+)
 def test_notebooks_set_and_assert_utc_session_time_zone(name: str) -> None:
     """DESIGN: the session time zone is UTC in every task (DA-07)."""
     source = (NOTEBOOKS / name).read_text(encoding="utf-8")

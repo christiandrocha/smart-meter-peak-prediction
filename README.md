@@ -53,7 +53,8 @@ wait for the next run.
 graph LR
     J([daily job<br/>06:00 UTC]) --> IK([ingest_kafka]):::gate
     IK -.Aiven off · nothing written.- Z([bronze unchanged])
-    IK --> RF[refresh_silver_gold<br/>Lakeflow pipeline]
+    IK --> CK([check_silver_gold_idle<br/>read-only])
+    CK --> RF[refresh_silver_gold<br/>Lakeflow pipeline]
     RF --> G[(silver · gold<br/>recomputed from bronze)]
     classDef gate fill:#fdf0d5,stroke:#c8922e,color:#4a3610;
 ```
@@ -95,6 +96,7 @@ graph LR
                               ┌────────┴─────────────────────────────────┐
                               │  setup_catalog → ingest_files            │
                               │                → ingest_kafka (Aiven)    │
+                              │  → check_silver_gold_idle (read-only)    │
                               │  → refresh_silver_gold (Lakeflow)        │
                               └──────────────────────────────────────────┘
 ```
@@ -134,7 +136,9 @@ adds two jobs to the same bundle and no pipeline.
   time. The peak job starts with a read-only pre-check, `check_pipeline_idle`, that fails at once,
   naming the blocking run or update, when the ingestion job or a pipeline update is active, and
   fails closed when it cannot read the state ([ADR 0012](docs/adr/0012-read-only-pipeline-pre-check-in-the-daily-peak-job.md);
-  see the runbook).
+  see the runbook). The ingestion job checks the pipeline too, with `check_silver_gold_idle` before
+  its own `refresh_silver_gold` ([ADR 0013](docs/adr/0013-pipeline-only-pre-check-in-the-ingestion-job.md)),
+  so a visible overlap no longer reaches the pipeline from either job.
 
 Operations: [`docs/runbooks/peak_model.md`](docs/runbooks/peak_model.md). Contracts: the five
 `bronze_files_weather_hourly`, `silver_weather_hourly`, `ml_household_features_daily`,
@@ -145,7 +149,8 @@ Operations: [`docs/runbooks/peak_model.md`](docs/runbooks/peak_model.md). Contra
 [0009](docs/adr/0009-decision-threshold-as-model-version-tag.md),
 [0010](docs/adr/0010-consumption-spike-label-definition.md),
 [0011](docs/adr/0011-dense-ml-tables-and-run-artifact-training-sets.md) and
-[0012](docs/adr/0012-read-only-pipeline-pre-check-in-the-daily-peak-job.md).
+[0012](docs/adr/0012-read-only-pipeline-pre-check-in-the-daily-peak-job.md) and
+[0013](docs/adr/0013-pipeline-only-pre-check-in-the-ingestion-job.md).
 
 Specifications: active features in [`.claude/sdd/features/`](.claude/sdd/features); shipped
 features (brainstorm, define, design, build report and the ship record) in

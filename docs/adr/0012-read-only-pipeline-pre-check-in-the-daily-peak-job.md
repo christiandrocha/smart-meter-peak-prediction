@@ -114,6 +114,12 @@ This decision amends the task graph of ADR 0008; the rest of ADR 0008 stands.
   - A reverse check added to `smart_meter_ingestion` through METER_INGESTION, which would share
     `pipeline_guard`.
   - The serverless environment losing `databricks-sdk` or its default notebook authentication.
+- **Note (2026-10-23, INGESTION_GUARD):** the revisit trigger "a reverse check added to
+  `smart_meter_ingestion`" is answered by
+  [ADR 0013](0013-pipeline-only-pre-check-in-the-ingestion-job.md): the ingestion job now checks the
+  pipeline (and only the pipeline) before its own `refresh_silver_gold`. Constraint C-08 (the
+  ingestion job stays identical to `v0.1.0`) no longer holds for the ingestion job file; it still
+  holds for the pipeline and `databricks.yml`. This decision and the peak pre-check are unchanged.
 
 ## Platform probe (spike 06)
 

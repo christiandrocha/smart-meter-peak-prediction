@@ -16,6 +16,7 @@ producer (Docker) --> topic meter-readings (2 partitions) -->                   
                                                                setup_catalog
                                                                ingest_files  (Auto Loader, availableNow)
                                                                ingest_kafka  (Kafka source, availableNow)
+                                                               check_silver_gold_idle (read-only)
                                                                refresh_silver_gold (pipeline update)
                                                               -> bronze.* -> silver.* -> gold.*
 ```
@@ -30,13 +31,58 @@ producer (Docker) --> topic meter-readings (2 partitions) -->                   
 
 ### Dependency on Aiven
 
-The pipeline task `refresh_silver_gold` depends on both ingestion tasks. The Kafka task is
-configured with `max_retries: 0` (the platform may still run it twice, see "Broker outage") and an
-840 s timeout, so with the Aiven service off or unreachable it fails within 15 minutes and the
-pipeline task does not run. **An Aiven outage therefore stalls the refresh of
+The check `check_silver_gold_idle` depends on both ingestion tasks and the pipeline task
+`refresh_silver_gold` depends on the check. The Kafka task is configured with `max_retries: 0` and
+`disable_auto_optimization: true` (one attempt only since v0.4.0, see "Broker outage") and an 840 s
+timeout, so with the Aiven service off or unreachable it fails within 15 minutes, the check and the
+pipeline task do not run (both end `UPSTREAM_FAILED`). **An Aiven outage therefore stalls the refresh of
 Silver and Gold, including the file-based history, until the next successful run.** Bronze and the
 checkpoint of the Kafka stream stay unchanged on such a failure. To refresh Silver and Gold while
 Aiven is off, run the pipeline directly (see "Broker outage").
+
+## Concurrency with the peak job
+
+The pipeline `smart_meter_silver_gold` accepts one update at a time, and the daily job
+`smart_meter_peak_model` (08:00 UTC) refreshes it as well. Before its own `refresh_silver_gold`,
+this job therefore runs the task `check_silver_gold_idle` (ADR 0013), a read-only check under the
+job's identity. It reads the pipeline `smart_meter_silver_gold` once (overall state and the latest
+updates), never waits and never retries (`max_retries: 0`, auto-optimization off, 300 s timeout; it
+normally takes well under a minute, at most 120 s measured). It runs after both ingest tasks, so
+Bronze is ingested whether or not the pipeline is busy.
+
+- **Busy.** When a pipeline update is active (or the overall pipeline state is not `IDLE` or
+  `FAILED`), the task fails at once. Its error names the update id with its state and creation time
+  (UTC with `Z`), the pipeline state, the action, and says that `refresh_silver_gold` did not start
+  and the Bronze data of this run is kept. `refresh_silver_gold` ends `UPSTREAM_FAILED`. The
+  message names the update, not the job that started it: find the peak run from the update's
+  creation time (a peak run is the usual cause around 08:00 UTC).
+- **Unreadable (fails closed).** When the task cannot establish the state (an id that is missing or
+  not resolved, a pipeline that is not found, deleted or has another name, an API error, a denied
+  permission, a client that cannot be built), it fails closed and the message names what it could
+  not read. It never reports success on a guess.
+- **Action.** Wait until the update named in the message ends, then rerun `smart_meter_ingestion`
+  (a full rerun is safe: the ingest tasks only add new data). To repeat only the refresh step, run
+  `databricks bundle run -t dev -p dev smart_meter_ingestion --only check_silver_gold_idle,refresh_silver_gold`
+  or use Repair run in the Jobs UI. Without action, the `smart_meter_peak_model` run at 08:00 UTC
+  refreshes the pipeline from Bronze, and the next scheduled run (06:00 UTC) checks again.
+- **`--only`.** A run that omits `check_silver_gold_idle` bypasses the check. Every `--only` list
+  that contains `refresh_silver_gold` must contain `check_silver_gold_idle` as well. Lists without
+  the pipeline task need no check. Running the pipeline directly
+  (`bundle run smart_meter_silver_gold`, also a full refresh) bypasses every check: confirm
+  first that no update is active and no `smart_meter_peak_model` run is running.
+- **Race window.** The check cannot close the gap between its read and the start of the pipeline
+  task. If an update starts in those seconds, `refresh_silver_gold` still ends `INTERNAL_ERROR`
+  ("Pipeline update already in progress.") without a retry: wait for the other update, then rerun.
+- **The peak job.** Its own pre-check refuses while an ingestion run is active; this check refuses
+  only while a pipeline update is active. A peak run that its pre-check refused never starts an
+  update, so it never makes this check fail (no mutual refusal).
+
+| Symptom | Cause and action |
+|---|---|
+| `check_silver_gold_idle` fails, "the shared pipeline is busy" | An update (usually the peak run's) is active; the message names its update id. Wait for it to end, then rerun `smart_meter_ingestion`. `refresh_silver_gold` shows `UPSTREAM_FAILED`; Bronze is kept |
+| `check_silver_gold_idle` fails, "fails closed" | The message names what could not be read (id not resolved, pipeline not found, deleted or renamed, permission or API error). Fix the cause (redeploy the bundle for ids), then rerun. The task output also prints the `databricks-sdk` version |
+| `refresh_silver_gold` ends `INTERNAL_ERROR` after about 2 s, although `check_silver_gold_idle` passed | The race window: an update started between the check and the pipeline task. Not retried. Wait for the other update, then rerun |
+| `ingest_kafka` fails and the check shows `UPSTREAM_FAILED` | Expected: the check runs only when both ingest tasks succeed. See "Broker outage" |
 
 ## Prerequisites
 
@@ -252,9 +298,10 @@ ingested the probe, do the Kafka reset in "Broker outage".
 databricks bundle run -t dev -p dev smart_meter_ingestion
 ```
 
-It runs the four tasks in order: `setup_catalog`, then `ingest_files` and `ingest_kafka` in
-parallel, then `refresh_silver_gold`. Run a subset with `--only`, for example
-`--only setup_catalog,ingest_files`. Run the pipeline alone (no Kafka needed):
+It runs the five tasks in order: `setup_catalog`, then `ingest_files` and `ingest_kafka` in
+parallel, then `check_silver_gold_idle`, then `refresh_silver_gold`. Run a subset with `--only`, for
+example `--only setup_catalog,ingest_files`; a list with `refresh_silver_gold` must also contain
+`check_silver_gold_idle` (see "Concurrency with the peak job"). Run the pipeline alone (no Kafka needed):
 
 ```bash
 databricks bundle run -t dev -p dev smart_meter_silver_gold
@@ -295,7 +342,7 @@ pytest -m integration tests/integration/<file>::<test>
 
 AC-25 reads the per-household facts from the local `data/sample/seed42/manifest.json` (or
 `SAMPLE_MANIFEST`), so build the sample locally first. AC-30 and AC-31 use the latest successful
-run of all four tasks, so run the full job right after producing (step C); partial `--only` reruns do not count. Some tests are before/after pairs: the `before` test stores a snapshot in `out/evidence/`
+run of every task, so run the full job right after producing (step C); partial `--only` reruns do not count. Some tests are before/after pairs: the `before` test stores a snapshot in `out/evidence/`
 (git-ignored) and the `after` test compares against it, so run them in this order.
 
 | Step | Do | Then run |
@@ -303,10 +350,13 @@ run of all four tasks, so run the full job right after producing (step C); parti
 | A. Files only | Deploy (section 4), upload the sample (section 2), then `databricks bundle run -t dev -p dev smart_meter_ingestion --only setup_catalog,ingest_files` | `test_gold_tables.py::test_ac26_i18_before_first_update_gold_schema_is_empty` |
 | B. First pipeline update | `databricks bundle run -t dev -p dev smart_meter_silver_gold` (from an empty Gold schema) | `test_gold_tables.py::test_ac26_i18_after_first_update_summary_view_exists_and_update_completed`, `test_reprocessing.py::test_ac24_before_kafka_snapshot`, `test_bronze_ingestion.py::test_ac05_*`, `test_ac06_*` |
 | C. Kafka load | Aiven on, topic created, one full replay (produce), verify it ("Verify the replay before running the job": one replay on the topic), then `databricks bundle run -t dev -p dev smart_meter_ingestion` | `test_bronze_ingestion.py::test_ac07_*`, `test_ac08_*`; `test_silver_tables.py` (all); `test_gold_tables.py` (all except the `i18` pair); `test_reprocessing.py::test_ac24_after_*`; `test_deployment.py::test_ac28_*`, `test_ac30_*` |
-| D. Broker outage (AC-10) | `test_bronze_ingestion.py::test_ac10_before_outage_snapshot`; power Aiven off; run the job (it fails, possibly with two attempts of `ingest_kafka`); see "Broker outage" | `test_bronze_ingestion.py::test_ac10_failed_kafka_run_left_bronze_and_checkpoint_unchanged` |
+| D. Broker outage (AC-10) | `test_bronze_ingestion.py::test_ac10_before_outage_snapshot`; power Aiven off; run the job (it fails, with one attempt of `ingest_kafka`; the check and the refresh show `UPSTREAM_FAILED`); see "Broker outage" | `test_bronze_ingestion.py::test_ac10_failed_kafka_run_left_bronze_and_checkpoint_unchanged` |
 | E. Recovery | Aiven on. A power-off empties the topic and resets its offsets, so a plain re-run fails on `failOnDataLoss` and leaves the checkpoint stuck. Do the "Kafka reset after an Aiven power-off" in "Broker outage" (drop table, delete the Kafka checkpoint, one full replay, verify it), then run the job; it passes | `test_bronze_ingestion.py::test_ac07_*`, `test_deployment.py::test_ac30_*` (the latest successful run) |
 | F. Replay (AC-09) | `test_reprocessing.py::test_ac09_before_replay_snapshot`; produce the full stream again; verify it (two replays on the topic); run the job | `test_reprocessing.py::test_ac09_after_replay_silver_unchanged` |
 | G. Full refresh (AC-27) | `test_reprocessing.py::test_ac27_before_full_refresh_snapshot`; Aiven may be off; `databricks bundle run -t dev -p dev smart_meter_silver_gold --full-refresh-all` | `test_reprocessing.py::test_ac27_after_*`, `test_ac12_totals_consistent_after_full_refresh` |
+| H. Reverse check (INGESTION_GUARD) | Deploy from a clean tree (`databricks bundle validate -t dev -p dev`, then `databricks bundle deploy -t dev -p dev`; a "Cycle" error means a job reference slipped into the ingestion job). Pipeline, ingestion job and peak job idle | 1. `.venv/bin/pytest -o addopts= -m integration tests/integration/test_ingestion_guard_live.py::test_ac94_*` (AC-94, before any run). 2. `...::test_ac97_*` (AC-97, no Kafka needed; starts one no-op update and two subset runs). 3. The Kafka block by the Aiven state, below |
+| I. Kafka block, Aiven on and the last `ingest_kafka` succeeded since the power-on | none besides the tests | `test_ingestion_guard_live.py::test_ac96_*` (one full run, AC-96), then `test_deployment.py::test_ac28_*` and `::test_ac30_*` (same run), then the peak concurrency suite in the order of the peak runbook (AC-76, AC-74, AC-77, AC-75, then `test_ingestion_guard_live.py::test_ac98_*`, then `test_peak_deployment.py`), then AC-95 last: `test_bronze_ingestion.py::test_ac10_before_outage_snapshot`, power Aiven off, run the job, `::test_ac10_failed_*`, `::test_ac95_*` |
+| J. Kafka block, Aiven off | none | AC-95 first (snapshot, run the job, `::test_ac10_failed_*`, `::test_ac95_*`), then power Aiven on and do the Kafka reset (step E), then AC-96, the AC-28 and AC-30 tests and AC-98 as in step I. At most one Kafka reset is needed |
 
 Steps A and B also give the AC-28 deploy evidence (exit codes of section 4). The exact seed-42
 counts in step C hold for a state with exactly one full replay in Bronze Kafka; after the Kafka
@@ -319,12 +369,12 @@ topic, so it also ends the replay evidence of the topic (Bronze keeps its rows).
 ### Broker outage
 
 With the service off or unreachable, `ingest_kafka` fails. The task is configured with
-`max_retries: 0`, but in the observed failing runs it ran twice (attempt numbers 0 and 1; probable
-cause: the serverless automatic retry, not verified). Both attempts failed without writing, so the
-effect is harmless. With the service off, the failure comes in seconds (`No resolvable bootstrap
+`max_retries: 0` and `disable_auto_optimization: true`, so it runs once. Before v0.4.0 the
+serverless automatic retry ran it twice (attempt numbers 0 and 1; D-51, ADR 0013); a run with
+attempt number 1 on a current deployment is a deviation. With the service off, the failure comes in seconds (`No resolvable bootstrap
 urls given in bootstrap.servers`); the bounded Kafka timeouts and the task timeout (840 s) cap it
-at 15 minutes. The stream checkpoint and `bronze.kafka_meter_readings` stay unchanged. The pipeline
-task is skipped.
+at 15 minutes. The stream checkpoint and `bronze.kafka_meter_readings` stay unchanged. The check
+and the pipeline task are skipped (`UPSTREAM_FAILED`).
 
 To refresh Silver and Gold in the meantime, using only what Bronze already holds, run the pipeline
 directly: `databricks bundle run -t dev -p dev smart_meter_silver_gold`.

@@ -67,6 +67,10 @@ minute, at most 120 s measured).
   `build_weather_silver`, `build_features`, `build_labels`, `score_predictions` run alone with
   `--only`, and the training job) can overlap the ingestion job. At most 2 + 2 tasks run at once,
   below the Free Edition limit of 5.
+- **Reverse direction.** The ingestion job runs its own read-only check, `check_silver_gold_idle`,
+  before its `refresh_silver_gold` (ADR 0013). It reads the pipeline only, so a peak run that its
+  own pre-check refused never makes the ingestion run fail. See "Concurrency with the peak job" in
+  the ingestion runbook (`meter_ingestion.md`).
 - **Training.** Run training only when no daily run is active. The training job fails with a guard
   error (G-04) if the feature table changes underneath it. It has no pre-check.
 
@@ -79,7 +83,8 @@ task parameters `ingestion_job_id` and `pipeline_id`.
 ## Serverless auto-optimization and retries
 
 Serverless jobs may retry a failed task even when `max_retries` is 0 or unset (build deviation
-D-21; the same pattern was seen on `ingest_kafka`, follow-up F-02). For training this would
+D-21; the same pattern was seen on `ingest_kafka`, follow-up F-02, fixed in v0.4.0 by
+`disable_auto_optimization: true`). For training this would
 register one model version per attempt, so `train_model` sets `max_retries: 0` and
 `disable_auto_optimization: true`. A failed attempt can still leave a registered version without
 the `champion` alias: that is harmless (scoring reads the alias only) and is removed with the
