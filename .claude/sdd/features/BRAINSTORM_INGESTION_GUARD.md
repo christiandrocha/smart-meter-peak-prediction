@@ -193,7 +193,7 @@ written by the ingest tasks stays and is picked up by the next refresh.
 | Reset script active-run check through `pipeline_guard`, connection inside the `try`, `main()` test (PEAK_MODEL F-03, PEAK_MODEL_CONCURRENCY F-02) | Separate problem: local script, name-based multi-job resolution (D-52) | Next release (v0.5.0) |
 | Naming the peak run in the ingestion check (Approach C) | Needs the peak job id (F-37) and a new SDK read shape | When A-28 is observed or the update id proves insufficient |
 | Blocking on the training job | It starts no pipeline update and shares no table with ingestion (F-39) | Never, unless training starts a pipeline update |
-| `disable_auto_optimization` on `refresh_silver_gold` | Applicability to a pipeline task is unknown (A-25) | Next release; spike 07 records the A-25 result as input |
+| `disable_auto_optimization` on `refresh_silver_gold` | Applicability to a pipeline task is unknown (A-25) | Next release, only with another mechanism: spike 07 showed the field does not stick on a pipeline task (A-25) |
 | Any change to the peak daily job, the training job, the pipeline or `databricks.yml` | Pinned (D-53, D-54) | Never in this feature |
 | A lock or queue across the two jobs that closes the race window | Not available on Free Edition (C-11) | When the platform offers one (ADR 0012 revisit trigger) |
 | Waiting or polling in the check | Burns quota; rejected for the peak side too (D-43) | Never |
@@ -204,12 +204,12 @@ written by the ingest tasks stays and is picked up by the next refresh.
 
 | ID | Assumption or question | How it will be resolved | Status |
 |---|---|---|---|
-| A-25 | `disable_auto_optimization` on a `pipeline_task` is accepted and has an effect | Spike 07: deploy and read the job back; documentation | Pending |
-| A-26 | A job with one notebook task on a job environment (version 2) and other notebook tasks on the default environment deploys and runs | Spike 07: `bundle validate`, `bundle deploy -t dev` and one run | Pending |
-| A-27 | With `disable_auto_optimization: true`, a failed `ingest_kafka` run shows exactly 1 attempt | Spike 07: read the deployed job, one forced failure with the Kafka service off; later the extended AC-10 live test | Pending |
+| A-25 | `disable_auto_optimization` on a `pipeline_task` is accepted and has an effect | Spike 07 (2026-10-23): deploy accepts the field, but the deployed pipeline task shows it unset (`None`), as it does `max_retries` | Invalidated: the setting does not stick on a pipeline task; `refresh_silver_gold` stays out of scope (D-51) |
+| A-26 | A job with one notebook task on a job environment (version 2) and other notebook tasks on the default environment deploys and runs | Spike 07 (2026-10-23, run 843912359241341): validate and deploy pass; the probe on version 2 ran with `databricks-sdk` 0.40.0 and Python 3.11.10 next to two default-environment tasks | Validated |
+| A-27 | With `disable_auto_optimization: true`, a failed `ingest_kafka` run shows exactly 1 attempt | Spike 07 (2026-10-23, run 843912359241341): a forced failure with `max_retries: 0` plus the setting had 1 attempt; the control with `max_retries: 0` only (the v0.1.0 `ingest_kafka` settings) had 2 (attempt numbers 0 and 1), which reproduces F-33. The deployed control shows `max_retries` unset; with the setting it shows 0. The extended AC-10 live test confirms it on `ingest_kafka` itself | Validated |
 | A-28 | A Gold refresh by the ingestion job during a peak run's `build_features` to `score_predictions` can fail the scoring (F-40). Not observed; not changed by this feature | Watch the runs; revisit with Approach C if observed | Accepted, watch |
-| A-29 | The ingestion job's run-as identity can read the pipeline state with no extra grant (it already starts the pipeline's updates) | Spike 07 run; live AC on `dev` | Pending |
-| A-30 | A bundle reference from the ingestion job to the peak job would form a cycle (F-37) | Not resolved: the chosen approach needs no such reference. Record in ADR 0013 as the reason against B and C | Not needed for v0.4.0 |
+| A-29 | The ingestion job's run-as identity can read the pipeline state with no extra grant (it already starts the pipeline's updates) | Spike 07 (2026-10-23): the probe read `pipelines.get` with state `IDLE` and three `latest_updates` under the deploying user's identity, the same identity the ingestion job runs as | Validated |
+| A-30 | A bundle reference from the ingestion job to the peak job would form a cycle (F-37) | Spike 07 (2026-10-23, CLI v0.298.0, default engine): a one-way job reference resolves to the numeric id; with references in both directions `bundle validate` passes but `bundle deploy` fails with `Error: Cycle: databricks_job.spike_07_guarded, databricks_job.spike_07_pipeline_task`, and `bundle destroy` of that target fails the same way | Validated: B and C cannot use a bundle reference to the peak job; record in ADR 0013 |
 
 ---
 
@@ -243,8 +243,9 @@ written by the ingest tasks stays and is picked up by the next refresh.
 
 ## Self-Review
 
-- **Weak points:** The bundle reference cycle (F-37) is inferred, not verified; it decides against B
-  and C only together with F-38. A-25 to A-27 are open until spike 07. The post-refresh Gold-change
+- **Weak points:** Spike 07 (2026-10-23) validated A-26, A-27, A-29 and the cycle (A-30) and
+  invalidated A-25; A-27 is shown on a forced-failure task, not yet on `ingest_kafka` itself (the
+  extended AC-10 live test does that). The post-refresh Gold-change
   risk (F-40) is reasoned from code, not observed. The message names the update, so an operator has
   to find the peak run from the update's time.
 - **Risks:** The race window remains in both directions. Fail-closed turns an API outage into a lost
@@ -255,12 +256,13 @@ written by the ingest tasks stays and is picked up by the next refresh.
   tasks, in exchange for no cycle, no mutual refusal and no peak-side change. Placing the check after
   the ingest tasks keeps Bronze ingestion when the pipeline is busy, but with the Kafka service off
   the check never runs. One more serverless task per ingestion run (about 30 s) costs quota.
-- **What I would do differently:** Verify the cycle question (A-30) with a throwaway bundle in
-  spike 07 as well, so ADR 0013 can state it as a fact.
-- **Next improvement:** Run spike 07 (A-25, A-26, A-27, A-29), record it, then start `/define`.
+- **What I would do differently:** Nothing for the scope; a failed cycle deploy leaves the target's
+  uploaded files, which `bundle destroy` cannot remove, so a spike that expects a failing deploy
+  should clean the workspace folder itself.
+- **Next improvement:** Start `/define`.
 
 ---
 
 ## Next Step
 
-Spike 07, then `/define .claude/sdd/features/BRAINSTORM_INGESTION_GUARD.md`
+`/define .claude/sdd/features/BRAINSTORM_INGESTION_GUARD.md`
