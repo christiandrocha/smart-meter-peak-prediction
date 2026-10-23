@@ -73,10 +73,10 @@ Unit evidence is from `.venv/bin/pytest` (493 passed, 89 deselected, 0 failures;
 | AC-91 | Pass | `test_ac91_*` |
 | AC-92 | Pass | `test_ac92_shipped_guard_tests_are_byte_identical_to_v030`, `test_ac92_guard_module_changes_are_additions_only` (SequenceMatcher with tag v0.3.0), `test_ac92_peak_mode_signatures_and_output_are_unchanged` (tagged module registered in `sys.modules` before `exec`; also compared with embedded golden values) |
 | AC-93 | Pass | `test_secrets_hygiene.py::test_ac93_*`, `test_ingestion_guard.py::test_ac93_library_imports_no_sdk_and_never_sleeps` |
-| AC-94 | Pending | Live. Commands in the live-test plan below |
+| AC-94 | Pass | Live, 2026-10-23: `bundle validate` and `bundle deploy -t dev` from a clean tree (`f661ee5`) exit 0, no cycle error; `test_ac94_deployed_ingestion_job_equals_the_yaml` passed (6 s) |
 | AC-95 | Pending | Live (Aiven off) |
 | AC-96 | Pending | Live (Aiven on) |
-| AC-97 | Pending | Live |
+| AC-97 | Pass | Live, 2026-10-23, `test_ac97_check_refuses_while_an_update_is_active_and_the_rerun_succeeds` passed (208 s). Refused run 303996116036137: the check failed after 34 s on its first attempt, naming update `856b017d-c522-45db-8129-35605f661cf3`, state `WAITING_FOR_RESOURCES`, pipeline state `RUNNING`, created 2026-10-23T18:37:07Z, checked 18:37:34Z (27 s after creation); `refresh_silver_gold` did not start. Rerun 581887386545638: check `idle` in 17 s, `refresh_silver_gold` SUCCESS in 51 s. Read from the Jobs API (the test saves no timing file, I-04) |
 | AC-98 | Pending | Live |
 | AC-99 | Pass | `test_ingestion_guard_docs.py` (4 tests); `check_specs.py` 0 errors |
 
@@ -118,7 +118,7 @@ Unit evidence is from `.venv/bin/pytest` (493 passed, 89 deselected, 0 failures;
 | I-01 | Live ACs AC-94 to AC-98 not run (no deploy, run or Aiven change in this session) | High (gate) | Live-test plan below; status stays In Progress until done |
 | I-02 | Review (Medium): AC-97 rerun and wait robustness | Medium | Fixed (D-05) |
 | I-03 | Review (Medium): AC-98 stale evidence | Medium | Fixed (D-06) |
-| I-04 | Review (Medium): AC-97 timing margin is not recorded as evidence (DA-31 pending) | Medium | Not done. If AC-97 passes marginally, read the check's start in the run page; add an `ac97_timing` snapshot if it needs a second run |
+| I-04 | Review (Medium): AC-97 timing margin is not recorded as evidence (DA-31 pending) | Medium | Accepted: the first live pass was not marginal (the check read the update 27 s after creation, still `WAITING_FOR_RESOURCES`); timing read from the Jobs API and recorded under AC-97. DA-31 validated on dev |
 | I-05 | Review (Low): `_updates_between` assumes newest-first order | Low | Mitigated by `max_results` 25 |
 | I-06 | Review (Low): `_only_lists` regex stops at a space after a comma | Low | Not changed (the same regex is in the shipped AC-79 test); runbook lists have no spaces |
 | I-07 | Review (Low): bundle test docstring named the old live file | Low | Fixed |
