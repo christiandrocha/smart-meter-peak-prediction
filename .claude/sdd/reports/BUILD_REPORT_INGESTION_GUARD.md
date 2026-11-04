@@ -9,7 +9,7 @@
 | **Feature** | INGESTION_GUARD |
 | **Date** | 2026-10-23 |
 | **Source** | DESIGN_INGESTION_GUARD.md |
-| **Status** | In Progress |
+| **Status** | Complete |
 
 Allowed status values: `In Progress`, `Blocked`, `Complete`.
 
@@ -17,7 +17,7 @@ Allowed status values: `In Progress`, `Blocked`, `Complete`.
 
 ## Summary
 
-The ingestion job `smart_meter_ingestion` now has a read-only task `check_silver_gold_idle` between the two ingest tasks and `refresh_silver_gold`, on job environment `ingestion_check_env` (version 2), and `ingest_kafka` sets `disable_auto_optimization: true`. The check uses a pipeline-only mode appended to `pipeline_guard` (peak mode byte-identical: the diff against `v0.3.0` has 194 added lines and 0 removed). All 22 manifest entries are done and verified locally; the live criteria AC-94 to AC-98 are Pending (no deploy or run in this session). Nothing is committed.
+The ingestion job `smart_meter_ingestion` now has a read-only task `check_silver_gold_idle` between the two ingest tasks and `refresh_silver_gold`, on job environment `ingestion_check_env` (version 2), and `ingest_kafka` sets `disable_auto_optimization: true`. The check uses a pipeline-only mode appended to `pipeline_guard` (peak mode byte-identical: the diff against `v0.3.0` has 194 added lines and 0 removed). All 22 manifest entries are done and verified locally, and every live criterion (AC-94 to AC-98) passed on dev between 2026-10-23 and 2026-11-04 against the deployed build `f661ee5`.
 
 ---
 
@@ -36,8 +36,8 @@ The ingestion job `smart_meter_ingestion` now has a read-only task `check_silver
 | 9 | `tests/test_secrets_hygiene.py` | Modified (`test_ac93_*`) | pytest |
 | 10 | `tests/integration/conftest.py` | Modified (docstring) | ruff, collection |
 | 11 | `tests/integration/test_deployment.py` | Modified (`JOB_TASKS`, docstring) | ruff, collection |
-| 12 | `tests/integration/test_bronze_ingestion.py` | Modified (`_failed_kafka_run_id`, attempt count, `test_ac95_*`) | collection (live: Pending) |
-| 13 | `tests/integration/test_ingestion_guard_live.py` | Created (AC-94, 96, 97, 98) | collection (live: Pending); see D-01 |
+| 12 | `tests/integration/test_bronze_ingestion.py` | Modified (`_failed_kafka_run_id`, attempt count, `test_ac95_*`) | collection; live Pass (AC-10, AC-95, 2026-11-04) |
+| 13 | `tests/integration/test_ingestion_guard_live.py` | Created (AC-94, 96, 97, 98) | collection; live Pass (AC-94, 96, 97, 98); see D-01 |
 | 14 | `tests/test_integration_layout.py` | Modified | pytest (6 passed) |
 | 15 | `docs/runbooks/meter_ingestion.md` | Modified | AC-99 tests |
 | 16 | `docs/runbooks/peak_model.md` | Modified (no ingestion `--only` list) | AC-79 and AC-99 tests |
@@ -74,10 +74,10 @@ Unit evidence is from `.venv/bin/pytest` (493 passed, 89 deselected, 0 failures;
 | AC-92 | Pass | `test_ac92_shipped_guard_tests_are_byte_identical_to_v030`, `test_ac92_guard_module_changes_are_additions_only` (SequenceMatcher with tag v0.3.0), `test_ac92_peak_mode_signatures_and_output_are_unchanged` (tagged module registered in `sys.modules` before `exec`; also compared with embedded golden values) |
 | AC-93 | Pass | `test_secrets_hygiene.py::test_ac93_*`, `test_ingestion_guard.py::test_ac93_library_imports_no_sdk_and_never_sleeps` |
 | AC-94 | Pass | Live, 2026-10-23: `bundle validate` and `bundle deploy -t dev` from a clean tree (`f661ee5`) exit 0, no cycle error; `test_ac94_deployed_ingestion_job_equals_the_yaml` passed (6 s) |
-| AC-95 | Pending | Live (Aiven off), last in the plan |
+| AC-95 | Pass | Live, 2026-11-04, Aiven powered off after `test_ac10_before_outage_snapshot`. Run 280394124915837: `ingest_kafka` FAILED on attempt 0 after 53 s (one attempt, no platform retry), `check_silver_gold_idle` and `refresh_silver_gold` UPSTREAM_FAILED (never started), `setup_catalog` and `ingest_files` SUCCESS. `test_ac10_failed_kafka_run_left_bronze_and_checkpoint_unchanged` and `test_ac95_failed_kafka_run_has_one_attempt_and_skips_the_check` passed (8 s). The task error was a generic Databricks `INTERNAL_ERROR` ("An unexpected error occurred") rather than the `No resolvable bootstrap urls` text seen on 2026-10-20; neither test reads the message |
 | AC-96 | Pass | Live, 2026-10-23, `test_ac96_full_run_passes_the_check_and_every_task_succeeds_once` passed (531 s), first run after the Kafka reset on the new Aiven free service (topic held 247,569 messages: partition 0 106,791, partition 1 140,778). The same run satisfies the shipped `test_ac28_*` and `test_ac30_*` (both passed) |
 | AC-97 | Pass | Live, 2026-10-23, `test_ac97_check_refuses_while_an_update_is_active_and_the_rerun_succeeds` passed (208 s). Refused run 303996116036137: the check failed after 34 s on its first attempt, naming update `856b017d-c522-45db-8129-35605f661cf3`, state `WAITING_FOR_RESOURCES`, pipeline state `RUNNING`, created 2026-10-23T18:37:07Z, checked 18:37:34Z (27 s after creation); `refresh_silver_gold` did not start. Rerun 581887386545638: check `idle` in 17 s, `refresh_silver_gold` SUCCESS in 51 s. Read from the Jobs API (the test saves no timing file, I-04) |
-| AC-98 | Pending | Live. Peak suite started 2026-10-23: `test_ac76_*` passed (485 s) against v0.4.0. Still to run: `test_ac74_*`, `test_ac77_*`, `test_ac75_*`, then `test_ac98_*` and `tests/integration/test_peak_deployment.py` |
+| AC-98 | Pass | Live, shipped peak suite against v0.4.0: `test_ac76_*` passed (485 s, 2026-10-23); after a second Kafka reset on 2026-11-04 (topic emptied by the free-service idle power-off; 247,569 messages replayed) `test_ac74_*` passed (485 s; peak run 796622049962850 refused, ingestion run 729617955443223 SUCCESS with its check and refresh), `test_ac77_*` (294 s), `test_ac75_*` (74 s), then `test_ac98_ac74_ingestion_run_passed_its_check_and_refresh` (5 s) and `test_peak_deployment.py::test_ac62_*` (9 s) |
 | AC-99 | Pass | `test_ingestion_guard_docs.py` (4 tests); `check_specs.py` 0 errors |
 
 ---
@@ -115,7 +115,7 @@ Unit evidence is from `.venv/bin/pytest` (493 passed, 89 deselected, 0 failures;
 
 | ID | Issue | Severity | Follow-up |
 |---|---|---|---|
-| I-01 | Live ACs | High (gate) | 2026-10-23: AC-94, AC-96, AC-97 pass, AC-28/AC-30 and AC-76 pass on v0.4.0. Open: AC-74, AC-77, AC-75, AC-98, `test_peak_deployment.py`, then AC-95 (Aiven off). Status stays In Progress |
+| I-01 | Live ACs | High (gate) | Closed 2026-11-04: all live ACs pass (AC-94 to AC-98, plus the shipped AC-10, AC-28, AC-30, AC-62, AC-74 to AC-77) |
 | I-02 | Review (Medium): AC-97 rerun and wait robustness | Medium | Fixed (D-05) |
 | I-03 | Review (Medium): AC-98 stale evidence | Medium | Fixed (D-06) |
 | I-04 | Review (Medium): AC-97 timing margin is not recorded as evidence (DA-31 pending) | Medium | Accepted: the first live pass was not marginal (the check read the update 27 s after creation, still `WAITING_FOR_RESOURCES`); timing read from the Jobs API and recorded under AC-97. DA-31 validated on dev |
@@ -124,7 +124,7 @@ Unit evidence is from `.venv/bin/pytest` (493 passed, 89 deselected, 0 failures;
 | I-07 | Review (Low): bundle test docstring named the old live file | Low | Fixed |
 | I-08 | DESIGN named `test_ingestion_guard.py` for the live tests | Low | Fixed: DESIGN Change Log entry 2026-10-23 (D-01) |
 | I-09 | The Aiven Kafka service was on a 30-day trial, not the free plan (ADR 0002), and was powered off when the trial ended (2026-10-23) | Medium (environment) | Replaced by a free-plan service: the four `smart_meter` secrets rewritten, topic `meter-readings` with 2 partitions, Bronze Kafka reset (table dropped, `kafka_meter_readings` checkpoint deleted) and one full replay (247,569 messages), checked by a read-only probe from Databricks. The free service powers off after 24 h without traffic, which empties the topic: before resuming the Kafka-on tests on another day, check the topic count and redo the Kafka reset if it is empty |
-| I-09 | The ingestion YAML digest pin is tied to the final file content | Low | Recompute `INGESTION_SHA256` if the YAML is edited again |
+| I-10 | The ingestion YAML digest pin is tied to the final file content | Low | Recompute `INGESTION_SHA256` if the YAML is edited again |
 
 ---
 
@@ -150,13 +150,13 @@ Runbook: `docs/runbooks/meter_ingestion.md`, evidence order rows H, I, J. After 
 
 ## Self-Review
 
-- **Weak points:** the live tests were verified by collection only; AC-97 depends on the no-op update outliving the check's start (DA-31); AC-98 reads evidence from a shipped test and needs Aiven on; the AC-92 additions-only check cannot run without the tag.
+- **Weak points:** the live block spans two sessions 12 days apart with a Kafka reset in between (same deployed build, same replayed sample); AC-97 depends on the no-op update outliving the check's start (DA-31); AC-98 reads evidence from a shipped test and needs Aiven on; the AC-92 additions-only check cannot run without the tag.
 - **Risks:** fail-closed doubles the impact of an SDK or API change (both jobs lose their refresh); the SDK in environment 2 (0.40.0) differs from the local 0.153, so only AC-96 proves the client path; the race window remains in both directions.
 - **What I would do differently:** give the two guard test files distinct names in the DESIGN from the start, and have AC-97 save its timing evidence.
-- **Next improvement:** run the live plan above, starting with AC-94 after deploy; then `/iterate` for the file-name row (D-01) and `/ship`.
+- **Next improvement:** `/iterate` DA-31 to Validated in the DESIGN, then `/ship`.
 
 ---
 
 ## Next Step
 
-Run the live tests above, update the AC rows, then `/ship INGESTION_GUARD`.
+`/iterate` DA-31 to Validated, open the build PR, then `/ship INGESTION_GUARD`.
