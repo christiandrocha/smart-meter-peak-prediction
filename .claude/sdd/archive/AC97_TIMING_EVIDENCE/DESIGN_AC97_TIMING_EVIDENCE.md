@@ -332,7 +332,7 @@ Existing inputs, read and not modified: `tests/integration/conftest.py`,
 | 8 | `tests/test_ac97_timing_docs.py` | Create | AC-104 and AC-105 (Test Strategy). Constants `V040_TREE_SHA256` and `V040_AC97_ASSERTS` computed at build from tag `v0.4.0` with the test's own functions, never typed by hand | pipeline-builder | 3, 5, 6, 7 |
 | 9 | `CHANGELOG.md` | Update at `/ship` | `[0.4.1]` entry: Added (AC-97 timing evidence file, AC-106 live check, runbook subsection), Changed (layout rule accepts three-digit AC names; version 0.4.1) | ship-agent | 1 to 8 |
 
-The build report (`.claude/sdd/reports/BUILD_REPORT_AC97_TIMING_EVIDENCE.md`) is the output of
+The build report (`.claude/sdd/archive/AC97_TIMING_EVIDENCE/BUILD_REPORT_AC97_TIMING_EVIDENCE.md`) is the output of
 `/build` and is not a manifest entry.
 
 **Runbook subsection content (entry 5).** Where the file is (`out/evidence/ac97_timing.json`,
@@ -473,7 +473,7 @@ DA-36 were validated by the first live AC-106 run (2026-11-04); no decision is o
 
 ## Next Step
 
-`/build .claude/sdd/features/DESIGN_AC97_TIMING_EVIDENCE.md`
+`/build .claude/sdd/archive/AC97_TIMING_EVIDENCE/DESIGN_AC97_TIMING_EVIDENCE.md`
 
 ---
 

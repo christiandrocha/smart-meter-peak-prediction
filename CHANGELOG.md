@@ -5,6 +5,32 @@ Entries are added by `/ship`.
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-04
+
+### Added
+
+- Timing evidence for the live AC-97 test. Each run writes `out/evidence/ac97_timing.json`
+  (git-ignored), also when an assertion fails. It holds the creation, end and terminal state of the
+  no-op update, the refused run and its check task, what the check read, and the rerun. The margin
+  `read_after_creation_seconds` and `update_outlived_read_seconds` is recorded, not compared with a
+  threshold. Helpers without SDK code are in `tests/support/ac97_timing.py`.
+- Live test `test_ac106_ac97_timing_evidence_matches_the_platform`. It starts no run; it checks the
+  evidence file for consistency and against three platform reads.
+- Runbook subsection "AC-97 timing evidence" in `docs/runbooks/meter_ingestion.md`.
+- Unit tests `tests/test_ac97_timing.py` and `tests/test_ac97_timing_docs.py`.
+
+### Changed
+
+- Layout rule in `tests/test_integration_layout.py` accepts three-digit AC names (`test_ac(\d{2,3})_`);
+  AC-106 is in the expected live ACs.
+- Package version set to 0.4.1.
+
+### Unchanged
+
+- The ingestion job `smart_meter_ingestion`, the daily peak job `smart_meter_peak_model`, the training
+  job, the pipeline `smart_meter_silver_gold`, the `pipeline_guard` library and the bundle. No
+  production file differs from `v0.4.0` except the version line.
+
 ## [0.4.0] - 2026-11-04
 
 ### Added

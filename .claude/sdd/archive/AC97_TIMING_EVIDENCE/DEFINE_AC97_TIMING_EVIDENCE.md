@@ -302,7 +302,7 @@ AC-104 (failure hint names the file); regression AC-104, AC-105.
 
 ## Next Step
 
-`/design .claude/sdd/features/DEFINE_AC97_TIMING_EVIDENCE.md`
+`/design .claude/sdd/archive/AC97_TIMING_EVIDENCE/DEFINE_AC97_TIMING_EVIDENCE.md`
 
 ---
 
