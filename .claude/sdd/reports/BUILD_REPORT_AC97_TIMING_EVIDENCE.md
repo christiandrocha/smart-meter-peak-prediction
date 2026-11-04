@@ -9,7 +9,7 @@
 | **Feature** | AC97_TIMING_EVIDENCE |
 | **Date** | 2026-11-04 |
 | **Source** | DESIGN_AC97_TIMING_EVIDENCE.md |
-| **Status** | In Progress |
+| **Status** | Complete |
 
 Allowed status values: `In Progress`, `Blocked`, `Complete`.
 
@@ -25,8 +25,8 @@ in an outer `finally` (also when an assertion fails or the platform raises). The
 by pure, SDK-free helpers in `tests/support/ac97_timing.py`, and a new live test
 `test_ac106_*` reads the file back and cross-checks it with the platform. Manifest entries 1 to 8
 are done and verified locally (15 new unit tests, 508 passed in total before the review fixes); entry 9 (CHANGELOG) is for
-`/ship`. Nothing was deployed and no live test was run: AC-106 and the live part of AC-97 are
-pending.
+`/ship`. The build was deployed to dev and the live AC-97 and AC-106 tests passed on 2026-11-04 (margin
+after the read 32 s; the update ended 59 s after creation).
 
 ---
 
@@ -36,7 +36,7 @@ pending.
 |---|---|---|---|
 | 1 | `tests/support/ac97_timing.py` | Created | `ruff check`/`format`; `tests/test_ac97_timing.py` (AC-100 to AC-103) |
 | 2 | `tests/test_ac97_timing.py` | Created (11 tests) | pytest: 11 passed |
-| 3 | `tests/integration/test_ingestion_guard_live.py` | Modified (AC-97 new shape, `_wait_pipeline_idle(watch=)`, capture and read helpers, `test_ac106_*`, docstring) | ruff; collection (5 tests, AC-97 and AC-106 present); AC-104/AC-105 AST tests; live Not run |
+| 3 | `tests/integration/test_ingestion_guard_live.py` | Modified (AC-97 new shape, `_wait_pipeline_idle(watch=)`, capture and read helpers, `test_ac106_*`, docstring) | ruff; collection (5 tests, AC-97 and AC-106 present); AC-104/AC-105 AST tests; live Pass (AC-97, AC-106) |
 | 4 | `tests/test_integration_layout.py` | Modified (`AC_NAME` `\d{2,3}`, failure text, `EXPECTED_ACS` 106, `::test_ac106_` collected) | pytest: 6 passed |
 | 5 | `docs/runbooks/meter_ingestion.md` | Modified (subsection "AC-97 timing evidence", row H pointer) | `test_ac104_runbook_*`; shipped `test_ingestion_guard_docs.py` (4 passed, unmodified) |
 | 6 | `pyproject.toml` | Modified (`version = "0.4.1"`) | `test_ac105_production_files_*` |
@@ -67,7 +67,7 @@ Unit evidence is from `.venv/bin/pytest` (508 passed, 90 deselected, 0 failures;
 | AC-103 | Pass | `::test_ac103_record_has_exactly_the_contract_fields` (19 fields, types, byte-stable JSON, fallbacks, passing check), `::test_ac103_missing_inputs_give_nulls_and_incomplete_and_no_secret` |
 | AC-104 | Pass | `test_ac97_timing_docs.py::test_ac104_runbook_explains_the_timing_evidence`, `::test_ac104_failure_hint_and_note_name_the_evidence_file` (AST of the AC-97 function: `except BaseException` with `add_note`, outermost `finally` with `evidence.save(ac97_timing.EVIDENCE_NAME, ...)`, `failure_hint` in the `AssertionError` handler); shipped AC-99 docs tests pass unmodified |
 | AC-105 | Pass | `::test_ac105_production_files_equal_v040_except_the_version` (tag present locally, so also compared with `git show`), `::test_ac105_shipped_ac97_asserts_and_mechanics_are_kept` (11 asserts kept, one `start_update(full_refresh=False)`, two `peak_runner.run(only=subset)`, `subset = [CHECK, REFRESH]`); `pytest` 0 failures; `check_specs.py` 0 errors |
-| AC-106 | Not run | Live. Needs deploy and the commands in the live-test plan below. Unit side: `test_integration_layout.py::test_integration_tests_cover_every_in_scope_ac` and `::test_integration_tests_are_collected_but_deselected_by_default` (both pass; `::test_ac106_` is collected). AC-97 live part: Not run |
+| AC-106 | Pass | Live. Needs deploy and the commands in the live-test plan below. Unit side: `test_integration_layout.py::test_integration_tests_cover_every_in_scope_ac` and `::test_integration_tests_are_collected_but_deselected_by_default` (both pass; `::test_ac106_` is collected). Live, 2026-11-04, after `bundle validate` and `bundle deploy -t dev` (exit 0, build `19bd0a1`): AC-97 passed (142 s), then `test_ac106_ac97_timing_evidence_matches_the_platform` passed (6 s). `out/evidence/ac97_timing.json`: update `1bb3c498-6f34-4303-98ad-ebd8c40f2ade` created 18:51:29Z; refused run 474092262377864, check task 115041889552750 started 18:51:30Z, read 18:51:56Z (update `INITIALIZING`, pipeline `RUNNING`), ended 18:52:01Z, FAILED; update `COMPLETED` at 18:52:28Z (`update_end_source` `platform`); rerun 501180431336170, check and refresh SUCCESS; `read_after_creation_seconds` 27, `update_outlived_read_seconds` 32, outcome `refused` |
 
 DA-38 (checked at build, throwaway test in the scratchpad, not in the repo): with pytest 9.1.1 a
 failing test that calls `exc.add_note(...)` and `print(...)` before `raise` shows both the note
@@ -85,9 +85,9 @@ Validated; the print fallback is kept as designed.
 | Tests | `.venv/bin/pytest` | 508 passed, 90 deselected, 0 failed (5 min 50 s) |
 | Spec check | `.venv/bin/python scripts/check_specs.py` | 28 documents, 0 errors, 0 warnings |
 | Collection | `.venv/bin/pytest --collect-only -m integration -o addopts= -q` | 70/598 collected; `test_ac97_*` and `test_ac106_*` present |
-| Hooks | `pre-commit run --all-files` | Not run (the user commits) |
+| Hooks | `pre-commit run --all-files` | Passed after one change: the hook's ruff (v0.6.9) and the dev ruff (0.17) formatted a long `assert` in `tests/test_integration_layout.py` differently; the message moved to a variable so both agree (PEAK_MODEL F-02) |
 | DA-38 | Throwaway test in the scratchpad | note and printed line both shown (pytest 9.1.1) |
-| Bundle | `databricks bundle validate` / `deploy` | Not run (no Databricks calls in this build) |
+| Bundle | `databricks bundle validate -t dev -p dev` / `deploy` | Validation OK; deploy exit 0 (2026-11-04) |
 
 ---
 
@@ -108,8 +108,8 @@ No deviation changes the DESIGN.
 
 | ID | Issue | Severity | Follow-up |
 |---|---|---|---|
-| I-01 | Live ACs (AC-106; live part of AC-97) not run | High (gate) | User runs the live-test plan; set the AC rows and the status afterwards |
-| I-02 | DA-35 (event wording), DA-36 (`get_update` of a finished update) and DA-37 (busy line in the task error text) are validated only by the first live run | Medium | If `update_end_source` is `observed_terminal` or `check_read_update_state` is null, `/iterate` (fallbacks in DESIGN) |
+| I-01 | Live ACs (AC-106; live part of AC-97) not run | High (gate) | Closed 2026-11-04: AC-97 and AC-106 pass live |
+| I-02 | DA-35 (event wording), DA-36 (`get_update` of a finished update) and DA-37 (busy line in the task error text) are validated only by the first live run | Medium | Closed 2026-11-04: validated by the first live run (`update_end_source` `platform`, `get_update` returned `COMPLETED`, the check's busy line parsed: `INITIALIZING`) |
 | I-03 | `PeakRunner.run` timeout (`pytest.fail`) leaves the refused-run fields null (the record is still written, outcome `incomplete`) | Low | Accepted as designed (OD-27) |
 | I-04 | Review (Medium): `build_record`/`evidence.save` unguarded in the outer `finally` | Medium | Fixed: wrapped, prints class and error code only |
 | I-05 | Review (Medium): `_capture_refused`/`_capture_rerun` parsing unguarded | Medium | Fixed: wrapped (G-33) |
@@ -119,6 +119,7 @@ No deviation changes the DESIGN.
 | I-09 | Review (Low): AC-105 mechanics test omitted `expect`/`require_idle`/`finally` wait | Low | Fixed |
 | I-10 | Review (Low): runbook overstated `observed_terminal` resolution | Low | Fixed |
 | I-11 | Review (Low): live helpers have no unit test; found-run capture may pick a run ended just before `start_update` (30 s slack) | Low | Open; follow-up |
+| I-13 | The no-op update lasted 59 s on 2026-11-04, not the 125 s measured in spike 06; the margin after the read was 32 s (DA-31 still holds, but with less room than assumed) | Medium | Watch the margin in later AC-97 runs; the ladder in the runbook applies when it reaches 0 |
 | I-12 | Code review result | - | `code-reviewer` subagent: no High findings; 3 Medium and 6 Low, all fixed except I-11 |
 
 ---
@@ -143,12 +144,12 @@ Then set AC-106 and AC-97 (live) to Pass/Fail and the status to `Complete` only 
 ## Self-Review
 
 - **Weak points:** the failure path of the evidence is proven by unit tests of the builder and an AST check of the wiring, not by a live failure; the AC-97 function has a third `try` level; the live helpers (`_capture_*`, `_read_update_end`, `_observe`) have no unit tests because they touch SDK objects.
-- **Risks:** DA-35, DA-36 and DA-37 are untested on the platform; a wrong guess costs a second live session after an `/iterate`. The SDK in the local `.venv` (0.153.0) is what the live tests use, so `as_dict()` shapes were read from the SDK source, not from a response.
+- **Risks:** DA-35, DA-36 and DA-37 held on the first live run, but on one observation; the update ended 59 s after creation, so AC-97 has a 32 s margin, not the roughly 100 s the 125 s figure implied (I-13). The SDK in the local `.venv` (0.153.0) is what the live tests use, so `as_dict()` shapes were read from the SDK source, not from a response.
 - **What I would do differently:** give the live helpers a tiny fake-SDK unit test so the capture code is exercised in CI.
-- **Next improvement:** run the live plan, then `/ship AC97_TIMING_EVIDENCE` with the CHANGELOG `[0.4.1]` entry.
+- **Next improvement:** `/ship AC97_TIMING_EVIDENCE` with the CHANGELOG `[0.4.1]` entry.
 
 ---
 
 ## Next Step
 
-Run the live-test plan, fill the AC-106 row, then `/ship AC97_TIMING_EVIDENCE`.
+`/ship AC97_TIMING_EVIDENCE`.
