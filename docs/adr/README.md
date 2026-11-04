@@ -18,3 +18,4 @@ Records are never deleted; a reversed decision is marked `Superseded by NNNN`.
 | 0010 | [Next-day consumption spike label: strictly above 1.3 x the median of the last 4 complete same-weekday days within 8 weeks](0010-consumption-spike-label-definition.md) | Accepted | 2026-10-21 |
 | 0011 | [Dense ML tables written by change-only MERGE; training sets kept as run artifacts, not tables](0011-dense-ml-tables-and-run-artifact-training-sets.md) | Accepted | 2026-10-21 |
 | 0012 | [A read-only pre-check before the shared pipeline task in the daily peak job, failing fast and closed](0012-read-only-pipeline-pre-check-in-the-daily-peak-job.md) | Accepted | 2026-10-22 |
+| 0013 | [A read-only, pipeline-only pre-check before the pipeline task of the ingestion job, and no platform retry of the Kafka task](0013-pipeline-only-pre-check-in-the-ingestion-job.md) | Accepted | 2026-10-23 |
