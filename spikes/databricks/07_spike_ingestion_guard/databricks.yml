@@ -1,0 +1,78 @@
+# Spike 07 bundle (INGESTION_GUARD, A-25, A-26, A-27, A-29, A-30). Throwaway, never deployed by
+# the project bundle and never imported by src/. Deployed and destroyed by run_spike.py.
+#
+# Target dev   : the shape the ingestion job will take, plus a one-way job reference (the
+#                direction the peak job already uses, ADR 0012).
+# Target cycle : the same, plus the reverse reference, so the two jobs reference each other (A-30).
+bundle:
+  name: spike-07-ingestion-guard
+
+variables:
+  pipeline_id:
+    description: Id of the deployed Silver/Gold pipeline (passed by run_spike.py; never updated)
+
+resources:
+  jobs:
+    # Mirrors the ingestion job: notebook tasks on the default serverless environment and one task
+    # on environment version 2 (A-26). Never scheduled.
+    spike_07_guarded:
+      name: spike_07_guarded
+      max_concurrent_runs: 1
+      timeout_seconds: 1800
+      environments:
+        - environment_key: guard_env
+          spec:
+            environment_version: "2"
+      tasks:
+        # A-27: same retry settings ingest_kafka will get.
+        - task_key: fail_disabled
+          timeout_seconds: 600
+          max_retries: 0
+          disable_auto_optimization: true
+          notebook_task:
+            notebook_path: ./fail.py
+
+        # Control: the v0.1.0 ingest_kafka settings, which ran twice (F-33).
+        - task_key: fail_control
+          timeout_seconds: 600
+          max_retries: 0
+          notebook_task:
+            notebook_path: ./fail.py
+
+        # A-26, A-29: the check task's runtime and read rights.
+        - task_key: probe
+          timeout_seconds: 300
+          max_retries: 0
+          disable_auto_optimization: true
+          environment_key: guard_env
+          notebook_task:
+            notebook_path: ./probe.py
+            base_parameters:
+              pipeline_id: ${var.pipeline_id}
+              other_job_id: ${resources.jobs.spike_07_pipeline_task.id}
+
+    # A-25: a pipeline task with disable_auto_optimization. Deployed and read back only, never run.
+    spike_07_pipeline_task:
+      name: spike_07_pipeline_task
+      max_concurrent_runs: 1
+      tasks:
+        - task_key: refresh
+          max_retries: 0
+          disable_auto_optimization: true
+          pipeline_task:
+            pipeline_id: ${var.pipeline_id}
+            full_refresh: false
+
+targets:
+  dev:
+    mode: development
+    default: true
+
+  cycle:
+    mode: development
+    resources:
+      jobs:
+        spike_07_pipeline_task:
+          parameters:
+            - name: other_job_id
+              default: ${resources.jobs.spike_07_guarded.id}
