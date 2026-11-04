@@ -24,8 +24,10 @@ EXPECTED_ACS |= {36, 37, 39, 40, 41, 44, 47, 48, 49, 50, 51, 52, 54, 55, 56, 57,
 EXPECTED_ACS |= {62, 63, 64, 66}
 # INGESTION_GUARD (manifest 12, 13).
 EXPECTED_ACS |= {94, 95, 96, 97, 98}
+# AC97_TIMING_EVIDENCE: the first three-digit live AC (OD-24).
+EXPECTED_ACS |= {106}
 TEST_FILES = sorted(INTEGRATION.glob("test_*.py"))
-AC_NAME = re.compile(r"^test_ac(\d{2})_")
+AC_NAME = re.compile(r"^test_ac(\d{2,3})_")
 
 
 def _test_functions(path: Path) -> list[str]:
@@ -66,7 +68,8 @@ def test_integration_every_test_is_marked_and_names_its_ac() -> None:
         )
         assert marked, f"{path.name} lacks pytestmark = pytest.mark.integration"
         for name in _test_functions(path):
-            assert AC_NAME.match(name), f"{path.name}::{name} does not start with test_acNN_"
+            msg = f"{path.name}::{name} does not start with test_acNN_ or test_acNNN_"
+            assert AC_NAME.match(name), msg
 
 
 def test_integration_tests_cover_every_in_scope_ac() -> None:
@@ -130,3 +133,4 @@ def test_integration_tests_are_collected_but_deselected_by_default() -> None:
     assert "tests/integration/test_peak_deployment.py::test_ac62_" in selected
     assert "tests/integration/test_peak_concurrency.py::test_ac74_" in selected
     assert "tests/integration/test_ingestion_guard_live.py::test_ac97_" in selected
+    assert "tests/integration/test_ingestion_guard_live.py::test_ac106_" in selected
