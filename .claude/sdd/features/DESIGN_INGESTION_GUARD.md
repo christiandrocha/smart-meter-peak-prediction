@@ -269,8 +269,8 @@ definition, constant or line is edited, moved or reformatted.
 ### Assumption dependencies
 
 Spike 07 (2026-10-23, run 843912359241341) validated the platform surface before this design
-(BRAINSTORM A-25 to A-30, DEFINE A-32). DA-31 is the only pending item; it affects one live test,
-not the design.
+(BRAINSTORM A-25 to A-30, DEFINE A-32). DA-31, the one item left open at design time, affects one live test, not the design; it was
+validated live by AC-97 on dev (2026-10-23).
 
 | Assumption | Decisions depending on it | Check | Fallback |
 |---|---|---|---|
@@ -278,7 +278,7 @@ not the design.
 | DA-28 **Validated (spike 07, A-26).** A job with one notebook task on a job environment (version 2) and the other notebook tasks without `environment_key` deploys and runs; the others keep the default environment | OD-19, FR-45 | AC-94 read-back, AC-96 run | None needed; if the platform changes, `/iterate` to put the check in its own one-task job is not possible without a job reference, so move every ingestion notebook task to the environment after a spike |
 | DA-29 **Validated (spike 07, A-27).** `disable_auto_optimization: true` with `max_retries: 0` on a serverless notebook task gives exactly 1 attempt, and the deployed task reads back `max_retries` 0 (not unset). On a pipeline task the field does not stick (A-25) | G-26, FR-43 | AC-94 (read-back on `ingest_kafka` and the check), AC-95 (one attempt on `ingest_kafka`) | None known; a second attempt fails AC-95 and is recorded as a deviation |
 | DA-30 **Validated by prior art.** A run with `only` runs a task whose upstream tasks are excluded (shipped AC-06 and AC-08 run `ingest_files` and `ingest_kafka` without `setup_catalog`); a task whose upstream failed ends `UPSTREAM_FAILED` and never starts (shipped AC-74 and AC-75) | OD-23, AC-95, AC-97 | AC-97 first run; AC-95 | None needed |
-| DA-31 **Pending (A-31).** A no-op update started through `pipelines.start_update` stays non-terminal until the check of a subset run started right after it reads the pipeline (no-op update about 125 s; a probe 4 s after the start saw it active, spike 06; same mechanics passed in AC-75) | AC-97 | AC-97 asserts the check's error contains U, which proves U was active when read | Rerun once; then U with `full_refresh=True`; then AC-97 `Partial` with a direct `check_pipeline` read during U (OD-23) |
+| DA-31 **Validated (live AC-97, dev, 2026-10-23, A-31).** A no-op update started through `pipelines.start_update` stays non-terminal until the check of a subset run started right after it reads the pipeline (no-op update about 125 s; a probe 4 s after the start saw it active, spike 06; same mechanics passed in AC-75). In the refused AC-97 run 303996116036137, `check_silver_gold_idle` read update 856b017d-c522-45db-8129-35605f661cf3 in `WAITING_FOR_RESOURCES` 27 s after its creation (created 18:37:07Z, checked 18:37:34Z) and `refresh_silver_gold` did not start; the rerun 581887386545638 passed (check idle in 17 s, refresh `SUCCESS` in 51 s). Timings read from the Jobs API (the test saves no timing file); one observation on dev only; recorded in `BUILD_REPORT_INGESTION_GUARD.md` (AC-97 row, I-04) | AC-97 | AC-97 asserts the check's error contains U, which proves U was active when read | Rerun once; then U with `full_refresh=True`; then AC-97 `Partial` with a direct `check_pipeline` read during U (OD-23) |
 | DA-32 The local SDK of the integration tests reads the deployed job environment as `settings.environments[0].spec.environment_version` | AC-94 | AC-94 first run | Compare `spec.as_dict()`, accepting `environment_version` or the older field `client` equal to "2"; record which one in the build report |
 | DA-33 **Validated (spike 07, prior art).** `jobs.get_run(run_id)` lists every attempt of a task as its own entry of `tasks`, with `attempt_number` 0, 1, and so on (spike 07 counted the control's two attempts this way; `PeakRunner.task_runs_by_key` relies on it) | FR-52, AC-95, AC-96, AC-97 | AC-95, AC-96 | None needed |
 
@@ -592,8 +592,8 @@ by the current Aiven state, so that at most one Kafka reset (runbook "Broker out
 ## Open Items for the User
 
 None. U-06 is not used: every open design item (OD-19 to OD-23) is resolved above within the
-user's decisions D-46 to D-59, and the only pending assumption (DA-31, A-31) has a fallback that
-needs no decision.
+user's decisions D-46 to D-59, and the one assumption open at design time (DA-31, A-31) is now
+validated; its fallback needs no decision.
 
 Follow-ups outside this feature (unchanged): reset script guard and its `main()` test (D-52, next
 release); `disable_auto_optimization` on pipeline tasks (A-25, needs another mechanism); Approach C if
@@ -651,4 +651,5 @@ A-28 is observed; PEAK_MODEL_CONCURRENCY F-04 (SDK drift), now relevant to both 
 | Date | Change | Why | Downstream impact |
 |---|---|---|---|
 | 2026-10-23 | Created from DEFINE_INGESTION_GUARD.md (Ready for Design): architecture, guards G-22 to G-27, OD-19 to OD-23 resolved, DA-27 to DA-33 (spike 07 results; DA-31 pending), job layout, library API, notebook outline, changes to shipped tests, 22-entry manifest (one PR), test strategy for AC-81 to AC-99; ADR 0013 written (Accepted) and listed in the ADR index; notes on ADR 0012 and ADR 0008 planned as manifest entries 19 and 20. Status `Ready for Build` | Phase 2 of the SDD workflow | `/build` starts at entry 1 once the spike 07 branch is merged |
+| 2026-11-04 | DA-31 set from Pending to Validated. Evidence: live AC-97 on dev, 2026-10-23; refused run 303996116036137 (check `check_silver_gold_idle` read update 856b017d-c522-45db-8129-35605f661cf3 in `WAITING_FOR_RESOURCES` 27 s after creation, `refresh_silver_gold` not started); rerun 581887386545638 passed. Timing read from the Jobs API; single observation, dev only. No other text changed | Build evidence for AC-97 (`BUILD_REPORT_INGESTION_GUARD.md`, AC-97 row and I-04) | None: the build report already records the evidence; no AC, manifest entry or test changed; status stays `Ready for Build`. The Assumption dependencies intro and Open Items now state DA-31 as validated; the Self-Review weak point stays, as the timing remains a risk on reruns |
 | 2026-10-23 | Live integration test file renamed from `tests/integration/test_ingestion_guard.py` to `tests/integration/test_ingestion_guard_live.py` in manifest entry 13, the Test Strategy rows of AC-94, AC-96, AC-97 and AC-98, and the `tests/test_integration_layout.py` row of Changes to shipped tests. The unit file `tests/test_ingestion_guard.py` is unchanged. Status stays `Ready for Build` | Build deviation D-01: the old name has the same basename as the unit file and pytest fails collection with "import file mismatch" (no `__init__.py` packages) | Code already built under the new name; no rebuild. `BUILD_REPORT_INGESTION_GUARD.md` D-01 and I-08 point here. `DEFINE` unaffected (no AC changed) |
