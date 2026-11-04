@@ -5,6 +5,50 @@ Entries are added by `/ship`.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-04
+
+### Added
+
+- Pre-check task `check_silver_gold_idle` in the ingestion job `smart_meter_ingestion`. It runs
+  after the two ingest tasks and before `refresh_silver_gold`, on its own serverless environment
+  (version 2). It is read-only, has no retries, and fails at once when an update of the shared
+  pipeline `smart_meter_silver_gold` is in progress or when its state cannot be read. The message
+  names the blocking update and the action to take (ADR 0013).
+- Pipeline-only mode in `pipeline_guard`, appended to the shared guard. The peak mode is unchanged.
+- Tests: unit tests `tests/test_ingestion_guard.py`, `tests/test_ingestion_guard_bundle.py` and
+  `tests/test_ingestion_guard_docs.py`; integration tests `tests/integration/test_ingestion_guard_live.py`.
+- ADR 0013: a read-only, pipeline-only pre-check in the ingestion job, and no platform retry of
+  `ingest_kafka`.
+
+### Changed
+
+- `ingest_kafka` runs once per job run: `max_retries: 0` and `disable_auto_optimization: true`. A
+  broker outage fails the task and the next daily run is the retry (AC-10, AC-95).
+- Ingestion job graph: five tasks. `refresh_silver_gold` runs only after the check succeeds. A busy
+  pipeline now fails the ingestion refresh at the check with a named update, instead of an unnamed
+  `INTERNAL_ERROR` on the pipeline task. Bronze ingestion is not affected.
+- ADR 0012 and ADR 0008 have dated notes (2026-10-23) that record the coexistence with the ingestion
+  job.
+- Runbooks: `docs/runbooks/meter_ingestion.md` (Concurrency with the peak job, live evidence rows H
+  to J) and `docs/runbooks/peak_model.md` (no ingestion `--only` list).
+- Package version set to 0.4.0.
+
+### Unchanged
+
+- The daily peak job `smart_meter_peak_model`, its pre-check `check_pipeline_idle` and the peak mode
+  of `pipeline_guard`. The diff against `v0.3.0` adds lines only.
+- The pipeline `smart_meter_silver_gold`, the training job `smart_meter_peak_model_training` and the
+  schedules of both daily jobs.
+
+### Known limits
+
+- An update started by another run in the same seconds as the check still ends `INTERNAL_ERROR` on
+  the task that started second. There is no retry; the next scheduled run is the retry.
+- The check runs after `ingest_kafka`. When that task fails, the check does not run and the refresh
+  is skipped, as in v0.1.0.
+- The check fails closed. An API or SDK fault in the check blocks the Silver and Gold refresh of both
+  daily jobs until it is fixed; Bronze is kept.
+
 ## [0.3.0] - 2026-10-22
 
 ### Added
