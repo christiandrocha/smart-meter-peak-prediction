@@ -1,4 +1,4 @@
-"""Reverse pre-check of the ingestion job on dev (AC-94 to AC-98; ADR 0013).
+"""Reverse pre-check of the ingestion job on dev (AC-94 to AC-98, AC-106; ADR 0013).
 
 Run order (runbook "Evidence order", and the DESIGN): AC-94 first, right after
 ``databricks bundle deploy -t dev`` from a clean tree; then AC-97 (it needs no Kafka); then the
@@ -7,18 +7,25 @@ Kafka block ordered by the current Aiven state (AC-96, then the AC-28 and AC-30 
 ``test_bronze_ingestion.py``). AC-96 starts one full ingestion run that the METER_INGESTION AC-30
 test reuses. AC-97 starts one no-op pipeline update and two subset runs; the busy-case run uses
 ``require_idle=False`` because the busy state is what it tests.
+
+AC97_TIMING_EVIDENCE: AC-97 also writes ``out/evidence/ac97_timing.json`` (also when it fails),
+and AC-106 reads that file back and cross-checks it with the platform without starting anything.
+Order: AC-97, then AC-106 right after. The pure helpers are ``tests/support/ac97_timing.py``.
 """
 
 from __future__ import annotations
 
+import json
 import re
 import time
-from datetime import datetime
+from datetime import UTC, datetime
+from itertools import islice
 from pathlib import Path
 from typing import Any
 
 import pytest
 import yaml
+from support import ac97_timing
 
 from smart_meter_peak_prediction import pipeline_guard
 
@@ -76,15 +83,128 @@ def _assert_peak_job_idle(workspace: Any, peak_job: Any) -> None:
     assert not active, f"a smart_meter_peak_model run is active: {[r.run_id for r in active]}"
 
 
-def _wait_pipeline_idle(workspace: Any, pipeline_id: str, minutes: int = 20) -> None:
+def _wait_pipeline_idle(
+    workspace: Any,
+    pipeline_id: str,
+    minutes: int = 20,
+    watch: ac97_timing.UpdateWatch | None = None,
+) -> None:
     deadline = time.monotonic() + minutes * 60
     while True:
-        state = workspace.pipelines.get(pipeline_id).state
+        pipeline = workspace.pipelines.get(pipeline_id)
+        if watch is not None:
+            _observe(pipeline, watch)
+        state = pipeline.state
         if state is not None and state.value == "IDLE":  # exactly IDLE, as assert_ingestion_idle
             return
         if time.monotonic() > deadline:
             raise AssertionError(f"the pipeline was still not IDLE after {minutes} min")
         time.sleep(10)
+
+
+def _enum(value: Any) -> str | None:
+    inner = getattr(value, "value", value)
+    return None if inner is None else str(inner)
+
+
+def _observe(pipeline: Any, watch: ac97_timing.UpdateWatch) -> None:
+    """Record U's creation time and state from ``latest_updates``; first terminal poll time."""
+    for entry in getattr(pipeline, "latest_updates", None) or []:
+        if getattr(entry, "update_id", None) != watch.update_id:
+            continue
+        if watch.created is None:
+            watch.created = getattr(entry, "creation_time", None)
+        state = _enum(getattr(entry, "state", None))
+        watch.state = state
+        if state in pipeline_guard.TERMINAL_UPDATE_STATES and watch.observed_terminal_ts is None:
+            watch.observed_terminal_ts = pipeline_guard.utc_text(datetime.now(UTC))
+
+
+# ----------------------------------------------------------------------------- AC-97 evidence
+def _skipped(what: str, exc: Exception) -> None:
+    """G-33: one line with the class and the error code only, never the message body."""
+    code = getattr(exc, "error_code", None)
+    print(f"AC-97 timing evidence: {what} not read ({type(exc).__name__} {code or '-'})")
+
+
+def _check_output(workspace: Any, task: Any, facts: ac97_timing.Ac97Facts) -> None:
+    output = workspace.jobs.get_run_output(task.run_id)
+    if output.error:
+        facts.check_error = f"{output.error} {output.error_trace or ''}"
+    if output.notebook_output and output.notebook_output.result:
+        facts.check_exit = json.loads(output.notebook_output.result)
+
+
+def _task_facts(run: Any) -> ac97_timing.TaskFacts:
+    tasks = [t for t in run.tasks or [] if t.task_key == CHECK]
+    task = tasks[0] if tasks else None
+    return ac97_timing.TaskFacts(
+        run_id=run.run_id,
+        task_run_id=getattr(task, "run_id", None),
+        start=getattr(task, "start_time", None),
+        end=getattr(task, "end_time", None),
+        result=_result(task) or None if task is not None else None,
+    )
+
+
+def _capture_found_run(
+    workspace: Any, job: Any, before_ms: int, facts: ac97_timing.Ac97Facts
+) -> None:
+    """Failure path: the refused run was not returned, so find it (2 reads, guarded)."""
+    try:
+        listed = workspace.jobs.list_runs(
+            job_id=job.job_id, start_time_from=before_ms, expand_tasks=True, limit=5
+        )
+        runs = list(islice(listed, 5))
+        if not runs:
+            return
+        run = min(runs, key=lambda r: r.start_time or 0)  # the oldest one after the update
+        facts.refused = _task_facts(run)
+        if facts.refused.task_run_id is not None:
+            task = next(t for t in run.tasks if t.task_key == CHECK)
+            _check_output(workspace, task, facts)
+    except Exception as exc:  # noqa: BLE001 - the evidence never masks the AC-97 result (G-33)
+        _skipped("the refused run", exc)
+
+
+def _capture_refused(refused: Any, facts: ac97_timing.Ac97Facts) -> None:
+    """The run that AC-97 asserts on, already read by the runner: no platform call."""
+    try:
+        facts.refused = _task_facts(refused.run)
+        facts.check_error = refused.errors.get(CHECK)
+        facts.check_exit = refused.outputs.get(CHECK)
+    except Exception as exc:  # noqa: BLE001 - never hides the AC-97 asserts that follow (G-33)
+        _skipped("the refused run", exc)
+
+
+def _capture_rerun(rerun: Any, facts: ac97_timing.Ac97Facts) -> None:
+    try:
+        facts.rerun_run_id = rerun.run.run_id
+        facts.rerun_check_result = _first_result(rerun.run, CHECK)
+        facts.rerun_refresh_result = _first_result(rerun.run, REFRESH)
+    except Exception as exc:  # noqa: BLE001
+        _skipped("the rerun", exc)
+
+
+def _first_result(run: Any, key: str) -> str | None:
+    found = [t for t in run.tasks or [] if t.task_key == key]
+    return (_result(found[0]) or None) if found else None
+
+
+def _read_update_end(workspace: Any, pipeline_id: str, facts: ac97_timing.Ac97Facts) -> None:
+    """U's creation time, final state and the newest event page (2 reads, guarded)."""
+    facts.end_read = True
+    try:
+        update = workspace.pipelines.get_update(pipeline_id, facts.update_id).update
+        facts.update_created = getattr(update, "creation_time", None)
+        facts.update_state = _enum(getattr(update, "state", None))
+    except Exception as exc:  # noqa: BLE001
+        _skipped("the update", exc)
+    try:
+        events = workspace.pipelines.list_pipeline_events(pipeline_id, max_results=50)
+        facts.events = [event.as_dict() for event in islice(events, 50)]
+    except Exception as exc:  # noqa: BLE001
+        _skipped("the pipeline events", exc)
 
 
 # ----------------------------------------------------------------------------- AC-94
@@ -165,52 +285,124 @@ def test_ac96_full_run_passes_the_check_and_every_task_succeeds_once(
 
 # ----------------------------------------------------------------------------- AC-97
 def test_ac97_check_refuses_while_an_update_is_active_and_the_rerun_succeeds(
-    workspace, job, peak_job, pipeline, peak_runner
+    workspace, job, peak_job, pipeline, peak_runner, evidence
 ) -> None:
     peak_runner.assert_ingestion_idle()
     _assert_peak_job_idle(workspace, peak_job)
     subset = [CHECK, REFRESH]
+    before_ms = int(time.time() * 1000) - START_SLACK_SECONDS * 1000
     update_id = workspace.pipelines.start_update(
         pipeline_id=pipeline.pipeline_id, full_refresh=False
     ).update_id
+    facts = ac97_timing.Ac97Facts(update_id, ac97_timing.UpdateWatch(update_id))
     try:
         try:
-            refused = peak_runner.run(job, only=subset, expect="FAILED", require_idle=False)
-        except AssertionError as exc:
-            msg = (
-                f"{exc}. The update {update_id} may have ended before the check read it "
-                "(DA-31); the no-op update lasted about 125 s on dev. Run the test again; then "
-                "start the update with full_refresh=True; if it keeps passing vacuously record "
-                "AC-97 as Partial with a direct pipeline_guard.check_pipeline read during the "
-                "update."
+            try:
+                refused = peak_runner.run(job, only=subset, expect="FAILED", require_idle=False)
+            except AssertionError as exc:
+                _capture_found_run(workspace, job, before_ms, facts)
+                msg = f"{exc}. {ac97_timing.failure_hint(update_id)}"
+                raise AssertionError(msg) from exc
+            _capture_refused(refused, facts)
+            check = _one(peak_runner, refused.run, CHECK)
+            assert _result(check) == "FAILED"
+            assert _seconds(check) <= CHECK_BUDGET_SECONDS
+            error = refused.errors[CHECK]
+            assert update_id in error
+            assert "smart_meter_silver_gold" in error
+            assert "rerun smart_meter_ingestion" in error
+            assert re.search(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", error)  # UTC with Z
+            assert _result(_one(peak_runner, refused.run, REFRESH)) == "UPSTREAM_FAILED"
+        finally:
+            _wait_pipeline_idle(workspace, pipeline.pipeline_id, watch=facts.watch)
+        _read_update_end(workspace, pipeline.pipeline_id, facts)
+
+        # the refused run requested no update of its own: none but U was created during its life
+        during = [
+            u.update_id
+            for u in _updates_between(
+                workspace, pipeline.pipeline_id, refused.run.start_time, refused.run.end_time
             )
-            raise AssertionError(msg) from exc
-        check = _one(peak_runner, refused.run, CHECK)
-        assert _result(check) == "FAILED"
-        assert _seconds(check) <= CHECK_BUDGET_SECONDS
-        error = refused.errors[CHECK]
-        assert update_id in error
-        assert "smart_meter_silver_gold" in error
-        assert "rerun smart_meter_ingestion" in error
-        assert re.search(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", error)  # UTC with Z
-        assert _result(_one(peak_runner, refused.run, REFRESH)) == "UPSTREAM_FAILED"
+            if u.update_id != update_id
+        ]
+        assert during == [], f"updates created during the refused run: {during}"
+
+        rerun = peak_runner.run(job, only=subset, require_idle=True)  # expect SUCCESS
+        _capture_rerun(rerun, facts)
+        assert _result(_one(peak_runner, rerun.run, CHECK)) == "SUCCESS"
+        assert _result(_one(peak_runner, rerun.run, REFRESH)) == "SUCCESS"
+        assert rerun.outputs[CHECK]["outcome"] == "idle"
+    except BaseException as exc:  # noqa: BLE001 - names the evidence file on any failure (FR-58)
+        exc.add_note(ac97_timing.EVIDENCE_NOTE)
+        print(ac97_timing.EVIDENCE_NOTE)
+        raise
     finally:
-        _wait_pipeline_idle(workspace, pipeline.pipeline_id)
+        if not facts.end_read:
+            _read_update_end(workspace, pipeline.pipeline_id, facts)
+        try:
+            evidence.save(ac97_timing.EVIDENCE_NAME, ac97_timing.build_record(facts))
+        except Exception as exc:  # noqa: BLE001 - never replaces the AC-97 result (G-33)
+            _skipped("the evidence file", exc)
 
-    # the refused run requested no update of its own: none but U was created during its lifetime
-    during = [
-        u.update_id
-        for u in _updates_between(
-            workspace, pipeline.pipeline_id, refused.run.start_time, refused.run.end_time
-        )
-        if u.update_id != update_id
-    ]
-    assert during == [], f"updates created during the refused run: {during}"
 
-    rerun = peak_runner.run(job, only=subset, require_idle=True)  # expect SUCCESS
-    assert _result(_one(peak_runner, rerun.run, CHECK)) == "SUCCESS"
-    assert _result(_one(peak_runner, rerun.run, REFRESH)) == "SUCCESS"
-    assert rerun.outputs[CHECK]["outcome"] == "idle"
+# ----------------------------------------------------------------------------- AC-106
+def _seconds_of(utc: str) -> float:
+    return _ms(utc) / 1000
+
+
+def _update_creation_ms(workspace: Any, pipeline_id: str, update_id: str) -> int:
+    """Creation time of U; DA-36 fallback: the update list when ``get_update`` cannot read it."""
+    try:
+        return workspace.pipelines.get_update(pipeline_id, update_id).update.creation_time
+    except Exception as exc:  # noqa: BLE001
+        _skipped("the update (AC-106)", exc)
+    listed = workspace.pipelines.list_updates(pipeline_id, max_results=25).updates or []
+    found = [u.creation_time for u in listed if u.update_id == update_id]
+    assert found, f"update {update_id} is not listed for the pipeline"
+    return found[0]
+
+
+def test_ac106_ac97_timing_evidence_matches_the_platform(
+    workspace, job, pipeline, evidence
+) -> None:
+    """Right after AC-97: the saved timing is consistent and agrees with the platform (3 reads)."""
+    ac97 = "test_ac97_check_refuses_while_an_update_is_active_and_the_rerun_succeeds"
+    record = evidence.load(ac97_timing.EVIDENCE_NAME, ac97)
+    assert set(record) == {*ac97_timing.RECORD_FIELDS, "saved_at_ms"}
+    assert record["outcome"] == "refused", record
+    assert record["check_read_update_state"] not in pipeline_guard.TERMINAL_UPDATE_STATES
+    assert record["check_read_update_state"] is not None
+    required = (
+        "update_created_ts", "check_read_ts", "check_started_ts", "check_ended_ts",
+        "update_ended_ts", "update_outlived_read_seconds", "read_after_creation_seconds",
+        "update_end_source", "refused_run_id", "rerun_run_id",
+    )  # fmt: skip
+    missing = [key for key in required if record[key] is None]
+    assert not missing, f"AC-97 evidence has null fields {missing}: {record}"
+    created, read = record["update_created_ts"], record["check_read_ts"]
+    started, ended = record["check_started_ts"], record["check_ended_ts"]
+    assert created <= read, f"read {read} before creation {created}"
+    assert _seconds_of(started) - 1 <= _seconds_of(read) <= _seconds_of(ended) + 1
+    margin = ac97_timing.margins(created, read, record["update_ended_ts"])
+    assert record["update_outlived_read_seconds"] > 0
+    assert record["read_after_creation_seconds"] >= 0
+    assert record["update_outlived_read_seconds"] == margin["update_outlived_read_seconds"]
+    assert record["read_after_creation_seconds"] == margin["read_after_creation_seconds"]
+    assert record["update_end_source"] in ac97_timing.END_SOURCES
+    assert record["refused_run_id"] != record["rerun_run_id"]
+
+    refused = workspace.jobs.get_run(record["refused_run_id"])
+    rerun = workspace.jobs.get_run(record["rerun_run_id"])
+    assert refused.job_id == job.job_id
+    assert rerun.job_id == job.job_id
+    assert refused.start_time >= _ms(created) - 5000, "the refused run started before the update"
+    assert rerun.start_time > refused.end_time, "the rerun did not start after the refused run"
+    creation_ms = _update_creation_ms(workspace, pipeline.pipeline_id, record["update_id"])
+    assert pipeline_guard.utc_text(creation_ms) == created
+    assert record["saved_at_ms"] > creation_ms
+    age_ms = int(time.time() * 1000) - record["saved_at_ms"]
+    assert age_ms < 30 * 60 * 1000, f"the evidence file is {age_ms // 60000} min old: rerun AC-97"
+    print(f"AC-106 evidence: {json.dumps(record, sort_keys=True)}")
 
 
 # ----------------------------------------------------------------------------- AC-98

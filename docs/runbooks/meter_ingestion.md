@@ -354,7 +354,7 @@ run of every task, so run the full job right after producing (step C); partial `
 | E. Recovery | Aiven on. A power-off empties the topic and resets its offsets, so a plain re-run fails on `failOnDataLoss` and leaves the checkpoint stuck. Do the "Kafka reset after an Aiven power-off" in "Broker outage" (drop table, delete the Kafka checkpoint, one full replay, verify it), then run the job; it passes | `test_bronze_ingestion.py::test_ac07_*`, `test_deployment.py::test_ac30_*` (the latest successful run) |
 | F. Replay (AC-09) | `test_reprocessing.py::test_ac09_before_replay_snapshot`; produce the full stream again; verify it (two replays on the topic); run the job | `test_reprocessing.py::test_ac09_after_replay_silver_unchanged` |
 | G. Full refresh (AC-27) | `test_reprocessing.py::test_ac27_before_full_refresh_snapshot`; Aiven may be off; `databricks bundle run -t dev -p dev smart_meter_silver_gold --full-refresh-all` | `test_reprocessing.py::test_ac27_after_*`, `test_ac12_totals_consistent_after_full_refresh` |
-| H. Reverse check (INGESTION_GUARD) | Deploy from a clean tree (`databricks bundle validate -t dev -p dev`, then `databricks bundle deploy -t dev -p dev`; a "Cycle" error means a job reference slipped into the ingestion job). Pipeline, ingestion job and peak job idle | 1. `.venv/bin/pytest -o addopts= -m integration tests/integration/test_ingestion_guard_live.py::test_ac94_*` (AC-94, before any run). 2. `...::test_ac97_*` (AC-97, no Kafka needed; starts one no-op update and two subset runs). 3. The Kafka block by the Aiven state, below |
+| H. Reverse check (INGESTION_GUARD) | Deploy from a clean tree (`databricks bundle validate -t dev -p dev`, then `databricks bundle deploy -t dev -p dev`; a "Cycle" error means a job reference slipped into the ingestion job). Pipeline, ingestion job and peak job idle | 1. `.venv/bin/pytest -o addopts= -m integration tests/integration/test_ingestion_guard_live.py::test_ac94_*` (AC-94, before any run). 2. `...::test_ac97_*` (AC-97, no Kafka needed; starts one no-op update and two subset runs; writes `out/evidence/ac97_timing.json`), then `...::test_ac106_*` right after; see "AC-97 timing evidence". 3. The Kafka block by the Aiven state, below |
 | I. Kafka block, Aiven on and the last `ingest_kafka` succeeded since the power-on | none besides the tests | `test_ingestion_guard_live.py::test_ac96_*` (one full run, AC-96), then `test_deployment.py::test_ac28_*` and `::test_ac30_*` (same run), then the peak concurrency suite in the order of the peak runbook (AC-76, AC-74, AC-77, AC-75, then `test_ingestion_guard_live.py::test_ac98_*`, then `test_peak_deployment.py`), then AC-95 last: `test_bronze_ingestion.py::test_ac10_before_outage_snapshot`, power Aiven off, run the job, `::test_ac10_failed_*`, `::test_ac95_*` |
 | J. Kafka block, Aiven off | none | AC-95 first (snapshot, run the job, `::test_ac10_failed_*`, `::test_ac95_*`), then power Aiven on and do the Kafka reset (step E), then AC-96, the AC-28 and AC-30 tests and AC-98 as in step I. At most one Kafka reset is needed |
 
@@ -363,6 +363,44 @@ counts in step C hold for a state with exactly one full replay in Bronze Kafka; 
 reset of step E that is again the case, and after step F (a second replay) they no longer hold.
 Run step F last among the data tests, and before Aiven powers off again: a power-off empties the
 topic, so it also ends the replay evidence of the topic (Bronze keeps its rows).
+
+### AC-97 timing evidence
+
+`test_ac97_*` (row H) starts one no-op pipeline update U and runs `check_silver_gold_idle` while U is
+active. It only means something if U was still active when the check read the pipeline, so each
+execution writes `out/evidence/ac97_timing.json` (git-ignored, overwritten by the next execution of
+the test), also when an assertion fails after U was started. Right after it, run
+`.venv/bin/pytest -o addopts= -m integration tests/integration/test_ingestion_guard_live.py::test_ac106_*`
+(AC-106: it starts nothing; it checks the file for consistency and against three platform reads).
+
+| Field | Meaning |
+|---|---|
+| `update_id`, `update_created_ts`, `update_ended_ts`, `update_final_state` | U, its creation and end (UTC, whole seconds) and its terminal state |
+| `update_end_source` | `platform`: the pipeline event that names the terminal state. `observed_terminal`: the first 10 s poll of the test that saw U over; an upper bound, never earlier than the first poll after the refused run ended. Empty when neither is known |
+| `refused_run_id`, `check_task_run_id`, `check_started_ts`, `check_ended_ts`, `check_result` | The first (refused) subset run and its check task (`FAILED` expected) |
+| `check_read_ts`, `check_read_update_state`, `check_read_pipeline_state` | What the check read, taken from its own error message (or from its exit value if it passed) |
+| `read_after_creation_seconds` | `check_read_ts` minus `update_created_ts`. Reference: 27 s on 2026-10-23, with U still `WAITING_FOR_RESOURCES` |
+| `update_outlived_read_seconds` | `update_ended_ts` minus `check_read_ts`. Positive means the check read U while it was active; 0 or negative means U had ended |
+| `rerun_run_id`, `rerun_check_result`, `rerun_refresh_result` | The second subset run |
+| `outcome` | `refused` (the check failed and named U in a non-terminal state), `update_ended_before_check` (the check passed, or the margin is 0 or less), `incomplete` (anything else, for example a message that does not name U) |
+
+The "checked at" time is taken just after the check reads the pipeline and is cut to the second, so
+`update_outlived_read_seconds` errs low. AC-97 itself keeps its pass criteria; the margins are
+recorded, not compared with a threshold. A missing value is `null` and never estimated.
+
+When AC-97 fails because the update ended early (`outcome` `update_ended_before_check`, or the
+message names the update in a terminal state):
+
+1. Copy the file into the release's `BUILD_REPORT` (AC-97 or AC-106 row) before anything else; the
+   next attempt overwrites it. Do this for every attempt.
+2. Run the test once more.
+3. Then start the update with `full_refresh=True` (a longer update).
+4. If it keeps passing vacuously, record AC-97 as `Partial` in the `BUILD_REPORT` with a direct
+   `pipeline_guard.check_pipeline` read taken during the update.
+
+If a refresh-only rerun of the job is needed, it is
+`databricks bundle run -t dev -p dev smart_meter_ingestion --only check_silver_gold_idle,refresh_silver_gold`.
+This runbook holds no log of runs; the durable record of a live run is the `BUILD_REPORT`.
 
 ## 6. Operations
 
