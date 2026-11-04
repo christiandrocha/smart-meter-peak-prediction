@@ -1,6 +1,7 @@
 # Daily ingestion job (DESIGN, Bundle and job layout). The schedule is paused by development mode.
 # Tasks run on serverless compute. Secrets are read in notebooks with dbutils.secrets.get; this
-# file holds only the scope name (AC-29).
+# file holds only the scope name (AC-29). The task check_silver_gold_idle is a read-only reverse
+# pre-check of the shared pipeline before refresh_silver_gold (INGESTION_GUARD, ADR 0013).
 resources:
   jobs:
     smart_meter_ingestion:
@@ -13,6 +14,12 @@ resources:
       email_notifications:
         on_failure:
           - ${workspace.current_user.userName}
+      # Serverless environment version 2 for the reverse pre-check only (D-55): the runtime spike 06
+      # and spike 07 validated (databricks-sdk 0.40.0). The other tasks keep the default environment.
+      environments:
+        - environment_key: ingestion_check_env
+          spec:
+            environment_version: "2"
       tasks:
         - task_key: setup_catalog
           timeout_seconds: 600
@@ -40,12 +47,14 @@ resources:
               bronze_schema: ${var.bronze_schema}
 
         # No retry (AC-10): a broker outage fails the task within 15 minutes and the next daily
-        # run is the retry.
+        # run is the retry. max_retries 0 alone does not stop a serverless retry; with
+        # auto-optimization off the task runs exactly once (D-51, ADR 0013).
         - task_key: ingest_kafka
           depends_on:
             - task_key: setup_catalog
           timeout_seconds: 840
           max_retries: 0
+          disable_auto_optimization: true
           notebook_task:
             notebook_path: ../notebooks/ingest_kafka.py
             base_parameters:
@@ -56,11 +65,29 @@ resources:
               kafka_sasl_mechanism: ${var.kafka_sasl_mechanism}
               secret_scope: ${var.secret_scope}
 
-        # Fail rules must not be retried blindly, so no retry here either.
-        - task_key: refresh_silver_gold
+        # Read-only reverse pre-check (ADR 0013): reads the shared pipeline once and fails at once,
+        # naming the active update, when it is busy; fails closed when the state cannot be read.
+        # Bronze is already ingested. No job reference here: it would form a bundle cycle (A-30).
+        - task_key: check_silver_gold_idle
           depends_on:
             - task_key: ingest_files
             - task_key: ingest_kafka
+          timeout_seconds: 300
+          max_retries: 0
+          disable_auto_optimization: true
+          environment_key: ingestion_check_env
+          notebook_task:
+            notebook_path: ../notebooks/check_silver_gold_idle.py
+            base_parameters:
+              src_path: ${workspace.file_path}/src
+              pipeline_id: ${resources.pipelines.smart_meter_silver_gold.id}
+
+        # Fail rules must not be retried blindly, so no retry here either. An update refused
+        # because another one is in progress ends INTERNAL_ERROR; the pre-check prevents the
+        # visible cases (race window C-11 remains).
+        - task_key: refresh_silver_gold
+          depends_on:
+            - task_key: check_silver_gold_idle
           timeout_seconds: 2700
           max_retries: 0
           pipeline_task:

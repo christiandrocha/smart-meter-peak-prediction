@@ -9,6 +9,11 @@ CI needs no SDK. Enum members are compared by their ``.value`` string, otherwise
 
 Read calls only (``READ_CALLS``); one read per object, no loop, no sleep. Anything unknown or
 unreadable counts as busy or unreadable: the check fails closed (D-45). Time is UTC with ``Z``.
+
+Pipeline-only mode (INGESTION_GUARD, ADR 0013): ``check_pipeline``, ``run_pipeline_check`` and
+``enforce_pipeline`` serve the check in the ingestion job. They read only the pipeline (one
+``pipelines.get``) through the same ``_read_pipeline`` and return a ``PipelineReport``; the peak
+mode above is unchanged.
 """
 
 from __future__ import annotations
@@ -428,6 +433,195 @@ def run(
 
 def enforce(report: GuardReport) -> dict[str, Any]:
     """Raise ``PipelineGuardError`` with the operator message unless idle; else the exit value."""
+    if not report.ok:
+        raise PipelineGuardError(report.message())
+    return report.exit_value()
+
+
+# ----------------------------------------------------------------------------- pipeline-only mode
+# Pipeline-only mode (INGESTION_GUARD, ADR 0013). Appended; the peak mode above is unchanged.
+# The only client method this mode calls (G-23).
+PIPELINE_READ_CALLS = ("pipelines.get",)
+
+
+@dataclass(frozen=True)
+class Caller:
+    """The job that runs a pipeline-only check, as named in its messages (D-54, OD-21)."""
+
+    job: str
+    task: str
+    schedule: str
+    next_refresh: str
+
+
+INGESTION_CALLER = Caller(
+    job=INGESTION_JOB,
+    task="check_silver_gold_idle",
+    schedule="06:00 UTC",
+    next_refresh=f"the {PEAK_JOB} run at 08:00 UTC",
+)
+
+
+@dataclass(frozen=True)
+class PipelineReport:
+    caller: Caller
+    checked_at: str
+    pipeline_id: str
+    pipeline_name: str | None = None
+    pipeline_state: str | None = None
+    latest_update: tuple[str, str] | None = None  # (update_id, state)
+    pipeline_busy: bool = False  # G-21: the overall pipeline state is not a pass state
+    updates: tuple[ActiveUpdate, ...] = ()
+    unreadable: tuple[Unreadable, ...] = field(default=())
+
+    @property
+    def ok(self) -> bool:
+        return not (self._blocked or self.unreadable)
+
+    @property
+    def _blocked(self) -> bool:
+        return bool(self.updates or self.pipeline_busy)
+
+    def _subject(self) -> str:
+        return f"pipeline {PIPELINE} (pipeline id {_shown(self.pipeline_id)})"
+
+    def message(self) -> str:
+        """FR-47 (busy) and FR-48 (unreadable) text; a short confirmation when idle."""
+        caller = self.caller
+        if self.ok:
+            return f"{caller.task}: the shared pipeline is idle (checked at {self.checked_at})."
+        state_text = self.pipeline_state or "not reported"
+        lines: list[str] = []
+        if self._blocked:
+            lines.append(
+                f"{caller.task} stopped {caller.job} before refresh_silver_gold: the shared "
+                f"pipeline is busy (checked at {self.checked_at})."
+            )
+            lines.append("Blocking:")
+            for update in self.updates:
+                lines.append(
+                    f"  - {self._subject()}: update {update.update_id}, state {update.state}, "
+                    f"pipeline state {state_text}, "
+                    f"created {update.created or 'creation time not reported'}"
+                )
+            if self.pipeline_busy and not self.updates:
+                lines.append(
+                    f"  - {self._subject()}: pipeline state {state_text}, "
+                    "no active update is listed in latest_updates"
+                )
+            if self.unreadable:
+                lines.append("Could not read:")
+        else:
+            lines.append(
+                f"{caller.task} could not establish the state of the shared pipeline and fails "
+                f"closed (checked at {self.checked_at})."
+            )
+            lines.append("Could not read:")
+        for item in self.unreadable:
+            lines.append(f"  - {item.subject}: {item.read}: {item.error}")
+        lines.append("refresh_silver_gold did not start; the Bronze data of this run is kept.")
+        if self._blocked:
+            action = (
+                "wait until the update named above ends"
+                if self.updates
+                else "wait until the pipeline state is IDLE or FAILED"
+            )
+            if self.unreadable:
+                action += " and fix the cause named under 'Could not read'"
+            lines.append(f"Action: {action}, then rerun {caller.job}.")
+            lines.append(
+                f"Without action, {caller.next_refresh} refreshes the pipeline from Bronze, "
+                f"and the next {caller.job} run ({caller.schedule}) checks again."
+            )
+        else:
+            lines.append(
+                "Action: fix the cause, then rerun "
+                f"{caller.job} (the cause is named above: deployment, permission or API "
+                "availability)."
+            )
+            lines.append(
+                f"Without action, the next {caller.job} run ({caller.schedule}) checks again."
+            )
+        return "\n".join(lines)
+
+    def exit_value(self) -> dict[str, Any]:
+        """Notebook exit value of an idle check (keys fixed, DESIGN Data Model)."""
+        latest = None
+        if self.latest_update:
+            latest = {"update_id": self.latest_update[0], "state": self.latest_update[1]}
+        return {
+            "outcome": "idle" if self.ok else ("busy" if self._blocked else "unknown"),
+            "checked_at": self.checked_at,
+            "caller": {"job": self.caller.job, "task": self.caller.task},
+            "pipeline": {
+                "pipeline_id": self.pipeline_id,
+                "name": strip_dev_prefix(self.pipeline_name) if self.pipeline_name else None,
+                "state": self.pipeline_state,
+                "latest_update": latest,
+            },
+        }
+
+
+def check_pipeline(
+    client: Any, pipeline_id: str, *, caller: Caller, now: datetime | None = None
+) -> PipelineReport:
+    """G-22, then one pipelines.get through the shipped ``_read_pipeline`` (G-23, G-24)."""
+    pipeline_text = str(pipeline_id if pipeline_id is not None else "").strip()
+    subject = f"pipeline {PIPELINE} (pipeline id {_shown(pipeline_text)})"
+    unreadable: list[Unreadable] = []
+    updates: list[ActiveUpdate] = []
+    name: str | None = None
+    state: str | None = None
+    latest: tuple[str, str] | None = None
+    busy = False
+    if not _valid_id(pipeline_text):
+        unreadable.append(Unreadable(subject, "pipeline_id", "id missing or not resolved"))
+    else:
+        name, state, latest, busy = _read_pipeline(
+            client, pipeline_text, subject, updates, unreadable
+        )
+    return PipelineReport(
+        caller=caller,
+        checked_at=_checked_at(now),
+        pipeline_id=pipeline_text,
+        pipeline_name=name,
+        pipeline_state=state,
+        latest_update=latest,
+        pipeline_busy=busy,
+        updates=tuple(updates),
+        unreadable=tuple(unreadable),
+    )
+
+
+def run_pipeline_check(
+    client_factory: Callable[[], Any],
+    pipeline_id: str,
+    *,
+    caller: Caller,
+    now: datetime | None = None,
+) -> PipelineReport:
+    """A client-factory exception is an unreadable 'workspace client' item (G-25)."""
+    try:
+        client = client_factory()
+    except Exception as exc:  # noqa: BLE001
+        pipeline_text = str(pipeline_id if pipeline_id is not None else "").strip()
+        return PipelineReport(
+            caller=caller,
+            checked_at=_checked_at(now),
+            pipeline_id=pipeline_text,
+            unreadable=(
+                Unreadable(
+                    f"pipeline {PIPELINE} (pipeline id {_shown(pipeline_text)})",
+                    "workspace client",
+                    _describe_error(exc),
+                ),
+            ),
+        )
+    return check_pipeline(client, pipeline_id, caller=caller, now=now)
+
+
+def enforce_pipeline(report: PipelineReport) -> dict[str, Any]:
+    """Raise ``PipelineGuardError`` with the operator message unless ok; else the exit value."""
     if not report.ok:
         raise PipelineGuardError(report.message())
     return report.exit_value()

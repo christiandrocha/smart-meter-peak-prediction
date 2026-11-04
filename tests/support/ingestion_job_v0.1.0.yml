@@ -1,0 +1,68 @@
+# Daily ingestion job (DESIGN, Bundle and job layout). The schedule is paused by development mode.
+# Tasks run on serverless compute. Secrets are read in notebooks with dbutils.secrets.get; this
+# file holds only the scope name (AC-29).
+resources:
+  jobs:
+    smart_meter_ingestion:
+      name: smart_meter_ingestion
+      max_concurrent_runs: 1
+      timeout_seconds: 3600
+      schedule:
+        quartz_cron_expression: "0 0 6 * * ?"
+        timezone_id: UTC
+      email_notifications:
+        on_failure:
+          - ${workspace.current_user.userName}
+      tasks:
+        - task_key: setup_catalog
+          timeout_seconds: 600
+          max_retries: 1
+          notebook_task:
+            notebook_path: ../notebooks/setup_catalog.py
+            base_parameters:
+              src_path: ${workspace.file_path}/src
+              catalog: ${var.catalog}
+              bronze_schema: ${var.bronze_schema}
+              silver_schema: ${var.silver_schema}
+              gold_schema: ${var.gold_schema}
+              ml_schema: ${var.ml_schema}
+
+        - task_key: ingest_files
+          depends_on:
+            - task_key: setup_catalog
+          timeout_seconds: 1800
+          max_retries: 1
+          notebook_task:
+            notebook_path: ../notebooks/ingest_files.py
+            base_parameters:
+              src_path: ${workspace.file_path}/src
+              catalog: ${var.catalog}
+              bronze_schema: ${var.bronze_schema}
+
+        # No retry (AC-10): a broker outage fails the task within 15 minutes and the next daily
+        # run is the retry.
+        - task_key: ingest_kafka
+          depends_on:
+            - task_key: setup_catalog
+          timeout_seconds: 840
+          max_retries: 0
+          notebook_task:
+            notebook_path: ../notebooks/ingest_kafka.py
+            base_parameters:
+              src_path: ${workspace.file_path}/src
+              catalog: ${var.catalog}
+              bronze_schema: ${var.bronze_schema}
+              kafka_topic: ${var.kafka_topic}
+              kafka_sasl_mechanism: ${var.kafka_sasl_mechanism}
+              secret_scope: ${var.secret_scope}
+
+        # Fail rules must not be retried blindly, so no retry here either.
+        - task_key: refresh_silver_gold
+          depends_on:
+            - task_key: ingest_files
+            - task_key: ingest_kafka
+          timeout_seconds: 2700
+          max_retries: 0
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.smart_meter_silver_gold.id}
+            full_refresh: false

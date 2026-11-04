@@ -15,7 +15,13 @@ pytestmark = pytest.mark.integration
 
 JOB_NAME = "smart_meter_ingestion"
 PIPELINE_NAME = "smart_meter_silver_gold"
-JOB_TASKS = ("setup_catalog", "ingest_files", "ingest_kafka", "refresh_silver_gold")
+JOB_TASKS = (
+    "setup_catalog",
+    "ingest_files",
+    "ingest_kafka",
+    "check_silver_gold_idle",
+    "refresh_silver_gold",
+)
 MAX_JOB_SECONDS = 3600  # AC-30
 PIPELINE_REVISIT_SECONDS = 900  # ADR 0005 revisit trigger: refresh longer than 15 minutes
 QUARTZ_DAILY_0600 = "0 0 6 * * ?"
@@ -45,7 +51,7 @@ def test_ac28_deployed_job_pipeline_and_catalog_layout(
 
 
 def test_ac30_daily_job_run_within_60_minutes(workspace, job, full_runs, evidence) -> None:
-    """The latest successful run of all four tasks finished within the budget."""
+    """The latest successful run of every task finished within the budget."""
     successful = full_runs()
     hint = "no successful full job run: run `databricks bundle run smart_meter_ingestion`"
     assert successful, hint

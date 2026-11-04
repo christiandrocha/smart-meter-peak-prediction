@@ -48,11 +48,11 @@ ML_NOTEBOOKS = ("build_features.py", "score_predictions.py", "train_model.py")
 # SHA-256 of the training job file at tag v0.2.0 (AC-78: PEAK_MODEL_CONCURRENCY must not change it).
 TRAINING_SHA256 = "ccc7c66d8324299c54567c67ce8005bce1e5c63a4a163fc62db62c950524040a"
 
-# SHA-256 of the METER_INGESTION files at tag v0.1.0 (AC-62: they must not change).
+# SHA-256 of the METER_INGESTION files at tag v0.1.0 (AC-62: they must not change). The ingestion
+# job file is no longer pinned here: its ingestion clause of AC-62 and AC-78 is superseded by
+# INGESTION_GUARD AC-84 (tests/test_ingestion_guard_bundle.py), which pins the new file and proves
+# the structural difference from the v0.1.0 file (AC-85).
 PINNED_SHA256 = {
-    "resources/smart_meter_ingestion.job.yml": (
-        "a2e8f0dc13e9b4e522eca68a4d445546badec85aca4f83c745245acc143dc817"
-    ),
     "resources/smart_meter_silver_gold.pipeline.yml": (
         "37f24bc0b54ab6174a2726de86c401300b62a64d1286d02bc8d33032a4d9cd1e"
     ),

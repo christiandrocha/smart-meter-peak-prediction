@@ -135,6 +135,53 @@ def test_ac80_pre_check_has_no_secret_parameter_and_tracked_files_no_token() -> 
     assert "{{secrets/" not in notebook
 
 
+def test_ac93_reverse_check_has_no_secret_and_notebook_is_safe() -> None:
+    """The ingestion check authenticates as the job's identity: no secret, token or scope."""
+    import ast
+
+    import yaml
+
+    files = tracked_files()
+    relative = {p.relative_to(ROOT).as_posix() for p in files}
+    for name in (
+        "notebooks/check_silver_gold_idle.py",
+        "resources/smart_meter_ingestion.job.yml",
+        "src/smart_meter_peak_prediction/pipeline_guard.py",
+    ):
+        assert name in relative, name
+    token = PATTERNS["Databricks token"]
+    for name in (
+        "notebooks/check_silver_gold_idle.py",
+        "resources/smart_meter_ingestion.job.yml",
+        "src/smart_meter_peak_prediction/pipeline_guard.py",
+    ):
+        assert not token.search((ROOT / name).read_text("utf-8")), name
+
+    job = yaml.safe_load((ROOT / "resources/smart_meter_ingestion.job.yml").read_text("utf-8"))
+    tasks = {t["task_key"]: t for t in job["resources"]["jobs"]["smart_meter_ingestion"]["tasks"]}
+    with_scope = [
+        key
+        for key, task in tasks.items()
+        if "secret_scope" in task.get("notebook_task", {}).get("base_parameters", {})
+    ]
+    assert with_scope == ["ingest_kafka"]
+    check = tasks["check_silver_gold_idle"]
+    forbidden = ("secret", "token", "scope", "password", "{{secrets/")
+    for name, value in check["notebook_task"]["base_parameters"].items():
+        for word in forbidden:
+            assert word not in name.lower(), name
+            assert word not in str(value).lower(), name
+    text = (ROOT / "notebooks/check_silver_gold_idle.py").read_text("utf-8")
+    tree = ast.parse(text)
+    assert not [n for n in ast.walk(tree) if isinstance(n, ast.Try)]
+    assert "dbutils.secrets" not in text
+    assert "{{secrets/" not in text
+    assert 'spark.conf.set("spark.sql.session.timeZone", "UTC")' in text
+    assert 'assert spark.conf.get("spark.sql.session.timeZone") == "UTC"' in text
+    assert "Config(**pipeline_guard.CLIENT_LIMITS)" in text
+    assert "dbutils.notebook.exit(" in text
+
+
 def test_ac29_env_files_and_keys_are_not_tracked() -> None:
     names = [p.relative_to(ROOT).as_posix() for p in tracked_files()]
     assert ".env" not in names
