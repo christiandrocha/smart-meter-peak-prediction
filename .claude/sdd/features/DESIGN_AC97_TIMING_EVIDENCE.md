@@ -407,10 +407,10 @@ runbook ladder; each attempt's file goes into the BUILD_REPORT before the next.
 | Assumption | Decisions depending on it | Check | Fallback |
 |---|---|---|---|
 | DA-34 **Validated by prior art.** `tests/conftest.py` puts `tests/` on `sys.path` (pytest prepend import mode, no `__init__.py` in `tests/`), so `from support import ac97_timing` works for unit and integration modules; `tests/local_data/` already imports `support.harness` from a subdirectory | OD-25 | The shipped `test_integration_tests_are_collected_but_deselected_by_default` collects the live module with `-m integration` in CI, which imports it | Import through `importlib` from the file path in the live module |
-| DA-35 (A-33) `list_pipeline_events(pipeline_id, max_results=50)` returns, newest first by default, events whose `as_dict()` has `event_type`, `origin.update_id`, `timestamp` and `message`, and the transition of U to its terminal state is an `update_progress` event whose message names that state; the test identity can read it. Source: SDK 0.153.0 code (`PipelineEvent`, `Origin.update_id`, docstring "descending order by timestamp"); the message wording is not a documented contract | OD-26 | First AC-106 run: `update_end_source` = `platform` | Automatic: `observed_terminal` from the idle wait; the build report records which source was used. If it is `observed_terminal`, a follow-up may drop the event read |
-| DA-36 `pipelines.get_update(pipeline_id, update_id)` returns `update.creation_time` (epoch ms) and `update.state` for an update that has ended (SDK docstring says "from an active pipeline"; the pipeline is active, the update finished) | OD-26, AC-106 | First AC-106 run | Creation time and final state from the idle wait's `latest_updates` entry, then from the busy message; AC-106's platform cross-check of the creation time then uses `list_updates` (1 read) |
-| DA-37 **Validated in part (shipped AC-97, 2026-10-23).** The check task's `error` plus `error_trace` holds the busy line of U unbroken somewhere after ANSI sequences are removed. The shipped asserts found U, "rerun smart_meter_ingestion" and a `Z` time in that text | FR-56, G-30 | First AC-106 run: `check_read_update_state` not null | `outcome` is `incomplete` and AC-106 fails without touching AC-97; `/iterate` to read the message from `output.error` alone or with a looser line pattern |
-| DA-38 pytest (>= 8 in `dev`) shows PEP 678 notes added with `add_note` in the failure report | OD-27, FR-58 | At build, one throwaway failing test in the scratch directory (not committed) | The same text is printed, and pytest shows captured stdout for a failed test |
+| DA-35 (A-33) **Validated (live AC-106, dev, 2026-11-04).** `list_pipeline_events(pipeline_id, max_results=50)` returns, newest first by default, events whose `as_dict()` has `event_type`, `origin.update_id`, `timestamp` and `message`, and the transition of U to its terminal state is an `update_progress` event whose message names that state; the test identity can read it. Source: SDK 0.153.0 code (`PipelineEvent`, `Origin.update_id`, docstring "descending order by timestamp"); the message wording is not a documented contract. Evidence: first AC-106 run on dev, 2026-11-04, `update_end_source` = `platform`; update 1bb3c498-6f34-4303-98ad-ebd8c40f2ade ended `COMPLETED` at 18:52:28Z, read from the pipeline events. Single observation, dev only | OD-26 | First AC-106 run: `update_end_source` = `platform` | Automatic: `observed_terminal` from the idle wait; the build report records which source was used. If it is `observed_terminal`, a follow-up may drop the event read |
+| DA-36 **Validated (live AC-106, dev, 2026-11-04).** `pipelines.get_update(pipeline_id, update_id)` returns `update.creation_time` (epoch ms) and `update.state` for an update that has ended (SDK docstring says "from an active pipeline"; the pipeline is active, the update finished). Evidence: same run, `get_update` on the finished update returned the creation time (18:51:29Z) and final state `COMPLETED`; AC-106's cross-check passed. Single observation, dev only | OD-26, AC-106 | First AC-106 run | Creation time and final state from the idle wait's `latest_updates` entry, then from the busy message; AC-106's platform cross-check of the creation time then uses `list_updates` (1 read) |
+| DA-37 **Validated (shipped AC-97, 2026-10-23, in part; live AC-106, dev, 2026-11-04, in full).** The check task's `error` plus `error_trace` holds the busy line of U unbroken somewhere after ANSI sequences are removed. The shipped asserts found U, "rerun smart_meter_ingestion" and a `Z` time in that text. Evidence: AC-106 run, `check_read_update_state` = `INITIALIZING` (pipeline `RUNNING`), read at 18:51:56Z, parsed from the check task's error text; outcome `refused`. Single observation, dev only | FR-56, G-30 | First AC-106 run: `check_read_update_state` not null | `outcome` is `incomplete` and AC-106 fails without touching AC-97; `/iterate` to read the message from `output.error` alone or with a looser line pattern |
+| DA-38 **Validated (build, 2026-11-04).** pytest (>= 8 in `dev`) shows PEP 678 notes added with `add_note` in the failure report. Evidence: a throwaway failing test (not committed) with pytest 9.1.1 showed both the `add_note` text and the printed line | OD-27, FR-58 | At build, one throwaway failing test in the scratch directory (not committed) | The same text is printed, and pytest shows captured stdout for a failed test |
 
 ---
 
@@ -431,8 +431,8 @@ runbook ladder; each attempt's file goes into the BUILD_REPORT before the next.
 ## Open Items for the User
 
 None. U-06 is not used: OD-24 to OD-28 are resolved above within D-60 to D-65, and the user's
-answers to Q-25 (BUILD_REPORT) and Q-26 (no threshold) are applied. The pending platform items
-(DA-35, DA-36) have automatic fallbacks that need no decision.
+answers to Q-25 (BUILD_REPORT) and Q-26 (no threshold) are applied. The platform items DA-35 and
+DA-36 were validated by the first live AC-106 run (2026-11-04); no decision is open.
 
 ---
 
@@ -442,13 +442,16 @@ answers to Q-25 (BUILD_REPORT) and Q-26 (no threshold) are applied. The pending 
   - The failure path (FR-58) is proven by unit tests of the builder and by an AST check of the
     wiring, not by a live failure, which cannot be forced on dev.
   - The platform end time depends on the wording of an event message (DA-35). The pick refuses
-    rather than guesses, but the first run may record `observed_terminal` only.
+    rather than guesses. The first live run recorded `platform`, but this is a single observation
+    on dev; a later wording change would fall back to `observed_terminal`.
+  - The live evidence is one run: the update lasted 59 s (not the 125 s of spike 06), so the
+    margin after the read was 32 s (build I-13).
   - `observed_terminal` mixes the local clock with the platform's read time.
   - The AC-97 function gets a third level of `try`. It is correct but denser than the shipped one.
 - **Risks:**
-  - DA-37: if the task error text does not hold the busy line in one piece, the record is
-    `incomplete` and AC-106 fails on the first run, costing a second live session after an
-    `/iterate`.
+  - DA-37 held on the first live run. If a later message change leaves the task error text
+    without the busy line in one piece, the record is `incomplete` and AC-106 fails, costing a
+    live session after an `/iterate`.
   - The AC-105 golden constants must be computed from the tag at build; a hand-typed value would
     make the test meaningless.
 - **Trade-offs:** Helpers under `tests/` keep production byte-identical (C-14) but cannot be reused
@@ -479,3 +482,4 @@ answers to Q-25 (BUILD_REPORT) and Q-26 (no threshold) are applied. The pending 
 | Date | Change | Why | Downstream impact |
 |---|---|---|---|
 | 2026-11-04 | Created from DEFINE_AC97_TIMING_EVIDENCE.md (Ready for Design): OD-24 to OD-28 resolved, guards G-28 to G-33, DA-34 to DA-38, helper API, AC-97 outline, 9-entry manifest (8 in one build PR, CHANGELOG at ship), test strategy for AC-100 to AC-106, live plan; no ADR. Status `Ready for Build` | Phase 2 of the SDD workflow | `/build` starts at entry 1 |
+| 2026-11-04 | DA-35, DA-36, DA-37 and DA-38 set to Validated with evidence (first live AC-106 run on dev: `update_end_source` = `platform`, `get_update` creation and state, `check_read_update_state` = `INITIALIZING`; throwaway pytest 9.1.1 test for `add_note`); prose in Open Items and Self-Review updated, genuine risks kept (single observation, dev only; 59 s update, 32 s margin, I-13) | Live AC-97 and AC-106 evidence recorded in BUILD_REPORT_AC97_TIMING_EVIDENCE.md (I-02 closed) | None for the build report, which already records the evidence; status stays `Ready for Build`; no manifest file to rebuild; DEFINE A-33 updated the same way and logged in the DEFINE |
