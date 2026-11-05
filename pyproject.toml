@@ -9,7 +9,7 @@ dependencies = []
 [project.optional-dependencies]
 dev = [
     "pytest>=8",
-    "ruff>=0.6",
+    "ruff==0.17.0",
     "pre-commit>=3.7",
     "pyyaml>=6",       # scripts/check_specs.py validates data contracts
     "pandas>=2.2",     # scripts/profile_data.py, sampling and their tests
