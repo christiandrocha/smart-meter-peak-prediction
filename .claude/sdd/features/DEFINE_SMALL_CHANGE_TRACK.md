@@ -69,6 +69,7 @@ run of 2026-11-05).
 - The follow-up task template (retrospective Step 2) and any change to a confirmation rule
   (retrospective Step 3).
 - The template repository port (follow-up F-02, together with SPEC_ARCHIVE_GATES F-01).
+- History checks in CI: E1 to E8 from the diff, the order of the E8 OK, and the D-91 evidence rule (follow-up F-01).
 - Editing archived documents; no change to `src/`, `resources/`, `notebooks/`, `pipelines/` or
   `databricks.yml`; no version bump.
 
@@ -95,16 +96,16 @@ Measured on #35 to #42 (retrospective, 2026-11-05): E1 to E7 hold for #35, #36 a
 
 | ID | Requirement | Priority |
 |---|---|---|
-| FR-74 | Every `.md` file directly in `.claude/sdd/features/` or `.claude/sdd/reports/` whose name does not start with a known phase prefix followed by `_` shall be an error naming the file; other files (such as `.gitkeep`) are ignored | Must |
+| FR-74 | Every `.md` file directly in `.claude/sdd/features/` or `.claude/sdd/reports/` whose name does not start with a known phase prefix followed by `_` shall be an error naming the file; only `.md` files count, so other files, in particular the `.gitkeep` of both folders, never give an error | Must |
 | FR-75 | A new phase `CHANGE` shall be recognized for `CHANGE_<FEATURE>.md`, with the required sections Metadata, Problem Statement, Eligibility, Scope, Acceptance Criteria, Test Strategy, File Manifest, Evidence, Issues & Follow-ups and Self-Review, and the statuses `Draft`, `Ready for Build` and `Complete`; past `Draft`, the existing placeholder and non-empty Self-Review rules apply | Must |
 | FR-76 | The final status of each phase shall be stated explicitly: BRAINSTORM `Ready for Define`, DEFINE `Ready for Design`, DESIGN `Ready for Build`, BUILD_REPORT `Complete`, CHANGE `Complete` | Must |
 | FR-77 | Past `Draft`, the Eligibility section of a CHANGE document shall have exactly one row for each of E1 to E8, each with the result `Yes` (E8 may also be `Relaxing`, FR-83) and a non-empty evidence cell; a missing row, a duplicate row, any other result or an empty evidence cell is an error naming the criterion | Must |
-| FR-78 | In a CHANGE document past `Draft`, every AC of Acceptance Criteria shall appear in Test Strategy; when `Complete`, every AC shall also appear in Evidence, no Evidence row shall start with `Fail`, and the Evidence section shall name the commit the evidence was generated on (`Evidence commit` followed by a hexadecimal SHA of 7 to 40 characters) | Must |
+| FR-78 | In a CHANGE document past `Draft`, every AC of Acceptance Criteria shall appear in Test Strategy; when `Complete`, every AC shall also appear in Evidence, no Evidence row shall start with `Fail`, and the Evidence section shall name the commit the evidence was generated on (`Evidence commit` followed by a hexadecimal SHA of 7 to 40 characters). Which commit that is, and what the final commit may touch, is the process rule D-91, not checked by the script | Must |
 | FR-79 | An archive folder that contains `CHANGE_<FOLDER>.md` shall contain no other `.md` file and no SHIPPED document, and its CHANGE document shall be `Complete` (rule a); every other archive folder keeps the SPEC_ARCHIVE_GATES rule (a) | Must |
 | FR-80 | Rule (b) shall warn for `Open` rows of the `## Issues & Follow-ups` section of archived CHANGE documents, and rule (c) shall read archived CHANGE documents, as for BUILD_REPORT documents | Must |
-| FR-81 | `.claude/sdd/templates/CHANGE_TEMPLATE.md` shall exist with exactly the CHANGE sections and the Eligibility rows E1 to E8 | Must |
-| FR-82 | `.claude/sdd/README.md` shall describe the CHANGE track, its criteria and the unrecognized-name rule; `docs/conventions/git.md` shall name the branch `change/<feature-kebab>` for the track and `spec/`, `build/`, `ship/` for full specs (today it says `feat/<feature-kebab>`, `docs/conventions/git.md:20`); `CLAUDE.md` "How work is done here" shall name the track | Should |
-| FR-83 | A CHANGE document past `Draft` whose E8 result is `Relaxing` shall have a `## Rule Changes` section that contains, for the relaxed rules, a `Before` quote and an `After` quote each with a `file:line` reference, at least one fenced block whose text contains `gh api`, and a line `User OK:` followed by a date `YYYY-MM-DD`; a missing section or a missing part is an error naming it. A document with E8 `Yes` needs no such section. That the user's OK came before the commits that change the rules is a process rule of the template and the README, not checked by the script (follow-up F-03) | Must |
+| FR-81 | `.claude/sdd/templates/CHANGE_TEMPLATE.md` shall exist with exactly the CHANGE sections and the Eligibility rows E1 to E8, and shall state the process rules of FR-83 (the order of the E8 OK) and D-91 (evidence commit, final commit, final `check_specs.py` run) | Must |
+| FR-82 | `.claude/sdd/README.md` shall describe the CHANGE track, its criteria, the unrecognized-name rule and the process rules of FR-83 and D-91; `docs/conventions/git.md` shall name the branch `change/<feature-kebab>` for the track and `spec/`, `build/`, `ship/` for full specs (today it says `feat/<feature-kebab>`, `docs/conventions/git.md:20`); `CLAUDE.md` "How work is done here" shall name the track | Should |
+| FR-83 | A CHANGE document past `Draft` whose E8 result is `Relaxing` shall have a `## Rule Changes` section that contains, for the relaxed rules, a `Before` quote and an `After` quote each with a `file:line` reference, at least one fenced block whose text contains `gh api`, and a line `User OK:` followed by a date `YYYY-MM-DD`; a missing section or a missing part is an error naming it. A document with E8 `Yes` needs no such section. That the user's OK came before the commits that change the rules is a process rule of the template and the README, not checked by the script (follow-up F-01) | Must |
 
 ---
 
@@ -134,16 +135,16 @@ No dataset or message. No new repository data file.
 | ID | Given | When | Then |
 |---|---|---|---|
 | AC-120 | The repository after the build | `python scripts/check_specs.py` runs | Exit code 0 and 0 errors (unit test on the repository root); the full output, generated on the final build head with its SHA, is in the BUILD_REPORT |
-| AC-121 | Fixtures with `NOTES.md` in `features/`, `draft.md` in `reports/`, a `.gitkeep` and valid phase names | The checker runs | One error for each of the two `.md` files, naming it; `.gitkeep` and the valid names give none |
+| AC-121 | Fixtures with `NOTES.md` in `features/`, `draft.md` in `reports/`, a `.gitkeep` in each of `features/` and `reports/`, and valid phase names | The checker runs | One error for each of the two `.md` files, naming it; the two `.gitkeep` files and the valid names give none |
 | AC-122 | A valid CHANGE document in `Draft`, `Ready for Build` and `Complete`, and copies without a section, with a placeholder past `Draft` and with an empty Self-Review | The checker runs on each | The valid ones pass; each copy gives one error naming the file and the rule |
 | AC-123 | The checker module | The final statuses are read | They equal FR-76 for all five phases, and a CHANGE document in `Ready for Build` is not final |
 | AC-124 | CHANGE documents past `Draft` with all of E1 to E8 `Yes` and evidence, without the E8 row, with E3 twice, with E5 `No`, and with an empty E8 evidence cell | The checker runs on each | The first passes; each other gives one error naming the criterion |
 | AC-125 | CHANGE documents: an AC missing from Test Strategy (`Ready for Build`); `Complete` with an AC missing from Evidence, with a `Fail` row, and without an `Evidence commit` SHA; and a valid `Complete` one | The checker runs on each | Each invalid one gives one error naming the AC or the rule; the valid one passes |
 | AC-126 | Archive folders: one with a single `Complete` CHANGE document; one whose CHANGE document is `Ready for Build`; one with a CHANGE document and a SHIPPED document; one with a CHANGE document and a DEFINE | The checker runs | The first passes with no SHIPPED; each other gives one rule (a) error naming the folder |
 | AC-127 | An archived CHANGE document with an `Open` row in Issues & Follow-ups, an unprefixed foreign ID, and its own F-NN rows cited in its text | The checker runs with an empty allowlist | One rule (b) warning for the `Open` row; one rule (c) error for the foreign ID; the own IDs pass |
-| AC-128 | `.claude/sdd/templates/CHANGE_TEMPLATE.md` | It is copied to `features/` as a `Draft` CHANGE document and its headings are read | No missing-section error, its `##` headings equal the CHANGE section list, and its Eligibility table has the rows E1 to E8 |
+| AC-128 | `.claude/sdd/templates/CHANGE_TEMPLATE.md` | It is copied to `features/` as a `Draft` CHANGE document and its headings are read | No missing-section error, its `##` headings equal the CHANGE section list, its Eligibility table has the rows E1 to E8, and it states the FR-83 and D-91 process rules |
 | AC-129 | The SPEC_ARCHIVE_GATES AC-119 self-test with a `Complete` CHANGE document and a `Ready for Build` CHANGE document in a temporary `features/` | The self-test helper selects and simulates them | Only the `Complete` one is added, as a folder without a generated SHIPPED document, and the simulated archive gives 0 errors |
-| AC-130 | `.claude/sdd/README.md`, `docs/conventions/git.md` and `CLAUDE.md` after the build | A unit test reads them | The README names the CHANGE track, E1 to E8 and the unrecognized-name rule; `git.md` names `change/` and `spec/`, `build/`, `ship/`; `CLAUDE.md` names the CHANGE track |
+| AC-130 | `.claude/sdd/README.md`, `docs/conventions/git.md` and `CLAUDE.md` after the build | A unit test reads them | The README names the CHANGE track, E1 to E8, the unrecognized-name rule and the D-91 evidence rule (`Evidence commit`, final commit, final `check_specs.py` run); `git.md` names `change/` and `spec/`, `build/`, `ship/`; `CLAUDE.md` names the CHANGE track |
 | AC-131 | CHANGE documents past `Draft`: E8 `Relaxing` with a complete `## Rule Changes` section; E8 `Relaxing` without the section, without a `file:line` on the `After` quote, without a `gh api` block, and without `User OK:`; and E8 `Yes` without the section | The checker runs on each | The complete `Relaxing` one and the `Yes` one pass; each other gives one error naming the missing part |
 
 ---
@@ -158,14 +159,15 @@ No dataset or message. No new repository data file.
 | D-84 | No rule of `CLAUDE.md` or `docs/conventions/git.md` changes in this spec; confirmation rules change only in Step 3, through E8 (Step 3 uses the CHANGE track with the reinforced gate, D-90) | User, 2026-11-05 |
 | D-86 | E8 as defined in the eligibility table: within `docs/conventions/git.md` and the agent rules of `CLAUDE.md`, a change that removes a rule, reduces or narrows confirmation, widens what is allowed without confirmation, or weakens a check is not eligible; adding rules, raising requirements or fixing wording without changing the effect is eligible; in doubt, not eligible; the E8 evidence cites the diff of the affected rules | User, 2026-11-05 (answer to Q-29); amended by D-90 |
 | D-90 | E8 amended: relaxing an agent rule is eligible for the CHANGE track with a reinforced gate (exact before and after diff with file:line; `gh api` output proving each matching guarantee active; the user's explicit OK on the diff before any commit that changes `docs/conventions/git.md` or `CLAUDE.md`); hardening stays eligible without it; in doubt, treat as relaxing. Retrospective Step 3 therefore uses the CHANGE track with this gate | User, 2026-11-05 (answer to Q-31) |
+| D-91 | Evidence rule of the CHANGE track, a **process rule** (CHANGE template and README, like the order of the E8 OK in FR-83): the `Evidence commit` is the last commit of the PR that touches files other than the CHANGE document; the final commit touches only the CHANGE document (status `Complete` and the move to the archive); `check_specs.py` runs again on the final head, and its output goes in the PR description. The script still checks only the presence and format of the SHA (FR-78); the rest is follow-up F-01 | User, 2026-11-05 |
 
-### Derived in this phase (not yet confirmed by the user)
+### Derived in this phase (D-85, D-87, D-88 confirmed by the user on 2026-11-05; D-89 derived)
 
 | ID | Decision | Reason |
 |---|---|---|
-| D-85 | Criteria E1 to E7 as proposed in the retrospective, with E5 narrowed to the templates that the script or the tests read | The follow-up task template of Step 2 is read by neither, so it can use the track |
-| D-87 | One document only: no BUILD_REPORT and no SHIPPED for the track; the CHANGE document moves to `archive/<FEATURE>/` in the last commit of the same PR | A SHIPPED document for one PR would be nearly empty, and a PR cannot record its own merge commit (SPEC_ARCHIVE_GATES template feedback) |
-| D-88 | The unrecognized-name error is part of this spec, not a separate earlier change | Same file and tests; the new phase needs it so that a misnamed CHANGE document is caught |
+| D-85 | Criteria E1 to E7 as proposed in the retrospective, with E5 narrowed to the templates that the script or the tests read | The follow-up task template of Step 2 is read by neither, so it can use the track. Confirmed by the user, 2026-11-05 (Q-30) |
+| D-87 | One document only: no BUILD_REPORT and no SHIPPED for the track; the CHANGE document moves to `archive/<FEATURE>/` in the last commit of the same PR | A SHIPPED document for one PR would be nearly empty, and a PR cannot record its own merge commit (SPEC_ARCHIVE_GATES template feedback). Confirmed by the user, 2026-11-05 (Q-30) |
+| D-88 | The unrecognized-name error is part of this spec, not a separate earlier change | Same file and tests; the new phase needs it so that a misnamed CHANGE document is caught. Confirmed by the user, 2026-11-05 (Q-30) |
 | D-89 | `Evidence commit` with a SHA is required in a `Complete` CHANGE document | Lesson of SPEC_ARCHIVE_GATES: the Build Evidence was generated on an intermediate commit |
 
 ### Questions for the user
@@ -173,7 +175,7 @@ No dataset or message. No new repository data file.
 | ID | Question |
 |---|---|
 | Q-29 | "E8" was not defined in the retrospective proposal; this DEFINE first read it as a rule about `gh api` evidence. **Answered 2026-11-05 by the user: E8 is the no-weakening criterion (D-86).** |
-| Q-30 | The four retrospective decisions were not answered one by one; this DEFINE follows the recommendations (D-85, D-87, D-88). Confirm, or name the ones to change |
+| Q-30 | The four retrospective decisions were not answered one by one; this DEFINE follows the recommendations (D-85, D-87, D-88). Confirm, or name the ones to change. **Answered 2026-11-05 by the user: D-85, D-87 and D-88 confirmed as they are.** |
 | Q-31 | Under D-86, the relaxations listed in the retrospective Step 3 table reduce confirmations and were not eligible for the CHANGE track. Should Step 3 be a full spec or another process? **Answered 2026-11-05 by the user: E8 changes so that relaxing is eligible with a reinforced gate, and Step 3 uses the CHANGE track (D-90).** |
 
 ---
@@ -182,9 +184,9 @@ No dataset or message. No new repository data file.
 
 | ID | Kind | Statement | Recorded in |
 |---|---|---|---|
-| F-01 | Follow-up | Check E1 to E8 against the actual `git diff` of a PR in CI, instead of only reading the Eligibility rows | SHIPPED |
+| F-01 | Follow-up | History checks in CI (they need the git log, which a content-only checker cannot see): E1 to E8 from the actual `git diff` of the PR; the order "user OK on the rules diff, then the commit that changes the rules" (E8, FR-83); and D-91 (the `Evidence commit` is the last commit that touches files other than the CHANGE document, and the final commit touches only that document) | SHIPPED |
 | F-02 | Follow-up | Port the track to the template repository, together with SPEC_ARCHIVE_GATES F-01 | SHIPPED |
-| F-03 | Follow-up | The order "user OK on the rules diff, then the commit that changes the rules" is a process rule only; consider checking it from the commit history in CI | SHIPPED |
+| F-03 | Follow-up | Merged into F-01 on 2026-11-05 (the order of the E8 OK is one of the history checks) | - |
 
 ---
 
@@ -211,19 +213,19 @@ No dataset or message. No new repository data file.
 | Users | 3 | Author, reviewer, template maintainer |
 | Scope | 3 | Criteria and out-of-scope items listed |
 | Acceptance criteria | 3 | A valid and an invalid case for each rule |
-| Constraints | 2 | Q-30 open (Q-29 and Q-31 answered) |
-| **Total** | **14/15** | Gate: 12 or more |
+| Constraints | 3 | Q-29, Q-30 and Q-31 answered |
+| **Total** | **15/15** | Gate: 12 or more |
 
 ---
 
 ## Self-Review
 
 - **Weak points:** E1 to E8 are declared in the document and only their presence is checked;
-  nothing compares them with the real `git diff` (F-01). E8 is a judgement on the meaning of a rules diff; the checker sees only the declared result, the evidence and, for `Relaxing`, the presence of the gate's parts, not the order of the user's OK and the commits (F-03).
+  nothing compares them with the real `git diff` (F-01). E8 is a judgement on the meaning of a rules diff; the checker sees only the declared result, the evidence and, for `Relaxing`, the presence of the gate's parts, not the order of the user's OK and the commits, nor the D-91 evidence rule (F-01).
 - **Risks:** The unrecognized-name error turns any stray note in `features/` into a red CI; this
   is intended, but notes must live elsewhere (`notes/`, which git ignores).
 - **What I would do differently:** Ask the four retrospective decisions one by one before writing
-  the DEFINE, instead of following the recommendations (Q-30).
+  the DEFINE, instead of following the recommendations (Q-30, confirmed later).
 - **Next improvement:** Decide F-01 after the first two CHANGE documents, when the cost of
   declaring the criteria by hand is known.
 
@@ -242,3 +244,4 @@ No dataset or message. No new repository data file.
 | 2026-11-05 | First version, Ready for Design | Retrospective Step 1, user decisions of 2026-11-05 | DESIGN to follow |
 | 2026-11-05 | Q-29 answered: E8 is the no-weakening criterion (D-86, now decided by the user); FR-77 and AC-124 require a non-empty evidence cell; D-84 notes the consequence for Step 3 and Q-31 asks for its process; A-48 records the rule prototypes | User answer of 2026-11-05 on PR #43 | DESIGN G-41, AC-124 test, template rows and open items updated in the same commit |
 | 2026-11-05 | Q-31 answered: E8 amended (D-90): relaxing is eligible with the reinforced gate, hardening without it; FR-77 accepts `Relaxing` for E8; FR-83 and AC-131 check the `## Rule Changes` section; follow-up F-03 for the order of the user's OK; clarity 14/15 | User answer of 2026-11-05 on PR #43 | DESIGN G-45, AC-131 test, template, risks and open items updated in the same commit |
+| 2026-11-05 | Q-30 answered (D-85, D-87, D-88 confirmed); D-91 evidence rule as a process rule (FR-78 note, FR-81, FR-82, AC-128, AC-130); follow-ups consolidated: F-01 is now the history checks in CI (diff-based E1 to E8, order of the E8 OK, D-91), F-03 merged into F-01; FR-74 and AC-121 state that `.gitkeep` never gives an error; clarity 15/15 | User decisions of 2026-11-05 on PR #43 | DESIGN G-40, AC-121 and AC-128 tests, template component, risks and delivery plan updated in the same commit |
