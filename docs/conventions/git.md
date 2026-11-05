@@ -45,6 +45,13 @@ These rules bind any agent, and any person, running git or `gh` in this reposito
   `gh repo delete`.
 - Delete a remote branch only when its pull request state is exactly `MERGED`. Prefer
   `gh pr merge <N> --delete-branch`, which removes the branch only after a successful merge.
+- For a destructive command, check the exit code of that command itself. Do not combine `-q`
+  with pipes, `grep` or `||` fallbacks to produce status messages. After a delete, confirm it with
+  a separate read (for example `git ls-remote --heads origin <branch>`).
+  Motivation (2026-11-05, #35 and #36): `git push -q origin --delete <branch> 2>&1 | grep -v
+  '^remote:' || echo "remote <branch> already gone"` deleted both branches, but the silent push
+  left `grep -v` with no input, `grep` exited 1, and the `||` printed "already gone", so the
+  deletion was reported as GitHub's.
 
 ### Scope
 
