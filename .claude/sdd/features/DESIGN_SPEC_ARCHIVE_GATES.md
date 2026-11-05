@@ -103,7 +103,7 @@ count  id     file
 | G-34 Fenced code is replaced by blank lines before any search, so line positions are kept and code examples never count (as `Doc.body`, `scripts/check_specs.py:95-97`) | rules (b), (c), placeholders | ignore | FR-69 |
 | G-35 A citation is `(?<![\w-])(I\|F)-\d+(?![\w-])`; the ID in the first cell of a table row (`^\|\s*ID\s*\|`) is a definition, not a citation | rule (c) | ignore definitions | FR-69, D-75 |
 | G-36 Defined IDs of a folder are the first cells of table rows in all of its `.md` files | rule (c) | ignore defined IDs | D-75 |
-| G-37 A citation is prefixed when the text directly before it is an archive folder name and one space (`\b<SPEC> $`) | rule (c) | ignore prefixed | D-74 |
+| G-37 A citation is prefixed when the text directly before it is an archive folder name and a separator of spaces or tabs with at most one line break: `\b<SPEC>(?:[ \t]+\|[ \t]*\n[ \t]*)\Z` on the text before the ID. Anchor with `\Z`, not `$`: in Python `$` also matches before a final newline, so `<SPEC>` followed by a blank line would wrongly pass (seen in the measurement of 2026-11-05) | rule (c) | ignore prefixed | D-74 |
 | G-38 Dates come only from the file name, parsed with `date.fromisoformat`; `os.stat` and the clock are never read | SHIPPED | error on an invalid date | NFR-35, D-72 |
 | G-39 Allowlist paths are compared as repo-relative POSIX strings | allowlist | error on mismatch | FR-70 |
 
@@ -172,7 +172,7 @@ Every acceptance criterion from DEFINE appears here. All tests are unit tests in
 | AC-112 | Unit | `::test_ac112_result_does_not_depend_on_mtime` | `os.utime` sets the AC-111 fixtures to 2026-01-01 and then 2030-01-01; errors and warnings equal the AC-111 result both times |
 | AC-113 | Unit (parametrized) | `::test_ac113_shipped_name_date_placeholders_and_self_review` | `SHIPPED_2026-13-40.md`, `SHIPPED_final.md`, a `**Shipped on**` mismatch, a placeholder, a missing `## Self-Review` and an empty one each give one error |
 | AC-114 | Unit | `::test_ac114_open_findings_warn_only` | Four rows give exactly 2 warnings (spec, ID, severity); errors empty; exit code of `main()` is 0 |
-| AC-115 | Unit | `::test_ac115_unprefixed_foreign_citations` | With an empty allowlist only the unprefixed foreign ID and the one after an unknown word are errors |
+| AC-115 | Unit (parametrized) | `::test_ac115_unprefixed_foreign_citations` | With an empty allowlist only the unprefixed foreign ID, the one after an unknown word and the one after a blank line (`<SPEC>` then an empty line then the ID) are errors; `<SPEC>` then a line break and indentation, and `<SPEC>` then a tab, pass |
 | AC-116 | Unit (parametrized) | `::test_ac116_allowlist_exact_counts` | Count 3 passes; 4, 2, stale entry, missing entry, missing file and malformed JSON each give an error naming the entry or file |
 | AC-117 | Unit | `::test_all_templates_have_required_sections` (extended, named for AC-117 in its docstring) and `::test_ac117_shipped_template_sections_equal_the_rule` | All five templates, the SHIPPED one copied as `SHIPPED_2026-11-05.md` in an archive folder, give no missing-section error; the SHIPPED template's `##` headings equal `SHIPPED_SECTIONS`, with `Self-Review` last |
 | AC-118 | Unit | `::test_ac118_docs_describe_the_archive_rules` | The script docstring and `.claude/sdd/README.md` both mention `archive/`, `citation_allowlist.json` and `2026-11-05` |
@@ -217,7 +217,7 @@ date, not values asserted by a test (AC-107 asserts only 0 errors).
 | Exact counts make any edit of an allowlisted file fail until its entry is updated | Friction on `/iterate` of those 9 files | The error names the entry and both counts, so the fix is one line in the same PR |
 | Rule (c) cannot see ambiguous citations whose ID also exists locally | The 433 stay unchecked | Out of scope (D-71, F-02); the memory rule asks agents to prefix |
 | Rule (b) misses open findings that do not start with `Open` | False sense of completeness | Recorded as finding I-01; warnings never fail the build |
-| A line wrap between the spec name and the ID breaks the canonical prefix (G-37) | A correctly prefixed citation fails when prose is rewrapped; it happened once while writing this DESIGN | The error names the file and ID; the AC-119 self-test catches it before the spec is archived |
+| A blank line between the spec name and the ID breaks the canonical prefix (G-37) | Rare in prose; a soft wrap (one line break) keeps the prefix, which covers the case that happened once while writing this DESIGN | The error names the file and ID; the AC-119 self-test catches it before the spec is archived; AC-115 tests the soft wrap, the tab and the blank line |
 | Rule (c) counts IDs listed after a single prefix as violations | 3 of the 17 frozen citations are of this kind | Follow-up F-03: accept lists if the pattern recurs |
 | A new archive folder with a non-standard file (for example notes) fails rule (a) | The ship PR must follow the naming | Matches the ship agent's own output; the error names the file |
 
@@ -260,3 +260,4 @@ No open item remains for the build.
 | 2026-11-05 | First version, Ready for Build | DEFINE_SPEC_ARCHIVE_GATES.md Ready for Design | Build in PR 2 after this PR is approved |
 | 2026-11-05 | Q-27 and Q-28 answered: `SHIPPED_SECTIONS` gains `Self-Review` (OD-29, OD-34), manifest gains the SHIPPED template (now 6 files), AC-113 and AC-117 tests extended, F-03 in the delivery plan and the risks; open items closed | User review of PR #40 (DEFINE D-76 to D-78) | Status stays Ready for Build |
 | 2026-11-05 | AC-119 self-test (OD-35) in the Test Strategy and manifest 4; new section Build Evidence (dated warning count, archive document count, allowlist size in the BUILD_REPORT) | User review of PR #40 (DEFINE FR-73, D-79, D-80) | Status stays Ready for Build |
+| 2026-11-05 | G-37 accepts a soft wrap (whitespace with at most one line break) between `<SPEC>` and the ID, anchored with `\Z`; risk row and AC-115 test updated | User review of PR #40 (DEFINE FR-69, D-74, AC-115) | Allowlist unchanged: 12 entries / 17 citations; status stays Ready for Build |
