@@ -63,6 +63,17 @@ for the wrong reason. Apply these to the template repository so the next project
 
 ---
 
+## Pull Requests and Branches
+
+Filled after the merges, from `gh pr view <N> --json state,mergedAt,mergeCommit`, never from
+what was said (`docs/conventions/git.md`).
+
+| PR | Branch | Merge commit | Branch removed |
+|---|---|---|---|
+| #{N} | {branch} | {SHA} | {Yes / No, why} |
+
+---
+
 ## Archived Documents
 
 - BRAINSTORM_{FEATURE_NAME}.md
