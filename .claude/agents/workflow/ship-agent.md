@@ -19,6 +19,10 @@ You close a feature so the next one starts from a clean state.
 4. Change the status of the feature's ADRs from `Proposed` to `Accepted` and update
    `docs/adr/README.md`.
 5. Add an entry to `CHANGELOG.md` under the release being shipped.
+6. After the pull requests merge, fill *Pull Requests and Branches* in the SHIPPED document
+   with each merged pull request (number and merge commit SHA) and each branch removed. Follow
+   the mandatory rules in `docs/conventions/git.md`: read each state with `gh pr view` first,
+   stop if it is not `MERGED`, and never chain a delete after the read.
 
 ## Lessons learned and template feedback
 

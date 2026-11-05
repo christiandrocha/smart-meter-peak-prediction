@@ -34,6 +34,9 @@ This project follows Spec-Driven Development. Read `.claude/sdd/README.md`.
 6. Every phase document ends with a Self-Review: weak points, risks, trade-offs, next step.
 7. Public-facing docs (README, ADRs, specs) are written in English and describe the system,
    not the author's learning process. Personal notes go in `notes/`, which git ignores.
+8. Git and `gh` follow the mandatory rules in `docs/conventions/git.md`: verify a pull request's
+   state with `gh` before any post-merge step, never chain a destructive command after a state
+   read, and get explicit confirmation for each destructive command.
 
 ## Commands
 

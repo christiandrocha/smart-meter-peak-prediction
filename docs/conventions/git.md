@@ -22,6 +22,37 @@ Types: `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `build`, `ci`, `chore`
   (see `.github/pull_request_template.md`).
 - CI must pass: lint, tests, `scripts/check_specs.py`.
 
+## Rules for agents (mandatory)
+
+These rules bind any agent, and any person, running git or `gh` in this repository.
+
+### Verify before acting
+
+- Never take a pull request's state from what was said about it. Before any post-merge step
+  (pulling `main`, tagging, deleting a branch), run
+  `gh pr view <N> --json state,mergedAt,headRefName`.
+- If the observed state differs from the stated one (for example "merged" was said and `gh`
+  returns `OPEN`), stop and report the difference. Do not continue.
+
+### Destructive commands
+
+- Never chain a destructive command (with `;`, `&&` or `|`) after a command that reads state.
+  Read the state, evaluate the result, and only then run the destructive command in a separate
+  call.
+- These commands need the explicit confirmation of the user every time, one at a time:
+  `git push --delete`, `git push origin :<branch>`, `git branch -D`,
+  `git push --force` / `--force-with-lease`, `git reset --hard`, `gh pr close`,
+  `gh repo delete`.
+- Delete a remote branch only when its pull request state is exactly `MERGED`. Prefer
+  `gh pr merge <N> --delete-branch`, which removes the branch only after a successful merge.
+
+### Scope
+
+- Act only on the branches and pull requests of the current task of the spec. Do not clean up
+  other branches along the way.
+- When the ship phase ends, record in the SHIPPED document the merged pull requests (number and
+  merge commit SHA) and the branches removed (section *Pull Requests and Branches*).
+
 ## Releases
 
 Semantic versioning. A release closes one or more shipped features; `/ship` updates
