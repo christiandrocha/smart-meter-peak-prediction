@@ -118,7 +118,7 @@ No deviation changes the DESIGN.
 | I-08 | Review (Low): `list_runs` drained all pages | Low | Fixed: `islice(..., 5)` |
 | I-09 | Review (Low): AC-105 mechanics test omitted `expect`/`require_idle`/`finally` wait | Low | Fixed |
 | I-10 | Review (Low): runbook overstated `observed_terminal` resolution | Low | Fixed |
-| I-11 | Review (Low): live helpers have no unit test; found-run capture may pick a run ended just before `start_update` (30 s slack) | Low | Open; follow-up |
+| I-11 | Review (Low): live helpers have no unit test; found-run capture may pick a run ended just before `start_update` (30 s slack) | Low | **Closed 2026-11-05 (PR #38)**: `tests/test_ingestion_guard_live_helpers.py` unit-tests the five capture helpers and the helpers they call directly, with fakes and no SDK. The 30 s slack is pinned as INGESTION_GUARD I-12, the `_update_creation_ms` `None` return as INGESTION_GUARD I-13 (both strict xfail, fix by `/iterate`), and the other live helpers are INGESTION_GUARD I-11 |
 | I-13 | The no-op update lasted 59 s on 2026-11-04, not the 125 s measured in spike 06; the margin after the read was 32 s (DA-31 still holds, but with less room than assumed) | Medium | Watch the margin in later AC-97 runs; the ladder in the runbook applies when it reaches 0 |
 | I-12 | Code review result | - | `code-reviewer` subagent: no High findings; 3 Medium and 6 Low, all fixed except I-11 |
 
