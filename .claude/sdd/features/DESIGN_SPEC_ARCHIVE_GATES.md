@@ -113,7 +113,7 @@ count  id     file
 
 | ADR | Title | Status |
 |---|---|---|
-| - | No new ADR. The change is internal to the SDD tooling, reversible, and recorded as D-66 to D-78 in the DEFINE and OD-29 to OD-34 below | - |
+| - | No new ADR. The change is internal to the SDD tooling, reversible, and recorded as D-66 to D-80 in the DEFINE and OD-29 to OD-35 below | - |
 
 Design decisions:
 
@@ -121,6 +121,7 @@ Design decisions:
 |---|---|---|
 | OD-29 | Hard-code `SHIPPED_SECTIONS` in the script instead of reading the template at run time: the nine template sections plus `Self-Review` | Tests run on `tmp_path` roots without templates; AC-117 checks that the template and the list agree, so they cannot drift silently |
 | OD-34 | `## Self-Review` goes last in the SHIPPED template, after `## Archived Documents` | All 5 SHIPPED documents already have it as their last section (DEFINE A-41); golden rule 6 says every phase document ends with one |
+| OD-35 | The AC-119 test builds its SHIPPED document from `SHIPPED_SECTIONS` with a fixed file name `SHIPPED_2026-11-06.md` and short fixed text, instead of copying the template | The template has placeholders, which are errors in a `Shipped` document; a fixed date keeps the result independent of the clock (NFR-35) and puts it after the cut-off, so every section is required |
 | OD-30 | `SHIPPED_CUTOFF = date(2026, 11, 5)` as a constant next to `SHIPPED_SECTIONS` | D-73; a constant is visible in review and documented by FR-72 |
 | OD-31 | Archive pass in the same `run()` and the same exit code; no flag | C-18: the hook and CI call the script without arguments |
 | OD-32 | Allowlist in JSON at `.claude/sdd/citation_allowlist.json` | Standard library only (NFR-36); inside `.claude/sdd/`, so an edit triggers the hook (`.pre-commit-config.yaml:32`) |
@@ -147,9 +148,9 @@ Ordered by dependency. `/build` executes this list top to bottom.
 | 1 | `scripts/check_specs.py` | Modify | Archive pass, rules (a), (b), (c), SHIPPED phase, allowlist comparison, docstring (FR-63 to FR-72) | build-agent | - |
 | 2 | `.claude/sdd/citation_allowlist.json` | Create | The 12 entries of the Data Model | build-agent | 1 |
 | 3 | `.claude/sdd/templates/SHIPPED_TEMPLATE.md` | Modify | Add `## Self-Review` as the last section (D-77, OD-34) | build-agent | - |
-| 4 | `tests/test_check_specs.py` | Modify | AC-107 to AC-118 (fixtures on `tmp_path`, one repository-root test); `test_all_templates_have_required_sections` gains the SHIPPED template (AC-117) | build-agent | 1, 2, 3 |
+| 4 | `tests/test_check_specs.py` | Modify | AC-107 to AC-119 (fixtures on `tmp_path`, one repository-root test, one self-test of `features/` and `reports/` as if archived); `test_all_templates_have_required_sections` gains the SHIPPED template (AC-117) | build-agent | 1, 2, 3 |
 | 5 | `.claude/sdd/README.md` | Modify | Check list (`.claude/sdd/README.md:27`): archive rules, allowlist, cut-off, Self-Review in SHIPPED (FR-72) | build-agent | 1 |
-| 6 | `.claude/sdd/reports/BUILD_REPORT_SPEC_ARCHIVE_GATES.md` | Create | Evidence for every AC, the AC-107 run output, finding I-01 | build-agent | 1 to 5 |
+| 6 | `.claude/sdd/reports/BUILD_REPORT_SPEC_ARCHIVE_GATES.md` | Create | Evidence for every AC, the dated build evidence of the section below, finding I-01 | build-agent | 1 to 5 |
 
 Read and not modified: every file under `.claude/sdd/archive/` (C-17), `.pre-commit-config.yaml`,
 `.github/workflows/ci.yml`.
@@ -175,6 +176,23 @@ Every acceptance criterion from DEFINE appears here. All tests are unit tests in
 | AC-116 | Unit (parametrized) | `::test_ac116_allowlist_exact_counts` | Count 3 passes; 4, 2, stale entry, missing entry, missing file and malformed JSON each give an error naming the entry or file |
 | AC-117 | Unit | `::test_all_templates_have_required_sections` (extended, named for AC-117 in its docstring) and `::test_ac117_shipped_template_sections_equal_the_rule` | All five templates, the SHIPPED one copied as `SHIPPED_2026-11-05.md` in an archive folder, give no missing-section error; the SHIPPED template's `##` headings equal `SHIPPED_SECTIONS`, with `Self-Review` last |
 | AC-118 | Unit | `::test_ac118_docs_describe_the_archive_rules` | The script docstring and `.claude/sdd/README.md` both mention `archive/`, `citation_allowlist.json` and `2026-11-05` |
+| AC-119 | Unit (repository, self-test) | `::test_ac119_final_status_feature_docs_pass_the_archive_rules` | Copies each `features/` and `reports/` document whose status is its phase's final status into `tmp_path/.claude/sdd/archive/<FEATURE>/`, writes the generated SHIPPED document and an empty allowlist, runs `check_specs.run(tmp_path)` and asserts `errors == []`; `pytest.skip` with the reason when no document qualifies. At this PR it covers the DEFINE and DESIGN of SPEC_ARCHIVE_GATES, which is the manual check of PR #40 made permanent |
+
+---
+
+## Build Evidence
+
+The BUILD_REPORT records, as dated evidence (the date of the build run and the commit it ran
+on), the output of `python scripts/check_specs.py` on the repository:
+
+- the number of warnings, and the ID and spec of each (expected at design time: 2, for
+  INGESTION_GUARD I-11 and INGESTION_GUARD I-12);
+- the number of documents under `.claude/sdd/archive/` that the run counted (expected at design
+  time: 23, that is 18 phase documents and 5 SHIPPED documents), and the summary line;
+- the number of allowlist entries and citations (12 and 17).
+
+These counts change as later features ship and findings close, so they are evidence of the build
+date, not values asserted by a test (AC-107 asserts only 0 errors).
 
 ---
 
@@ -199,6 +217,7 @@ Every acceptance criterion from DEFINE appears here. All tests are unit tests in
 | Exact counts make any edit of an allowlisted file fail until its entry is updated | Friction on `/iterate` of those 9 files | The error names the entry and both counts, so the fix is one line in the same PR |
 | Rule (c) cannot see ambiguous citations whose ID also exists locally | The 433 stay unchecked | Out of scope (D-71, F-02); the memory rule asks agents to prefix |
 | Rule (b) misses open findings that do not start with `Open` | False sense of completeness | Recorded as finding I-01; warnings never fail the build |
+| A line wrap between the spec name and the ID breaks the canonical prefix (G-37) | A correctly prefixed citation fails when prose is rewrapped; it happened once while writing this DESIGN | The error names the file and ID; the AC-119 self-test catches it before the spec is archived |
 | Rule (c) counts IDs listed after a single prefix as violations | 3 of the 17 frozen citations are of this kind | Follow-up F-03: accept lists if the pattern recurs |
 | A new archive folder with a non-standard file (for example notes) fails rule (a) | The ship PR must follow the naming | Matches the ship agent's own output; the error names the file |
 
@@ -240,3 +259,4 @@ No open item remains for the build.
 |---|---|---|---|
 | 2026-11-05 | First version, Ready for Build | DEFINE_SPEC_ARCHIVE_GATES.md Ready for Design | Build in PR 2 after this PR is approved |
 | 2026-11-05 | Q-27 and Q-28 answered: `SHIPPED_SECTIONS` gains `Self-Review` (OD-29, OD-34), manifest gains the SHIPPED template (now 6 files), AC-113 and AC-117 tests extended, F-03 in the delivery plan and the risks; open items closed | User review of PR #40 (DEFINE D-76 to D-78) | Status stays Ready for Build |
+| 2026-11-05 | AC-119 self-test (OD-35) in the Test Strategy and manifest 4; new section Build Evidence (dated warning count, archive document count, allowlist size in the BUILD_REPORT) | User review of PR #40 (DEFINE FR-73, D-79, D-80) | Status stays Ready for Build |

@@ -93,6 +93,7 @@ task to the wrong spec on 2026-11-05.
 | FR-70 | Allowlist, error: a repository file lists the existing rule (c) violations as entries of file, ID and count; for each file and ID, the measured number of rule (c) violations shall equal the entry's count; a violation without an entry, a count that differs in either direction, an entry that matches nothing, and an unreadable or malformed allowlist are errors that name the entry or the file | Must |
 | FR-71 | The exit code shall stay 0 without errors and 1 with errors; warnings do not fail; the summary line counts archived documents | Must |
 | FR-72 | The script docstring and the check list in `.claude/sdd/README.md` shall describe the archive rules, the allowlist and the cut-off | Should |
+| FR-73 | A permanent unit test shall copy every document of `.claude/sdd/features/` and `.claude/sdd/reports/` that is in its phase's final status into a temporary `archive/<FEATURE>/`, add a generated valid SHIPPED document, and run every archive rule on it with an empty allowlist, expecting 0 errors | Must |
 
 ---
 
@@ -134,6 +135,7 @@ allowlist (format in the DESIGN); it is read only by `check_specs.py`.
 | AC-116 | A fixture with 3 unprefixed foreign citations of one ID in one file | The allowlist entry has count 3, then 4, then 2; then the entry is kept and the citations are removed; then the entry is removed while the citations remain; then the allowlist is missing and then malformed | Count 3 passes; counts 4 and 2, the stale entry, the missing entry, the missing file and the malformed file each give an error naming the entry or the file |
 | AC-117 | The five templates, including `.claude/sdd/templates/SHIPPED_TEMPLATE.md` copied as a SHIPPED document dated on or after the cut-off, as `test_all_templates_have_required_sections` already does for the other four | The checker runs | No missing-section error for any of the five; the SHIPPED template's `##` headings equal the SHIPPED section list and include `Self-Review` |
 | AC-118 | The script docstring and `.claude/sdd/README.md` after the build | A unit test reads them | Both mention `archive/`, the allowlist file name and the cut-off date |
+| AC-119 | The repository's `features/` and `reports/` documents in their phase's final status (at this PR: DEFINE and DESIGN of SPEC_ARCHIVE_GATES) | The test copies them into a temporary `archive/<FEATURE>/` per feature, adds a generated SHIPPED document (fixed file-name date after the cut-off, every SHIPPED section, status `Shipped`), uses an empty allowlist and runs the checker on that root | 0 errors; documents not yet in their final status are left out, so a draft in `features/` never fails the test; when no document qualifies the test is skipped with that reason |
 
 ---
 
@@ -161,6 +163,8 @@ allowlist (format in the DESIGN); it is read only by `check_specs.py`.
 | D-73 | Cut-off date 2026-11-05 | `## Pull Requests and Branches` entered the SHIPPED template that day (PR #37, merge a4d018a). The 5 existing SHIPPED documents are dated 2026-10-20 to 2026-11-04, so none needs the section |
 | D-74 | A citation counts as prefixed only in the canonical form `<SPEC> <ID>` (one space) | Measurable without reading prose. Other forms that do name the spec, such as one spec name before a list of several IDs, or an ID followed by "rule of" and the spec name, are frozen in the allowlist, not parsed |
 | D-75 | An ID is defined in a spec when it is the first cell of a table row in any document of its archive folder | Covers BUILD_REPORT findings, SHIPPED follow-ups and the profiling findings (`F-NN`) of BRAINSTORM documents (14, 13 and 18 rows), which reuse the `F-` prefix (`scripts/profile_data.py:1`) |
+| D-79 | The self-test (FR-73, AC-119) copies only documents in their final status, adds one generated SHIPPED document, and uses an empty allowlist | A draft in `features/` is normal during `/define` and must not turn CI red; rule (a) needs one SHIPPED per folder; the real allowlist names files that are not in the temporary root, so its entries would be stale |
+| D-80 | Findings and follow-ups that this spec announces before its BUILD_REPORT and SHIPPED exist are listed in a table here (Pre-registered Findings and Follow-ups) | Under D-75 a table row defines the ID in the spec's own folder, so these IDs are not foreign citations in the AC-119 self-test or once archived; the BUILD_REPORT and SHIPPED repeat them with their outcome |
 
 ### Questions for the user
 
@@ -168,6 +172,20 @@ allowlist (format in the DESIGN); it is read only by `check_specs.py`.
 |---|---|
 | Q-27 | **The allowlist count differs from the discovery report.** Discovery reported 14 unprefixed foreign citations. Under the exact FR-69 definition the count is 17 citations in 12 file-and-ID entries: 3 more inside SHIPPED follow-up rows that list several IDs after a single spec prefix, where only the first ID carries it, and 1 fewer because `DESIGN_INGESTION_GUARD.md:361` is inside fenced code. Is the allowlist of 12 entries / 17 citations approved? **Answered 2026-11-05: yes (D-76); the list pattern becomes follow-up F-03 (D-78).** |
 | Q-28 | The SHIPPED template has no `## Self-Review`, although golden rule 6 asks for one in every phase document and all 5 SHIPPED documents have one. Leave it out of the required SHIPPED sections here, or add it to the template and the rule? **Answered 2026-11-05: required, and added to the template (D-77).** |
+
+---
+
+## Pre-registered Findings and Follow-ups
+
+Announced now (D-80), recorded with their outcome in the BUILD_REPORT (finding) and the SHIPPED
+document (follow-ups).
+
+| ID | Kind | Statement | Recorded in |
+|---|---|---|---|
+| I-01 | Finding | The status of a finding or follow-up is not machine-readable; findings that are effectively open but do not start with `Open` (for example AC97_TIMING_EVIDENCE I-13, "Watch the margin in later AC-97 runs") produce no warning (D-68) | BUILD_REPORT |
+| F-01 | Follow-up | Port the change to the template repository (D-71) | SHIPPED |
+| F-02 | Follow-up | The 433 unprefixed citations whose ID also exists in the citing spec, and the 64 citations outside `archive/` (D-71) | SHIPPED |
+| F-03 | Follow-up | Citations in a list after a single prefix (for example INGESTION_GUARD F-02, F-03) count as violations; evaluate accepting lists in rule (c) if the pattern recurs (D-78) | SHIPPED |
 
 ---
 
@@ -212,10 +230,6 @@ allowlist (format in the DESIGN); it is read only by `check_specs.py`.
 - **Next improvement:** After this ships, a status vocabulary for findings would turn rule (b) into
   a reliable gate.
 
-**Finding to carry into the BUILD_REPORT as I-01:** the status of a finding or follow-up is not
-machine-readable; findings that are effectively open but do not start with `Open` (for example
-AC97_TIMING_EVIDENCE I-13, "Watch the margin in later AC-97 runs") produce no warning.
-
 ---
 
 ## Next Step
@@ -230,3 +244,4 @@ AC97_TIMING_EVIDENCE I-13, "Watch the margin in later AC-97 runs") produce no wa
 |---|---|---|---|
 | 2026-11-05 | First version, Ready for Design | Discovery and user decisions of 2026-11-05 | DESIGN to follow |
 | 2026-11-05 | Q-27 and Q-28 answered: D-76 (allowlist 12 / 17), D-77 (`## Self-Review` required in SHIPPED and added to the template; FR-67, AC-113, AC-117, scope), D-78 (follow-up F-03 on lists after one prefix); A-41 added; clarity 15/15 | User review of PR #40 | DESIGN updated in the same commit (manifest gains the SHIPPED template; AC-113 and AC-117 tests) |
+| 2026-11-05 | FR-73 and AC-119: permanent self-test that archives the final-status documents of `features/` and `reports/` in a temporary root and expects 0 errors (D-79); pre-registered findings and follow-ups moved into a table (D-80), replacing the I-01 paragraph of the Self-Review | User review of PR #40 | DESIGN Test Strategy gains AC-119; build evidence section added |
