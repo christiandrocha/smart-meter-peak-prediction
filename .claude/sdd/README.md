@@ -28,6 +28,21 @@ required sections, valid status, no unfilled placeholders after the draft stage,
 and acceptance-criteria traceability from DEFINE to DESIGN to BUILD_REPORT. It also checks
 the structure of ADRs (`docs/adr/`) and data contracts (`docs/contracts/`).
 
+Shipped features in `archive/` are checked as well (SPEC_ARCHIVE_GATES):
+
+- the rules above, with traceability inside each `archive/<FEATURE>/` folder;
+- every archived document is in its phase's final status, and each folder has exactly one
+  `SHIPPED_YYYY-MM-DD.md` with status `Shipped`;
+- SHIPPED documents: the file-name date equals the `Shipped on` row, every template section is
+  present including a non-empty Self-Review, and from the cut-off date 2026-11-05 also
+  `Pull Requests and Branches` and no unfilled placeholders (the date always comes from the file
+  name, never from file times);
+- a warning for each archived finding whose Follow-up cell starts with `Open`;
+- a finding ID from another spec is cited with that spec's name in front, for example
+  `INGESTION_GUARD I-13` (a soft wrap between the two is fine, a blank line is not). Existing
+  unprefixed citations are frozen with exact counts in `citation_allowlist.json`; a count that
+  differs or an entry that matches nothing is an error, so update the entry in the same change.
+
 ## Rules
 
 1. Specs describe *what* and *why* before code describes *how*. Code written before the spec
