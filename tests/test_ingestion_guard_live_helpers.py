@@ -1,20 +1,21 @@
 """Unit tests for the AC-97 capture helpers of the live ingestion guard tests.
 
 Closes AC97_TIMING_EVIDENCE I-11. The helpers live in
-``tests/integration/test_ingestion_guard_live.py``, which carries the ``integration`` marker and
-must stay equal to v0.4.0 (AC-105). This module loads that file by path, under a private module
-name, so the live module is neither changed nor collected a second time, and runs in the default
-CI pass. In scope: the five helpers named in I-11 (``_observe``, ``_capture_found_run``,
-``_capture_refused``, ``_capture_rerun``, ``_read_update_end``) and the private helpers they call
-directly (``_skipped``, ``_enum``, ``_task_facts``, ``_check_output``, ``_first_result``). The
-other live helpers are INGESTION_GUARD I-11.
+``tests/integration/test_ingestion_guard_live.py``, which carries the ``integration`` marker. This
+module loads that file by path, under a private module name, so the live module is not collected
+a second time, and runs in the default CI pass. AC-105 does not cover these helpers: it hashes
+only ``src/``, ``resources/``, ``notebooks/`` and ``databricks.yml`` and checks the asserts inside
+the AC-97 test function. In scope: the five helpers named in I-11 (``_observe``,
+``_capture_found_run``, ``_capture_refused``, ``_capture_rerun``, ``_read_update_end``) and the
+private helpers they call directly (``_skipped``, ``_enum``, ``_task_facts``, ``_check_output``,
+``_first_result``). The other live helpers are INGESTION_GUARD I-11.
 
 No network, no credentials, no ``databricks-sdk``: SDK objects are ``SimpleNamespace`` values and
 the workspace is a small fake whose methods return canned data or raise ``FakeSdkError``.
 
-Known bugs are pinned, not fixed (fixing them changes the live module and breaks AC-105): each has
-a test of the current behavior and a strict ``xfail`` test of the correct one, so a fix turns the
-``xfail`` into a failure and forces these tests to be updated.
+A known bug that is not yet fixed has a test of the current behavior and a strict ``xfail`` test of
+the correct one, so a fix turns the ``xfail`` into a failure and forces these tests to be updated
+(INGESTION_GUARD I-12). The ``_update_creation_ms`` tests cover the fix of INGESTION_GUARD I-13.
 """
 
 from __future__ import annotations
@@ -537,24 +538,78 @@ def test_read_update_end_both_errors_give_two_skip_lines(
     ]
 
 
-# ----------------------------------------------------------------------------- INGESTION_GUARD I-13
-# Out of the I-11 scope (INGESTION_GUARD I-11 covers its other cases); pinned here as asked.
+# ----------------------------------------------------------------------------- _update_creation_ms
+# Fixed for INGESTION_GUARD I-13 (DA-36 fallback, DESIGN Change Log 2026-11-05). The helper's other
+# live-only aspects stay in INGESTION_GUARD I-11.
 LISTED = SimpleNamespace(updates=[SimpleNamespace(update_id=UPDATE_ID, creation_time=1_234)])
+NO_CREATION = "AC-97 timing evidence: the update (AC-106) has no creation time; using the list\n"
 
 
-def _creation(update: Reply) -> tuple[Any, FakePipelines]:
-    pipelines = FakePipelines(update=update, updates=LISTED)
+def _creation(update: Reply, updates: Reply = LISTED) -> tuple[Any, FakePipelines]:
+    pipelines = FakePipelines(update=update, updates=updates)
     return live._update_creation_ms(_workspace(pipelines=pipelines), "p-1", UPDATE_ID), pipelines
 
 
-def test_update_creation_ms_returns_none_when_get_update_has_no_creation_time() -> None:
-    """Documenta comportamento atual com bug — ver INGESTION_GUARD I-13."""
+def _called(pipelines: FakePipelines) -> list[str]:
+    return [name for name, _ in pipelines.calls]
+
+
+def test_update_creation_ms_reads_get_update_alone(capsys: pytest.CaptureFixture[str]) -> None:
+    found, pipelines = _creation(_update(created=5_678))
+    assert found == 5_678
+    assert _called(pipelines) == ["get_update"]
+    assert capsys.readouterr().out == ""
+
+
+def test_update_creation_ms_falls_back_to_the_list_when_creation_time_is_none(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     found, pipelines = _creation(_update(created=None))
-    assert found is None
-    assert [name for name, _ in pipelines.calls] == ["get_update"]  # no fallback
-
-
-@pytest.mark.xfail(strict=True, reason="INGESTION_GUARD I-13")
-def test_update_creation_ms_falls_back_to_the_list_when_creation_time_is_none() -> None:
-    found, _ = _creation(_update(created=None))
     assert found == 1_234
+    assert _called(pipelines) == ["get_update", "list_updates"]
+    assert capsys.readouterr().out == NO_CREATION
+
+
+def test_update_creation_ms_falls_back_to_the_list_when_get_update_raises(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    exc = FakeSdkError(error_code="RESOURCE_DOES_NOT_EXIST")
+    found, pipelines = _creation(exc)
+    assert found == 1_234
+    assert _called(pipelines) == ["get_update", "list_updates"]
+    _assert_one_skip_line(capsys.readouterr().out, "the update (AC-106)", exc)
+
+
+def test_update_creation_ms_skips_list_entries_without_creation_time() -> None:
+    updates = SimpleNamespace(
+        updates=[
+            SimpleNamespace(update_id="other", creation_time=1),
+            SimpleNamespace(update_id=UPDATE_ID, creation_time=None),
+            SimpleNamespace(update_id=UPDATE_ID, creation_time=9_999),
+        ]
+    )
+    found, _ = _creation(_update(created=None), updates)
+    assert found == 9_999
+
+
+@pytest.mark.parametrize(
+    "updates",
+    [
+        SimpleNamespace(updates=None),
+        SimpleNamespace(updates=[SimpleNamespace(update_id="other", creation_time=1)]),
+        SimpleNamespace(updates=[SimpleNamespace(update_id=UPDATE_ID, creation_time=None)]),
+    ],
+    ids=["empty-list", "not-listed", "listed-without-creation-time"],
+)
+@pytest.mark.parametrize("update", [None, FakeSdkError()], ids=["no-creation-time", "raises"])
+def test_update_creation_ms_without_any_source_is_a_clear_assertion(
+    update: Any, updates: Any, capsys: pytest.CaptureFixture[str]
+) -> None:
+    reply = _update(created=None) if update is None else update
+    with pytest.raises(AssertionError) as raised:
+        _creation(reply, updates)
+    message = str(raised.value)
+    assert UPDATE_ID in message
+    assert "get_update" in message
+    assert "update list" in message
+    assert SECRET not in capsys.readouterr().out

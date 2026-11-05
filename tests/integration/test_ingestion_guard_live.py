@@ -351,14 +351,28 @@ def _seconds_of(utc: str) -> float:
 
 
 def _update_creation_ms(workspace: Any, pipeline_id: str, update_id: str) -> int:
-    """Creation time of U; DA-36 fallback: the update list when ``get_update`` cannot read it."""
+    """Creation time of U; DA-36 fallback: the update list when ``get_update`` cannot read it.
+
+    The fallback also runs when ``get_update`` answers without a creation time (INGESTION_GUARD
+    I-13); each fallback prints one diagnostic line. Neither source having it is an
+    ``AssertionError`` that names both.
+    """
+    created = None
     try:
-        return workspace.pipelines.get_update(pipeline_id, update_id).update.creation_time
+        created = workspace.pipelines.get_update(pipeline_id, update_id).update.creation_time
     except Exception as exc:  # noqa: BLE001
         _skipped("the update (AC-106)", exc)
+    else:
+        if created is None:
+            print("AC-97 timing evidence: the update (AC-106) has no creation time; using the list")
+    if created is not None:
+        return created
     listed = workspace.pipelines.list_updates(pipeline_id, max_results=25).updates or []
-    found = [u.creation_time for u in listed if u.update_id == update_id]
-    assert found, f"update {update_id} is not listed for the pipeline"
+    found = [
+        u.creation_time for u in listed if u.update_id == update_id and u.creation_time is not None
+    ]
+    msg = f"no creation time for update {update_id}: neither get_update nor the update list has it"
+    assert found, msg
     return found[0]
 
 
