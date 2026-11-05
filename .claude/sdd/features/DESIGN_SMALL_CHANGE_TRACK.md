@@ -56,11 +56,11 @@ run(root)
 | `PHASES["CHANGE"]` | Sections Metadata, Problem Statement, Eligibility, Scope, Acceptance Criteria, Test Strategy, File Manifest, Evidence, Issues & Follow-ups, Self-Review; statuses `Draft` (False), `Ready for Build` (True), `Complete` (True) | dict entry | FR-75 |
 | `FINAL_STATUS` (literal) | `{"BRAINSTORM": "Ready for Define", "DEFINE": "Ready for Design", "DESIGN": "Ready for Build", "BUILD_REPORT": "Complete", "CHANGE": "Complete"}`, replacing the derivation at `scripts/check_specs.py:401-404` | dict | FR-76 |
 | `load_docs(root, report)` | As today, plus an error for each `.md` directly in `features/` or `reports/` whose stem matches no `<PHASE>_` prefix; `run()` passes the report | `pathlib` | FR-74 |
-| `check_change(doc, report)` | Past `Draft`: Eligibility rows (G-41), AC of Acceptance Criteria present in Test Strategy; when `Complete`: AC present in Evidence, no failing Evidence row (existing `FAILING_CELL`), and an evidence commit (G-42) | `re` | FR-77, FR-78 |
+| `check_change(doc, report)` | Past `Draft`: Eligibility rows (G-41), and when E8 is `Relaxing` the `## Rule Changes` section (G-45); AC of Acceptance Criteria present in Test Strategy; when `Complete`: AC present in Evidence, no failing Evidence row (existing `FAILING_CELL`), and an evidence commit (G-42) | `re` | FR-77, FR-78, FR-83 |
 | `check_folder` (extended) | A folder whose phase documents include a CHANGE document must contain only that file and no SHIPPED; otherwise the existing rule (a) | - | FR-79 |
 | `check_final_status` | Unchanged code; reads the literal map, so an archived CHANGE document must be `Complete` | - | FR-76, FR-79 |
 | `check_archive` (extended) | Calls `check_change` and `open_findings` for archived CHANGE documents | - | FR-80 |
-| `CHANGE_TEMPLATE.md` | The ten sections; the Eligibility rows E1 to E8, each with the criterion text of the DEFINE (E8 with the no-weakening scope and the instruction to cite the rules diff) and empty result and evidence cells; and the `Evidence commit` line | Markdown | FR-81, DEFINE D-86 |
+| `CHANGE_TEMPLATE.md` | The ten sections; the Eligibility rows E1 to E8, each with the criterion text of the DEFINE (E8 with the hardening and relaxing cases) and empty result and evidence cells; an optional `## Rule Changes` section for E8 `Relaxing` with its four parts and the instruction to stop for the user's OK before any commit to `docs/conventions/git.md` or `CLAUDE.md`; and the `Evidence commit` line | Markdown | FR-81, FR-83, DEFINE D-90 |
 | AC-119 helper (`tests/test_check_specs.py:618`) | Final-status selection through the literal map; for a CHANGE document, a folder with that document and no generated SHIPPED | pytest helper | AC-129 |
 
 ---
@@ -74,10 +74,11 @@ No table, dataset or new data file.
 | Rule | Where | Action | Source |
 |---|---|---|---|
 | G-40 A name is recognized when its stem starts with `<PHASE>_` for a phase in `PHASES`, longest phase first (as `scripts/check_specs.py:149` today); only `.md` files directly in the folder count | `load_docs` | error on an unrecognized `.md` | FR-74 |
-| G-41 An Eligibility row is `^\|\s*(E[1-8])\s*\|\s*([^|]*?)\s*\|\s*([^|]*?)\s*\|` inside `## Eligibility` (criterion, result, evidence); the result cell, without `*`, `_` and backticks, must equal `Yes`, and the evidence cell must not be empty | `check_change` | error per missing, duplicate or non-`Yes` criterion, or empty evidence | FR-77, DEFINE D-86 |
+| G-41 An Eligibility row is `^\|\s*(E[1-8])\s*\|\s*([^|]*?)\s*\|\s*([^|]*?)\s*\|` inside `## Eligibility` (criterion, result, evidence); the result cell, without `*`, `_` and backticks, must equal `Yes` (for E8, `Yes` or `Relaxing`), and the evidence cell must not be empty | `check_change` | error per missing, duplicate or non-`Yes` criterion, or empty evidence | FR-77, DEFINE D-86 |
 | G-42 The evidence commit is `Evidence commit` followed, on the same line, by a word of 7 to 40 characters in `[0-9a-f]` | `check_change` | error when absent in a `Complete` document | FR-78, D-89 |
 | G-43 AC rows of Acceptance Criteria, Test Strategy and Evidence are read with the existing `AC_ROW` pattern (`scripts/check_specs.py`, `ac_ids`) | `check_change` | error per missing AC | FR-78 |
 | G-44 Fenced code is ignored as in every other rule (`Doc.body`) | all | ignore | NFR-39 |
+| G-45 When E8 is `Relaxing`, `## Rule Changes` must contain a line starting with `Before` and one starting with `After`, each with a `path:line` reference (`[\w./-]+\.md:\d+`); a fenced block whose text contains `gh api` (read before fences are blanked); and a line `User OK:` followed by `\d{4}-\d{2}-\d{2}` | `check_change` | error per missing part | FR-83, DEFINE D-90 |
 
 ---
 
@@ -85,7 +86,7 @@ No table, dataset or new data file.
 
 | ADR | Title | Status |
 |---|---|---|
-| - | No new ADR: the change is internal to the SDD tooling and reversible; decisions are D-83 to D-89 in the DEFINE and OD-36 to OD-40 below | - |
+| - | No new ADR: the change is internal to the SDD tooling and reversible; decisions are D-83 to D-90 in the DEFINE and OD-36 to OD-40 below | - |
 
 Design decisions:
 
@@ -105,7 +106,7 @@ Design decisions:
 |---|---|---|
 | 1 | `spec/small-change-track` | This DESIGN and the DEFINE (no code) |
 | 2 | `build/small-change-track` | File Manifest 1 to 7 |
-| 3 | `ship/small-change-track` | Archive the documents, SHIPPED with follow-ups F-01 and F-02, CHANGELOG |
+| 3 | `ship/small-change-track` | Archive the documents, SHIPPED with follow-ups F-01, F-02 and F-03, CHANGELOG |
 
 ---
 
@@ -146,6 +147,7 @@ Every acceptance criterion from DEFINE appears here. All tests are unit tests in
 | AC-128 | Unit | `::test_all_templates_have_required_sections` (extended) and `::test_ac128_change_template_sections_and_criteria` | No missing-section error for the six templates; CHANGE headings equal the section list; rows E1 to E8 present |
 | AC-129 | Unit | `::test_ac129_self_test_simulates_change_documents` | With a temporary `features/` holding a `Complete` and a `Ready for Build` CHANGE document, the helper adds only the first, as a folder without SHIPPED, and the simulated archive gives 0 errors |
 | AC-130 | Unit | `::test_ac130_docs_describe_the_change_track` | README, `git.md` and `CLAUDE.md` contain the required names |
+| AC-131 | Unit (parametrized) | `::test_ac131_relaxing_needs_the_rule_changes_gate` | E8 `Relaxing` with a complete section passes; without the section, without `file:line` on `After`, without a `gh api` block and without `User OK:` each give one error; E8 `Yes` without the section passes |
 
 ---
 
@@ -177,7 +179,8 @@ self-test added.
 | Risk or trade-off | Impact | Mitigation |
 |---|---|---|
 | E1 to E8 are self-declared | An ineligible change can be filed as a CHANGE document | The `git diff` output is pasted as evidence and reviewed; F-01 automates it |
-| E8 needs judgement on a rules diff | A weakening can be declared as a wording fix | E8 evidence must cite the diff; in doubt not eligible (DEFINE D-86); review reads the diff |
+| E8 needs judgement on a rules diff | A relaxation can be declared as hardening | In doubt it is relaxing (DEFINE D-90); the reinforced gate makes the diff, the `gh api` proof and the user's OK explicit |
+| The order "OK, then commit" is not checked | A rules commit could precede the OK | Process rule in the template and README; follow-up F-03 |
 | A stray note in `features/` now fails CI | Friction for drafts kept there | Intended (FR-74); notes go in `notes/`, which git ignores (golden rule 7) |
 | Two archive folder forms | rule (a) has two branches | One test per branch (AC-126) |
 | The AC-119 helper changes | The SPEC_ARCHIVE_GATES self-test could regress | AC-129 runs the helper on both kinds of folder; the existing AC-119 tests stay |
@@ -190,9 +193,9 @@ self-test added.
 |---|---|
 | Q-29 | **Answered 2026-11-05:** E8 is the no-weakening criterion (DEFINE D-86); G-41, AC-124 and the template rows updated |
 | Q-30 | Confirmation of the retrospective recommendations (DEFINE D-85, D-87, D-88) |
-| Q-31 | Process for retrospective Step 3, whose relaxations are not eligible for the CHANGE track under D-86 (DEFINE Q-31) |
+| Q-31 | **Answered 2026-11-05:** relaxing is eligible with the reinforced gate (DEFINE D-90); Step 3 uses the CHANGE track; G-45, AC-131 and the template updated |
 
-Q-30 changes only the criteria text or the folder form; Q-31 concerns Step 3, not this build.
+Q-30 changes only the criteria text or the folder form.
 
 ---
 
@@ -219,3 +222,4 @@ Q-30 changes only the criteria text or the folder form; Q-31 concerns Step 3, no
 |---|---|---|---|
 | 2026-11-05 | First version, Ready for Build | DEFINE_SMALL_CHANGE_TRACK.md Ready for Design | Build in PR 2 after this PR is approved |
 | 2026-11-05 | Q-29 answered (DEFINE D-86): G-41 reads the evidence cell and requires it; AC-124 test gains the empty-evidence case; the template carries the criterion texts; E8 risk row; open items Q-29 closed and Q-31 added | User answer of 2026-11-05 on PR #43 | Status stays Ready for Build |
+| 2026-11-05 | Q-31 answered (DEFINE D-90): `check_change` checks the `## Rule Changes` gate when E8 is `Relaxing` (G-45); G-41 accepts `Relaxing` for E8; AC-131 test; template and risks updated; F-03 in the delivery plan | User answer of 2026-11-05 on PR #43 | Status stays Ready for Build |
