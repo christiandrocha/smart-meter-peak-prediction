@@ -5,6 +5,30 @@ Entries are added by `/ship`.
 
 ## [Unreleased]
 
+### Added
+
+- `scripts/check_specs.py` checks the shipped specs in `.claude/sdd/archive/` (SPEC_ARCHIVE_GATES):
+  the existing rules per archive folder; every archived document in its phase's final status and
+  exactly one `SHIPPED_YYYY-MM-DD.md` per folder; SHIPPED documents as a checked phase (file-name
+  date equal to `Shipped on`, all template sections with a non-empty Self-Review, and from the
+  2026-11-05 cut-off also `Pull Requests and Branches` and no unfilled placeholders); a warning for
+  each archived finding marked `Open`; and an error for an unprefixed citation of another spec's
+  finding ID.
+- `.claude/sdd/citation_allowlist.json`: the 17 existing unprefixed citations (12 entries), frozen
+  with exact counts; a different count or a stale entry is an error.
+- Unit tests for AC-107 to AC-119 in `tests/test_check_specs.py`, including a self-test that checks
+  the final-status documents of `features/` and `reports/` as if they were archived.
+
+### Changed
+
+- The SHIPPED template ends with `## Self-Review`.
+- `.claude/sdd/README.md` describes the archive checks.
+
+### Unchanged
+
+- No production file (`src/`, `resources/`, `notebooks/`, `databricks.yml`) and no archived document
+  of an earlier feature changed; the package version stays 0.4.1.
+
 ## [0.4.1] - 2026-11-04
 
 ### Added
