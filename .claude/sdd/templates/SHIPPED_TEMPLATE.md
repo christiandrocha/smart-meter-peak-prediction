@@ -80,3 +80,12 @@ what was said (`docs/conventions/git.md`).
 - DEFINE_{FEATURE_NAME}.md
 - DESIGN_{FEATURE_NAME}.md
 - BUILD_REPORT_{FEATURE_NAME}.md
+
+---
+
+## Self-Review
+
+- **Weak points:** {...}
+- **Risks:** {...}
+- **What I would do differently:** {...}
+- **Next improvement:** {Concrete action}

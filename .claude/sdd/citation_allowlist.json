@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "file": ".claude/sdd/archive/AC97_TIMING_EVIDENCE/DEFINE_AC97_TIMING_EVIDENCE.md",
+      "id": "F-10",
+      "count": 1
+    },
+    {
+      "file": ".claude/sdd/archive/AC97_TIMING_EVIDENCE/SHIPPED_2026-11-04.md",
+      "id": "F-10",
+      "count": 1
+    },
+    {
+      "file": ".claude/sdd/archive/INGESTION_GUARD/DEFINE_INGESTION_GUARD.md",
+      "id": "I-14",
+      "count": 1
+    },
+    {
+      "file": ".claude/sdd/archive/INGESTION_GUARD/DESIGN_INGESTION_GUARD.md",
+      "id": "I-14",
+      "count": 1
+    },
+    {
+      "file": ".claude/sdd/archive/INGESTION_GUARD/SHIPPED_2026-11-04.md",
+      "id": "F-13",
+      "count": 1
+    },
+    {
+      "file": ".claude/sdd/archive/INGESTION_GUARD/SHIPPED_2026-11-04.md",
+      "id": "F-15",
+      "count": 1
+    },
+    {
+      "file": ".claude/sdd/archive/PEAK_MODEL/DESIGN_PEAK_MODEL.md",
+      "id": "I-14",
+      "count": 2
+    },
+    {
+      "file": ".claude/sdd/archive/PEAK_MODEL_CONCURRENCY/DEFINE_PEAK_MODEL_CONCURRENCY.md",
+      "id": "F-14",
+      "count": 5
+    },
+    {
+      "file": ".claude/sdd/archive/PEAK_MODEL_CONCURRENCY/DESIGN_PEAK_MODEL_CONCURRENCY.md",
+      "id": "F-14",
+      "count": 1
+    },
+    {
+      "file": ".claude/sdd/archive/PEAK_MODEL_CONCURRENCY/DESIGN_PEAK_MODEL_CONCURRENCY.md",
+      "id": "I-14",
+      "count": 1
+    },
+    {
+      "file": ".claude/sdd/archive/PEAK_MODEL_CONCURRENCY/SHIPPED_2026-10-22.md",
+      "id": "F-13",
+      "count": 1
+    },
+    {
+      "file": ".claude/sdd/archive/PEAK_MODEL_CONCURRENCY/SHIPPED_2026-10-22.md",
+      "id": "F-15",
+      "count": 1
+    }
+  ]
+}
