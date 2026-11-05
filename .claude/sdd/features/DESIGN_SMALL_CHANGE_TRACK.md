@@ -60,7 +60,7 @@ run(root)
 | `check_folder` (extended) | A folder whose phase documents include a CHANGE document must contain only that file and no SHIPPED; otherwise the existing rule (a) | - | FR-79 |
 | `check_final_status` | Unchanged code; reads the literal map, so an archived CHANGE document must be `Complete` | - | FR-76, FR-79 |
 | `check_archive` (extended) | Calls `check_change` and `open_findings` for archived CHANGE documents | - | FR-80 |
-| `CHANGE_TEMPLATE.md` | The ten sections, the Eligibility rows E1 to E8 with empty results, and the `Evidence commit` line | Markdown | FR-81 |
+| `CHANGE_TEMPLATE.md` | The ten sections; the Eligibility rows E1 to E8, each with the criterion text of the DEFINE (E8 with the no-weakening scope and the instruction to cite the rules diff) and empty result and evidence cells; and the `Evidence commit` line | Markdown | FR-81, DEFINE D-86 |
 | AC-119 helper (`tests/test_check_specs.py:618`) | Final-status selection through the literal map; for a CHANGE document, a folder with that document and no generated SHIPPED | pytest helper | AC-129 |
 
 ---
@@ -74,7 +74,7 @@ No table, dataset or new data file.
 | Rule | Where | Action | Source |
 |---|---|---|---|
 | G-40 A name is recognized when its stem starts with `<PHASE>_` for a phase in `PHASES`, longest phase first (as `scripts/check_specs.py:149` today); only `.md` files directly in the folder count | `load_docs` | error on an unrecognized `.md` | FR-74 |
-| G-41 An Eligibility row is `^\|\s*(E[1-8])\s*\|\s*([^|]*?)\s*\|` inside `## Eligibility`; the result cell, without `*`, `_` and backticks, must equal `Yes` | `check_change` | error per missing, duplicate or non-`Yes` criterion | FR-77 |
+| G-41 An Eligibility row is `^\|\s*(E[1-8])\s*\|\s*([^|]*?)\s*\|\s*([^|]*?)\s*\|` inside `## Eligibility` (criterion, result, evidence); the result cell, without `*`, `_` and backticks, must equal `Yes`, and the evidence cell must not be empty | `check_change` | error per missing, duplicate or non-`Yes` criterion, or empty evidence | FR-77, DEFINE D-86 |
 | G-42 The evidence commit is `Evidence commit` followed, on the same line, by a word of 7 to 40 characters in `[0-9a-f]` | `check_change` | error when absent in a `Complete` document | FR-78, D-89 |
 | G-43 AC rows of Acceptance Criteria, Test Strategy and Evidence are read with the existing `AC_ROW` pattern (`scripts/check_specs.py`, `ac_ids`) | `check_change` | error per missing AC | FR-78 |
 | G-44 Fenced code is ignored as in every other rule (`Doc.body`) | all | ignore | NFR-39 |
@@ -139,7 +139,7 @@ Every acceptance criterion from DEFINE appears here. All tests are unit tests in
 | AC-121 | Unit (parametrized) | `::test_ac121_unrecognized_names_fail` | `NOTES.md` in `features/` and `draft.md` in `reports/` each give one error naming the file; `.gitkeep` and valid names give none |
 | AC-122 | Unit (parametrized) | `::test_ac122_change_document_rules` | Valid `Draft`, `Ready for Build` and `Complete` documents pass; missing section, placeholder past `Draft` and empty Self-Review give one error each |
 | AC-123 | Unit | `::test_ac123_final_status_is_explicit` | `FINAL_STATUS` equals the FR-76 map, and `Ready for Build` is not the CHANGE final status |
-| AC-124 | Unit (parametrized) | `::test_ac124_eligibility_rows` | All `Yes` passes; missing E8, duplicate E3 and E5 `No` give one error each naming the criterion |
+| AC-124 | Unit (parametrized) | `::test_ac124_eligibility_rows` | All `Yes` with evidence passes; missing E8, duplicate E3, E5 `No` and an empty E8 evidence cell give one error each naming the criterion |
 | AC-125 | Unit (parametrized) | `::test_ac125_change_traceability_and_evidence_commit` | AC missing from Test Strategy, missing from Evidence, a `Fail` row and no `Evidence commit` each give one error; the valid `Complete` document passes |
 | AC-126 | Unit (parametrized) | `::test_ac126_archived_change_folders` | A folder with one `Complete` CHANGE document passes without SHIPPED; `Ready for Build`, an extra SHIPPED and an extra DEFINE each give one rule (a) error |
 | AC-127 | Unit | `::test_ac127_rules_b_and_c_read_change_documents` | One `Open` warning; one unprefixed foreign ID error; own IDs pass |
@@ -177,6 +177,7 @@ self-test added.
 | Risk or trade-off | Impact | Mitigation |
 |---|---|---|
 | E1 to E8 are self-declared | An ineligible change can be filed as a CHANGE document | The `git diff` output is pasted as evidence and reviewed; F-01 automates it |
+| E8 needs judgement on a rules diff | A weakening can be declared as a wording fix | E8 evidence must cite the diff; in doubt not eligible (DEFINE D-86); review reads the diff |
 | A stray note in `features/` now fails CI | Friction for drafts kept there | Intended (FR-74); notes go in `notes/`, which git ignores (golden rule 7) |
 | Two archive folder forms | rule (a) has two branches | One test per branch (AC-126) |
 | The AC-119 helper changes | The SPEC_ARCHIVE_GATES self-test could regress | AC-129 runs the helper on both kinds of folder; the existing AC-119 tests stay |
@@ -187,10 +188,11 @@ self-test added.
 
 | ID | Item |
 |---|---|
-| Q-29 | Meaning of E8 (DEFINE D-86) |
+| Q-29 | **Answered 2026-11-05:** E8 is the no-weakening criterion (DEFINE D-86); G-41, AC-124 and the template rows updated |
 | Q-30 | Confirmation of the retrospective recommendations (DEFINE D-85, D-87, D-88) |
+| Q-31 | Process for retrospective Step 3, whose relaxations are not eligible for the CHANGE track under D-86 (DEFINE Q-31) |
 
-Either answer changes only the criteria text or the folder form, not the components.
+Q-30 changes only the criteria text or the folder form; Q-31 concerns Step 3, not this build.
 
 ---
 
@@ -200,7 +202,7 @@ Either answer changes only the criteria text or the folder form, not the compone
   duplicates information that `PHASES` also holds; AC-123 pins it.
 - **Risks:** `load_docs` signature changes; every caller in the tests must still work (the tests
   call `check_specs.run`, and the AC-119 helper calls `load_docs` directly).
-- **What I would do differently:** Settle Q-29 and Q-30 before the DESIGN.
+- **What I would do differently:** Settle Q-29 and Q-30 before the DESIGN, and prototype every new rule before the first commit (done afterwards, DEFINE A-48).
 - **Next improvement:** Use the track for retrospective Step 2 as its first real case.
 
 ---
@@ -216,3 +218,4 @@ Either answer changes only the criteria text or the folder form, not the compone
 | Date | Change | Reason | Impact |
 |---|---|---|---|
 | 2026-11-05 | First version, Ready for Build | DEFINE_SMALL_CHANGE_TRACK.md Ready for Design | Build in PR 2 after this PR is approved |
+| 2026-11-05 | Q-29 answered (DEFINE D-86): G-41 reads the evidence cell and requires it; AC-124 test gains the empty-evidence case; the template carries the criterion texts; E8 risk row; open items Q-29 closed and Q-31 added | User answer of 2026-11-05 on PR #43 | Status stays Ready for Build |
