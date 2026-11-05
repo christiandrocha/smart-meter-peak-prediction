@@ -12,8 +12,19 @@ Also checks docs/adr/NNNN-*.md (file name, status, required sections, index entr
 references) and docs/contracts/*.yaml (required keys per kind, key columns present in the
 schema, valid quality actions). Files whose name starts with "_" or "0000-" are templates.
 
-Exit code 0 when there are no errors (warnings do not fail). Archived documents and templates
-are not checked.
+Archived documents (.claude/sdd/archive/<FEATURE>/, SPEC_ARCHIVE_GATES) are checked too:
+  - the rules above, with traceability grouped per archive folder
+  - rule (a): each archived phase document has its phase's final status, each folder has exactly
+    one SHIPPED_YYYY-MM-DD.md with status Shipped, and no other .md file name
+  - SHIPPED documents: file-name date, a matching "Shipped on" row, the SHIPPED sections including
+    a non-empty Self-Review; from the cut-off date 2026-11-05 also "Pull Requests and Branches"
+    and no unfilled placeholders (dates come from the file name, never from file times)
+  - rule (b): a warning for each finding whose Follow-up cell starts with "Open"
+  - rule (c): a citation I-NN or F-NN of an ID that the citing spec does not define must carry
+    the spec's folder name before it; existing cases are frozen with exact counts in
+    .claude/sdd/citation_allowlist.json, and a stale or wrong entry is an error
+
+Exit code 0 when there are no errors (warnings do not fail). Templates are not checked.
 
 Usage: python scripts/check_specs.py [--root PATH]
 """
@@ -21,9 +32,12 @@ Usage: python scripts/check_specs.py [--root PATH]
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
+from collections import Counter
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 
 PHASES = {
@@ -90,6 +104,7 @@ class Doc:
     phase: str
     feature: str
     text: str
+    folder: str | None = None  # archive folder name; None for features/ and reports/
 
     @property
     def body(self) -> str:
@@ -116,14 +131,18 @@ class Report:
     warnings: list[str] = field(default_factory=list)
     checked: int = 0
 
-    def error(self, where: Doc | Path, msg: str) -> None:
+    def error(self, where: Doc | Path | str, msg: str) -> None:
         self.errors.append(f"{_name(where)}: {msg}")
 
-    def warn(self, where: Doc | Path, msg: str) -> None:
+    def warn(self, where: Doc | Path | str, msg: str) -> None:
         self.warnings.append(f"{_name(where)}: {msg}")
 
 
-def _name(where: Doc | Path) -> str:
+def _name(where: Doc | Path | str) -> str:
+    if isinstance(where, str):
+        return where
+    if isinstance(where, Doc) and where.folder:
+        return f"{where.folder}/{where.path.name}"  # SHIPPED names repeat across folders
     return (where.path if isinstance(where, Doc) else where).name
 
 
@@ -358,6 +377,220 @@ def check_contracts(root: Path, report: Report) -> int:
     return len(files)
 
 
+# ------------------------------------------------------------------------- archive
+ARCHIVE_REL = Path(".claude") / "sdd" / "archive"
+ALLOWLIST_REL = Path(".claude") / "sdd" / "citation_allowlist.json"
+SHIPPED_SECTIONS = [
+    "Metadata",
+    "What Shipped",
+    "Acceptance Criteria Final Status",
+    "Lessons Learned",
+    "Decisions to Carry Forward",
+    "Template Feedback",
+    "Follow-ups",
+    "Pull Requests and Branches",
+    "Archived Documents",
+    "Self-Review",
+]
+# From this file-name date on, SHIPPED documents also need these sections and no placeholders
+# (DESIGN OD-30, DEFINE D-73 and D-81).
+SHIPPED_CUTOFF = date(2026, 11, 5)
+SHIPPED_CUTOFF_SECTIONS = {"Pull Requests and Branches"}
+SHIPPED_NAME = re.compile(r"^SHIPPED_(\d{4}-\d{2}-\d{2})\.md$")
+SHIPPED_ON = re.compile(r"^\|\s*\*\*Shipped on\*\*\s*\|\s*([^|]+?)\s*\|", re.MULTILINE)
+FINAL_STATUS = {
+    phase: next(status for status, past_draft in spec["statuses"].items() if past_draft)
+    for phase, spec in PHASES.items()
+}
+FINDING_ROW = re.compile(r"^\|\s*((?:I|F)-\d+)\s*\|(.*)$", re.MULTILINE)  # G-35 definition
+CITATION = re.compile(r"(?<![\w-])((?:I|F)-\d+)(?![\w-])")  # G-35 citation
+EMPHASIS = re.compile(r"[*_`]")
+PREFIX_WINDOW = 80  # characters before a citation searched for its spec prefix
+
+
+@dataclass
+class Folder:
+    name: str
+    phase_docs: list[Doc]
+    shipped: list[Doc]
+    unknown: list[str]
+
+
+def load_archive(root: Path) -> list[Folder]:
+    """One entry per folder directly under the archive; files outside folders are ignored."""
+    base = root / ARCHIVE_REL
+    if not base.is_dir():
+        return []
+    folders = []
+    for directory in sorted(p for p in base.iterdir() if p.is_dir()):
+        name = directory.name
+        phase_docs, shipped, unknown = [], [], []
+        for path in sorted(p for p in directory.iterdir() if p.is_file() and p.suffix == ".md"):
+            text = path.read_text(encoding="utf-8")  # universal newlines: CRLF reads as LF
+            phase = next((ph for ph in PHASES if path.stem == f"{ph}_{name}"), None)
+            if phase:
+                phase_docs.append(Doc(path, phase, name, text, folder=name))
+            elif path.name.startswith("SHIPPED_"):
+                shipped.append(Doc(path, "SHIPPED", name, text, folder=name))
+            else:
+                unknown.append(path.name)
+        folders.append(Folder(name, phase_docs, shipped, unknown))
+    return folders
+
+
+def check_final_status(doc: Doc, report: Report) -> None:
+    final = FINAL_STATUS[doc.phase]
+    if doc.status is not None and doc.status != final:
+        report.error(doc, f"archived {doc.phase} has status '{doc.status}', not '{final}' (rule a)")
+
+
+def check_folder(folder: Folder, report: Report) -> None:
+    where = f"archive/{folder.name}"
+    if len(folder.shipped) != 1:
+        found = len(folder.shipped)
+        report.error(where, f"{found} SHIPPED document(s), expected exactly one (rule a)")
+    for name in folder.unknown:
+        msg = (
+            f"unexpected file name '{name}': expected <PHASE>_{folder.name}.md or SHIPPED_ (rule a)"
+        )
+        report.error(where, msg)
+
+
+def check_shipped(doc: Doc, report: Report) -> None:
+    m = SHIPPED_NAME.match(doc.path.name)
+    if not m:
+        report.error(doc, "SHIPPED file name must be SHIPPED_YYYY-MM-DD.md")
+        return
+    try:
+        shipped_on = date.fromisoformat(m.group(1))  # G-38: the file name, never file times
+    except ValueError:
+        report.error(doc, f"SHIPPED file name has an invalid date '{m.group(1)}'")
+        return
+    if doc.status != "Shipped":
+        report.error(doc, f"SHIPPED status '{doc.status}', expected 'Shipped' (rule a)")
+    row = SHIPPED_ON.search(doc.body)
+    if not row or row.group(1).strip() != m.group(1):
+        found = row.group(1).strip() if row else "missing"
+        report.error(doc, f"'Shipped on' is {found}, expected {m.group(1)} from the file name")
+    after_cutoff = shipped_on >= SHIPPED_CUTOFF
+    headings = {h.strip() for h in HEADING.findall(doc.body)}
+    for section in SHIPPED_SECTIONS:
+        if section in SHIPPED_CUTOFF_SECTIONS and not after_cutoff:
+            continue
+        if section not in headings:
+            report.error(doc, f"missing section '## {section}'")
+    if "Self-Review" in headings and not doc.section("Self-Review").strip():
+        report.error(doc, "Self-Review is empty")
+    if after_cutoff:
+        leftovers = sorted(set(PLACEHOLDER.findall(doc.body)))
+        if leftovers:
+            shown = ", ".join(leftovers[:5]) + (" ..." if len(leftovers) > 5 else "")
+            report.error(doc, f"unfilled placeholders remain: {shown}")
+
+
+def open_findings(doc: Doc, report: Report) -> None:
+    """Rule (b): warn for each finding whose Follow-up cell starts with the word Open."""
+    for m in FINDING_ROW.finditer(doc.section("Issues & Follow-ups")):
+        cells = [c.strip() for c in m.group(2).rstrip().rstrip("|").split("|")]
+        severity = cells[1] if len(cells) > 1 else ""
+        follow_up = EMPHASIS.sub("", cells[2]).strip() if len(cells) > 2 else ""
+        if re.match(r"Open\b", follow_up):
+            report.warn(doc, f"open finding {doc.folder} {m.group(1)} ({severity}) (rule b)")
+
+
+def _blank_fences(text: str) -> str:
+    """G-34: fenced code becomes blank lines, so positions and line breaks are kept."""
+    return FENCE.sub(lambda m: "\n" * m.group(0).count("\n"), text)
+
+
+def citation_violations(root: Path, folders: list[Folder]) -> Counter:
+    """Rule (c): unprefixed citations of IDs the citing folder does not define, per (file, ID)."""
+    names = sorted((f.name for f in folders), key=len, reverse=True)
+    if not names:
+        return Counter()
+    # G-37: the folder name, then spaces or tabs with at most one line break, then the ID.
+    prefix = re.compile(
+        r"\b(?:" + "|".join(map(re.escape, names)) + r")(?:[ \t]+|[ \t]*\n[ \t]*)\Z"
+    )
+    found: Counter = Counter()
+    for folder in folders:
+        texts = {doc.path: _blank_fences(doc.text) for doc in folder.phase_docs + folder.shipped}
+        defined = {m.group(1) for text in texts.values() for m in FINDING_ROW.finditer(text)}
+        for path, text in texts.items():
+            definitions = {m.start(1) for m in FINDING_ROW.finditer(text)}
+            rel = path.relative_to(root).as_posix()  # G-39
+            for m in CITATION.finditer(text):
+                cited = m.group(1)
+                if m.start(1) in definitions or cited in defined:
+                    continue
+                if prefix.search(text[max(0, m.start() - PREFIX_WINDOW) : m.start()]):
+                    continue
+                found[(rel, cited)] += 1
+    return found
+
+
+def load_allowlist(root: Path, report: Report) -> dict[tuple[str, str], int] | None:
+    """The frozen rule (c) cases; None when the file is absent."""
+    path = root / ALLOWLIST_REL
+    if not path.exists():
+        return None
+    where = ALLOWLIST_REL.as_posix()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        entries = data["entries"]
+        if data.get("version") != 1 or not isinstance(entries, list):
+            raise ValueError("expected version 1 and a list of entries")
+        allowed: dict[tuple[str, str], int] = {}
+        for entry in entries:
+            key = (str(entry["file"]), str(entry["id"]))
+            count = entry["count"]
+            if not isinstance(count, int) or isinstance(count, bool) or count < 1:
+                raise ValueError(f"count of {key[0]} {key[1]} must be a positive integer")
+            if key in allowed:
+                raise ValueError(f"duplicate entry {key[0]} {key[1]}")
+            allowed[key] = count
+    except (ValueError, KeyError, TypeError) as exc:  # json.JSONDecodeError is a ValueError
+        report.error(where, f"malformed allowlist: {exc}")
+        return {}
+    return allowed
+
+
+def check_citations(root: Path, found: Counter, report: Report) -> None:
+    allowed = load_allowlist(root, report)
+    where = ALLOWLIST_REL.as_posix()
+    if allowed is None:
+        if found:
+            report.error(where, f"missing, but rule (c) found {sum(found.values())} citation(s)")
+        allowed = {}
+    for (rel, cited), count in sorted(found.items()):
+        expected = allowed.get((rel, cited))
+        if expected is None:
+            msg = f"{cited} cited {count}x without its spec prefix and not in {where} (rule c)"
+            report.error(rel, msg)
+        elif expected != count:
+            msg = f"entry {rel} {cited} has count {expected}, found {count} (rule c)"
+            report.error(where, msg)
+    for rel, cited in sorted(set(allowed) - set(found)):
+        report.error(where, f"stale entry {rel} {cited}: no such citation found (rule c)")
+
+
+def check_archive(root: Path, report: Report) -> int:
+    folders = load_archive(root)
+    for folder in folders:
+        for doc in folder.phase_docs:
+            check_doc(doc, report)
+            check_final_status(doc, report)
+        for doc in folder.shipped:
+            check_shipped(doc, report)
+        check_folder(folder, report)
+        check_traceability(folder.phase_docs, report)  # FR-65: one folder at a time
+        for doc in folder.phase_docs:
+            if doc.phase == "BUILD_REPORT":
+                open_findings(doc, report)
+    check_citations(root, citation_violations(root, folders), report)
+    return sum(len(f.phase_docs) + len(f.shipped) for f in folders)
+
+
 def run(root: Path) -> Report:
     report = Report()
     docs = load_docs(root)
@@ -365,6 +598,7 @@ def run(root: Path) -> Report:
         check_doc(doc, report)
     check_traceability(docs, report)
     report.checked = len(docs) + check_adrs(root, report) + check_contracts(root, report)
+    report.checked += check_archive(root, report)
     return report
 
 
