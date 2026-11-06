@@ -79,10 +79,10 @@ Evidence commit: 4668af3
 
 | Item | Design said | Build did | Why | DESIGN updated via /iterate? |
 |---|---|---|---|---|
-| G-41 regex | Three captured groups | Four columns: ID, criterion, result, evidence; result is group 2, evidence group 3 | The template and the DEFINE table have a criterion column | No (mechanical; the regex text of G-41 is stale) |
+| G-41 regex | Three captured groups | Four columns: ID, criterion, result, evidence; result is group 2, evidence group 3 | The template and the DEFINE table have a criterion column | DESIGN updated via /iterate 2026-11-06 (G-41) |
 | Template Rule Changes | Optional section | Fenced example inside Eligibility, so the template headings equal the ten sections (AC-128) | A real `## Rule Changes` heading would break the heading equality | No |
-| `check_change` | AC-125 as listed | Also errors on no AC rows, tests only the result cell for `Fail`, and requires a digit in the SHA | Code-review findings | No |
-| Evidence results | FR-78 forbids `Fail` in a Complete CHANGE document | Also errors on `Not run` and on `Deferred` without a reason; `Deferred: <reason>` passes and is listed as a warning | SMALL_CHANGE_TRACK I-03, user decision 2026-11-06 | No (recorded for the `/iterate` after merge) |
+| `check_change` | AC-125 as listed | Also errors on no AC rows, tests only the result cell for `Fail`, and requires a digit in the SHA | Code-review findings | DESIGN updated via /iterate 2026-11-06 (G-42, G-43) |
+| Evidence results | FR-78 forbids `Fail` in a Complete CHANGE document | Also errors on `Not run` and on `Deferred` without a reason; `Deferred: <reason>` passes and is listed as a warning | SMALL_CHANGE_TRACK I-03, user decision 2026-11-06 | DESIGN updated via /iterate 2026-11-06 (G-43) |
 | `load_docs` | `load_docs(root, report)` | `report` is optional | Direct callers in tests | No |
 
 ---
@@ -95,11 +95,11 @@ Evidence commit: 4668af3
 | I-02 | Code review (Medium): a CHANGE document with no AC rows passed | Medium | Fixed in 0e56f72 with a test |
 | I-03 | Code review (Medium): `Not run` in Evidence passes a Complete document (FR-78 forbids only `Fail`) | Medium | Fixed in 4668af3 with tests (user decision 2026-11-06: `Not run` blocks `Complete`; `Deferred: <reason>` passes and is listed) |
 | I-04 | Code review (Low): `Fail` matched any Evidence cell; SHA matched hex words | Low | Fixed in 0e56f72 with tests |
-| I-05 | Code review (Low): eligibility regex `\s*` can cross lines on a malformed 3-column row | Low | Open |
-| I-06 | Code review (Low): change folder does not check the document name or that there is exactly one | Low | Open |
-| I-07 | Code review (Low): loose substring asserts in AC-128/AC-130; AC-126 selects errors by substring | Low | Open |
+| I-05 | Code review (Low): eligibility regex `\s*` can cross lines on a malformed 3-column row | Low | Not fixed: the cell classes exclude the newline, so a cell stays on one line, but the `\s*` before each closing pipe can still consume a newline, so a malformed three-column row still reads into the next row; this iteration changed documents only and the cell has no test; tracked as SMALL_CHANGE_TRACK F-05 in SHIPPED_2026-11-06.md |
+| I-06 | Code review (Low): change folder does not check the document name or that there is exactly one | Low | Resolved: `load_archive` takes a file as the CHANGE document only when its stem equals `CHANGE_<folder>`, so at most one file can match, and `check_folder` reports every other file in a change folder (SHIPPED, other phase, misnamed) as a rule (a) error; the AC-126 test covers the SHIPPED and DEFINE cases, the misnamed-file case has no dedicated test (SMALL_CHANGE_TRACK F-06 narrowed to that test gap in SHIPPED_2026-11-06.md) |
+| I-07 | Code review (Low): loose substring asserts in AC-128/AC-130; AC-126 selects errors by substring | Low | Not fixed: the asserts are unchanged in `tests/test_check_specs.py` (`needle in text` in `test_ac128_change_template_sections_and_criteria` and `test_ac130_docs_describe_the_change_track`, error selection by `f in e.split(":")[0]` in `test_ac126_archived_change_folders`) and this iteration changes documents only; tracked as SMALL_CHANGE_TRACK F-07 in SHIPPED_2026-11-06.md |
 | I-08 | Code review (Low): `docs/conventions/naming.md:42` example says `feat/...` | Low | Fixed in 4668af3 (`build/` and `change/` examples) |
-| I-09 | Code review (Low): G-41 text of the DESIGN is stale | Low | Open: `/iterate` on the DESIGN after merge, together with the extra checks of I-02, I-04 and I-03 |
+| I-09 | Code review (Low): G-41 text of the DESIGN is stale | Low | Fixed by /iterate 2026-11-06 (DESIGN G-41), together with the extra checks of I-02, I-04 and I-03 (DESIGN G-42, G-43) |
 
 Code review (`code-reviewer`): 0 High, 3 Medium, 8 Low. Mediums I-01 and I-02 and the Lows in I-04
 were fixed; I-03 and I-08 were fixed afterwards on the user's decision; the rest are recorded
@@ -110,16 +110,25 @@ above with their disposition.
 ## Self-Review
 
 - **Weak points:** E1 to E8 are only checked as declared (DESIGN OD-40). The Rule Changes gate
-  checks presence of parts, not their truth. I-05 to I-07 are open gaps in the checker.
+  checks presence of parts, not their truth. I-05 (row regex) and I-07 (loose asserts) remain
+  unfixed gaps, tracked as SMALL_CHANGE_TRACK F-05 and F-07.
 - **Risks:** The unrecognized-name error fails any stray note in `features/`. The tests for
   AC-129 exercise a helper that lives in the test file.
 - **What I would do differently:** Prototype the template against `check_change` before writing
   the DESIGN regex; the fenced-example trap was found only in review.
 - **Next improvement:** Ship with follow-ups F-01 (history checks) and F-02 (template port), and
-  close I-05 to I-07 later; `/iterate` the DESIGN for I-09 after merge.
+  close I-05 and I-07 later; I-09 was closed by `/iterate` on 2026-11-06.
 
 ---
 
 ## Next Step
 
 `/ship SMALL_CHANGE_TRACK`
+
+---
+
+## Change Log
+
+| Date | Change | Reason | Impact |
+|---|---|---|---|
+| 2026-11-06 | Deviations table: DESIGN-updated column set for G-41, the extra `check_change` checks and the `Not run` / `Deferred` rule; findings I-05 to I-07 closed with a disposition (I-06 resolved, I-05 and I-07 not fixed); I-09 fixed | `/iterate` on the DESIGN, user request 2026-11-06, docs only | Status stays Complete. SHIPPED Follow-ups SMALL_CHANGE_TRACK F-05, SMALL_CHANGE_TRACK F-06, SMALL_CHANGE_TRACK F-07 and SMALL_CHANGE_TRACK F-09 updated; no code changed |
