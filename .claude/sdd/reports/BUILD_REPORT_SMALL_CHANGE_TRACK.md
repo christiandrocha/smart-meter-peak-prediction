@@ -21,8 +21,9 @@ Allowed status values: `In Progress`, `Blocked`, `Complete`.
 every unrecognized `.md` name in `features/` and `reports/`, `check_change` (Eligibility, Rule
 Changes gate, AC traceability, evidence commit), change folders in the archive, and rule (b) on
 CHANGE documents. The CHANGE template, README, `git.md` and `CLAUDE.md` describe the track. The
-code was last changed on commit 0e56f72 (branch `build/small-change-track`); the report commit
-that follows touches only this file.
+code was last changed on commit 4668af3 (branch `build/small-change-track`), which closes
+SMALL_CHANGE_TRACK I-03 and I-08 on the user's decision of 2026-11-06; the report commit that
+follows touches only this file.
 
 ---
 
@@ -61,14 +62,14 @@ that follows touches only this file.
 
 ## Verification Log
 
-Evidence commit: 0e56f72
+Evidence commit: 4668af3
 
 | Step | Command | Result |
 |---|---|---|
 | Lint | `ruff check . && ruff format --check .` | All checks passed; 125 files formatted |
-| Tests (spec checker) | `pytest tests/test_check_specs.py` | 105 passed |
-| Tests (full) | `pytest` | 643 passed, 90 deselected, 1 xfailed (run before the review-fix commit, in which only `check_specs.py` and its tests changed) |
-| Spec check | `python scripts/check_specs.py` on 0e56f72 | 55 document(s) checked, 0 error(s), 2 warning(s): INGESTION_GUARD I-11, INGESTION_GUARD I-12 |
+| Tests (spec checker) | `pytest tests/test_check_specs.py` on 4668af3 | 115 passed |
+| Tests (full) | `pytest` on 4668af3 | 657 passed, 90 deselected, 1 xfailed |
+| Spec check | `python scripts/check_specs.py` on 4668af3 | 56 document(s) checked, 0 error(s), 2 warning(s): INGESTION_GUARD I-11, INGESTION_GUARD I-12 |
 | Self-test | AC-119 on the real repository | no document of `features/` or `reports/` is final yet, so it adds none (the AC-119 test skips by its own existing rule); AC-129 covers CHANGE |
 | Hooks | `pre-commit run --all-files` | all hooks Passed (9 of 9) |
 
@@ -81,6 +82,7 @@ Evidence commit: 0e56f72
 | G-41 regex | Three captured groups | Four columns: ID, criterion, result, evidence; result is group 2, evidence group 3 | The template and the DEFINE table have a criterion column | No (mechanical; the regex text of G-41 is stale) |
 | Template Rule Changes | Optional section | Fenced example inside Eligibility, so the template headings equal the ten sections (AC-128) | A real `## Rule Changes` heading would break the heading equality | No |
 | `check_change` | AC-125 as listed | Also errors on no AC rows, tests only the result cell for `Fail`, and requires a digit in the SHA | Code-review findings | No |
+| Evidence results | FR-78 forbids `Fail` in a Complete CHANGE document | Also errors on `Not run` and on `Deferred` without a reason; `Deferred: <reason>` passes and is listed as a warning | SMALL_CHANGE_TRACK I-03, user decision 2026-11-06 | No (recorded for the `/iterate` after merge) |
 | `load_docs` | `load_docs(root, report)` | `report` is optional | Direct callers in tests | No |
 
 ---
@@ -91,29 +93,30 @@ Evidence commit: 0e56f72
 |---|---|---|---|
 | I-01 | Code review (Medium): a fenced `## Rule Changes` example hid the real section; headings matched by prefix | Medium | Fixed in 0e56f72 with a test |
 | I-02 | Code review (Medium): a CHANGE document with no AC rows passed | Medium | Fixed in 0e56f72 with a test |
-| I-03 | Code review (Medium): `Not run` in Evidence passes a Complete document (FR-78 forbids only `Fail`) | Medium | Open: decide in the SHIPPED follow-ups whether `Not run` blocks `Complete` |
+| I-03 | Code review (Medium): `Not run` in Evidence passes a Complete document (FR-78 forbids only `Fail`) | Medium | Fixed in 4668af3 with tests (user decision 2026-11-06: `Not run` blocks `Complete`; `Deferred: <reason>` passes and is listed) |
 | I-04 | Code review (Low): `Fail` matched any Evidence cell; SHA matched hex words | Low | Fixed in 0e56f72 with tests |
 | I-05 | Code review (Low): eligibility regex `\s*` can cross lines on a malformed 3-column row | Low | Open |
 | I-06 | Code review (Low): change folder does not check the document name or that there is exactly one | Low | Open |
 | I-07 | Code review (Low): loose substring asserts in AC-128/AC-130; AC-126 selects errors by substring | Low | Open |
-| I-08 | Code review (Low): `docs/conventions/naming.md:42` example says `feat/...` | Low | Open: out of the manifest |
-| I-09 | Code review (Low): G-41 text of the DESIGN is stale | Low | Open: `/iterate` on the DESIGN |
+| I-08 | Code review (Low): `docs/conventions/naming.md:42` example says `feat/...` | Low | Fixed in 4668af3 (`build/` and `change/` examples) |
+| I-09 | Code review (Low): G-41 text of the DESIGN is stale | Low | Open: `/iterate` on the DESIGN after merge, together with the extra checks of I-02, I-04 and I-03 |
 
 Code review (`code-reviewer`): 0 High, 3 Medium, 8 Low. Mediums I-01 and I-02 and the Lows in I-04
-were fixed; the rest are recorded above with their disposition.
+were fixed; I-03 and I-08 were fixed afterwards on the user's decision; the rest are recorded
+above with their disposition.
 
 ---
 
 ## Self-Review
 
 - **Weak points:** E1 to E8 are only checked as declared (DESIGN OD-40). The Rule Changes gate
-  checks presence of parts, not their truth. I-03 to I-07 are open gaps in the checker.
+  checks presence of parts, not their truth. I-05 to I-07 are open gaps in the checker.
 - **Risks:** The unrecognized-name error fails any stray note in `features/`. The tests for
   AC-129 exercise a helper that lives in the test file.
 - **What I would do differently:** Prototype the template against `check_change` before writing
   the DESIGN regex; the fenced-example trap was found only in review.
 - **Next improvement:** Ship with follow-ups F-01 (history checks) and F-02 (template port), and
-  close I-03 to I-07 in that PR.
+  close I-05 to I-07 later; `/iterate` the DESIGN for I-09 after merge.
 
 ---
 
