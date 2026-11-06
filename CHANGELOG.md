@@ -5,6 +5,8 @@ Entries are added by `/ship`.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-06
+
 ### Added
 
 - CHANGE track for small tooling or process changes (SMALL_CHANGE_TRACK): one document
