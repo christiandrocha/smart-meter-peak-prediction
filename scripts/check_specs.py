@@ -7,6 +7,12 @@ Checks, per feature document in .claude/sdd/features and .claude/sdd/reports:
   - DEFINE in "Ready for Design" has a clarity score of at least 12/15
   - acceptance criteria trace from DEFINE to DESIGN (Test Strategy) and BUILD_REPORT (Evidence)
   - a Complete build report has no failing acceptance criterion
+  - every .md file directly in features/ and reports/ has a phase prefix (else an error)
+  - CHANGE documents (SMALL_CHANGE_TRACK): Eligibility rows E1 to E8, the Rule Changes gate when
+    E8 is Relaxing, and AC traceability Acceptance Criteria -> Test Strategy -> Evidence with an
+    "Evidence commit" SHA when Complete; in a Complete document an Evidence result "Not run" is
+    an error and "Deferred: <reason>" is accepted and listed as a warning ("Deferred" alone is an
+    error)
 
 Also checks docs/adr/NNNN-*.md (file name, status, required sections, index entry, superseded
 references) and docs/contracts/*.yaml (required keys per kind, key columns present in the
@@ -15,11 +21,13 @@ schema, valid quality actions). Files whose name starts with "_" or "0000-" are 
 Archived documents (.claude/sdd/archive/<FEATURE>/, SPEC_ARCHIVE_GATES) are checked too:
   - the rules above, with traceability grouped per archive folder
   - rule (a): each archived phase document has its phase's final status, each folder has exactly
-    one SHIPPED_YYYY-MM-DD.md with status Shipped, and no other .md file name
+    one SHIPPED_YYYY-MM-DD.md with status Shipped, and no other .md file name; a folder with a
+    CHANGE_<FOLDER>.md holds only that Complete document and no SHIPPED
   - SHIPPED documents: file-name date, a matching "Shipped on" row, the SHIPPED sections including
     a non-empty Self-Review; from the cut-off date 2026-11-05 also "Pull Requests and Branches"
     and no unfilled placeholders (dates come from the file name, never from file times)
-  - rule (b): a warning for each finding whose Follow-up cell starts with "Open"
+  - rule (b): a warning for each finding whose Follow-up cell starts with "Open" (BUILD_REPORT and
+    CHANGE documents)
   - rule (c): a citation I-NN or F-NN of an ID that the citing spec does not define must carry
     the spec's folder name before it; existing cases are frozen with exact counts in
     .claude/sdd/citation_allowlist.json, and a stale or wrong entry is an error
@@ -85,6 +93,21 @@ PHASES = {
         ],
         "statuses": {"In Progress": False, "Blocked": False, "Complete": True},
     },
+    "CHANGE": {
+        "sections": [
+            "Metadata",
+            "Problem Statement",
+            "Eligibility",
+            "Scope",
+            "Acceptance Criteria",
+            "Test Strategy",
+            "File Manifest",
+            "Evidence",
+            "Issues & Follow-ups",
+            "Self-Review",
+        ],
+        "statuses": {"Draft": False, "Ready for Build": True, "Complete": True},
+    },
 }
 MIN_CLARITY = 12
 
@@ -146,7 +169,8 @@ def _name(where: Doc | Path | str) -> str:
     return (where.path if isinstance(where, Doc) else where).name
 
 
-def load_docs(root: Path) -> list[Doc]:
+def load_docs(root: Path, report: Report | None = None) -> list[Doc]:
+    """Phase documents of features/ and reports/; G-40: other .md names are errors (FR-74)."""
     docs = []
     sdd = root / ".claude" / "sdd"
     for folder in ("features", "reports"):
@@ -157,6 +181,13 @@ def load_docs(root: Path) -> list[Doc]:
                     feature = path.stem[len(prefix) :]
                     docs.append(Doc(path, phase, feature, path.read_text(encoding="utf-8")))
                     break
+            else:
+                if report is not None:
+                    known = ", ".join(f"{ph}_" for ph in PHASES)
+                    report.error(
+                        path,
+                        f"unrecognized document name in {folder}/: expected a prefix of {known}",
+                    )
     return docs
 
 
@@ -198,6 +229,117 @@ def check_doc(doc: Doc, report: Report) -> None:
             report.error(doc, f"clarity score {m.group(1)}/15 below gate of {MIN_CLARITY}")
         if not ac_ids(doc.section("Acceptance Criteria")):
             report.error(doc, "no acceptance criteria rows (| AC-01 | ...)")
+
+
+# ----------------------------------------------------------------------- CHANGE track
+ELIGIBILITY_ROW = re.compile(
+    r"^\|\s*(E[1-8])\s*\|[^|\n]*\|\s*([^|\n]*?)\s*\|\s*([^|\n]*?)\s*\|", re.MULTILINE
+)  # G-41: ID | criterion | result | evidence
+EVIDENCE_COMMIT = re.compile(
+    r"Evidence commit\b[^\n]*?(?<![0-9A-Za-z])(?=[0-9a-f]*\d)([0-9a-f]{7,40})(?![0-9A-Za-z])"
+)
+# A CHANGE Evidence result: "Not run" blocks Complete; "Deferred: <reason>" passes and is listed.
+NOT_RUN_CELL = re.compile(r"^not\s+run\b", re.IGNORECASE)
+DEFERRED_CELL = re.compile(r"^deferred\b", re.IGNORECASE)
+DEFERRED_REASON = re.compile(r"^deferred\s*:\s*(\S.*?)\s*$", re.IGNORECASE)
+RULE_REF = re.compile(r"[\w./-]+\.md:\d+")
+USER_OK = re.compile(r"^\s*[*_`]*User OK:[*_`]*\s*[*_`]*\d{4}-\d{2}-\d{2}", re.MULTILINE)
+
+
+def _cell(text: str) -> str:
+    return EMPHASIS.sub("", text).strip()
+
+
+def check_change(doc: Doc, report: Report) -> None:
+    """G-41 to G-45: Eligibility, Rule Changes gate, AC traceability and evidence commit."""
+    status = doc.status
+    if status is None or not PHASES["CHANGE"]["statuses"].get(status):
+        return  # Draft or invalid status: check_doc already reports what is needed
+
+    rows: dict[str, list[tuple[str, str]]] = {}
+    for m in ELIGIBILITY_ROW.finditer(doc.section("Eligibility")):
+        rows.setdefault(m.group(1), []).append((_cell(m.group(2)), m.group(3).strip()))
+    relaxing = False
+    for crit in (f"E{n}" for n in range(1, 9)):
+        found = rows.get(crit, [])
+        if not found:
+            report.error(doc, f"Eligibility criterion {crit} is missing (G-41)")
+            continue
+        if len(found) > 1:
+            report.error(doc, f"Eligibility criterion {crit} appears {len(found)} times (G-41)")
+            continue
+        result, evidence = found[0]
+        allowed = ("Yes", "Relaxing") if crit == "E8" else ("Yes",)
+        if result not in allowed:
+            report.error(
+                doc,
+                f"Eligibility criterion {crit} result '{result}', expected {' or '.join(allowed)}",
+            )
+        elif crit == "E8" and result == "Relaxing":
+            relaxing = True
+        if not _cell(evidence):
+            report.error(doc, f"Eligibility criterion {crit} has an empty evidence cell (G-41)")
+
+    if relaxing:
+        _check_rule_changes(doc, report)
+
+    if not ac_ids(doc.section("Acceptance Criteria")):
+        report.error(doc, "no acceptance criteria rows (| AC-01 | ...)")
+    tested = set(ac_ids(doc.section("Test Strategy")))
+    missing = sorted(set(ac_ids(doc.section("Acceptance Criteria"))) - tested)
+    if missing:
+        report.error(doc, f"acceptance criteria not in Test Strategy: {', '.join(missing)}")
+
+    if status != "Complete":
+        return
+    evidence_rows = ac_ids(doc.section("Evidence"))
+    missing = sorted(set(ac_ids(doc.section("Acceptance Criteria"))) - set(evidence_rows))
+    if missing:
+        report.error(doc, f"Complete but acceptance criteria not in Evidence: {', '.join(missing)}")
+    results = {ac: _cell(row.split("|")[0]) for ac, row in evidence_rows.items()}
+    failing = sorted(ac for ac, res in results.items() if FAILING_CELL.match(res))
+    if failing:
+        report.error(doc, f"Complete with failing criteria: {', '.join(failing)}")
+    not_run = sorted(ac for ac, res in results.items() if NOT_RUN_CELL.match(res))
+    if not_run:
+        report.error(doc, f"Complete with criteria not run: {', '.join(not_run)}")
+    for ac, res in sorted(results.items()):
+        if not DEFERRED_CELL.match(res):
+            continue
+        m = DEFERRED_REASON.match(res)
+        if m:
+            report.warn(doc, f"{ac} deferred: {m.group(1)}")
+        else:
+            report.error(doc, f"{ac} is Deferred without a reason ('Deferred: <reason>')")
+    if not EVIDENCE_COMMIT.search(doc.section("Evidence")):
+        report.error(doc, "Complete but Evidence has no 'Evidence commit <SHA>' line (G-42)")
+
+
+def _check_rule_changes(doc: Doc, report: Report) -> None:
+    """G-45: the reinforced gate of E8 Relaxing. Fences are read here, so use the raw text."""
+    raw = doc.text.splitlines()
+    blank = _blank_fences(doc.text).splitlines()  # same line count; headings in fences are hidden
+    start = next((i for i, ln in enumerate(blank) if ln.strip() == "## Rule Changes"), None)
+    section = None
+    if start is not None:
+        end = next(
+            (i for i in range(start + 1, len(blank)) if blank[i].startswith("## ")), len(raw)
+        )
+        section = "\n".join(raw[start + 1 : end])
+    if section is None:
+        report.error(doc, "E8 is Relaxing but '## Rule Changes' is missing (G-45)")
+        return
+    prose = FENCE.sub("", section)
+    for label in ("Before", "After"):
+        lines = [ln for ln in prose.splitlines() if re.match(rf"\s*[*_`>-]*\s*{label}\b", ln)]
+        if not lines:
+            report.error(doc, f"Rule Changes has no '{label}' line (G-45)")
+        elif not any(RULE_REF.search(ln) for ln in lines):
+            report.error(doc, f"Rule Changes '{label}' line has no path:line reference (G-45)")
+    if not any("gh api" in block for block in FENCE.findall(section)):
+        report.error(doc, "Rule Changes has no fenced block with 'gh api' output (G-45)")
+    if not USER_OK.search(prose):
+        report.error(doc, "Rule Changes has no 'User OK: YYYY-MM-DD' line (G-45)")
 
 
 def check_traceability(docs: list[Doc], report: Report) -> None:
@@ -398,9 +540,13 @@ SHIPPED_CUTOFF = date(2026, 11, 5)
 SHIPPED_CUTOFF_SECTIONS = {"Pull Requests and Branches"}
 SHIPPED_NAME = re.compile(r"^SHIPPED_(\d{4}-\d{2}-\d{2})\.md$")
 SHIPPED_ON = re.compile(r"^\|\s*\*\*Shipped on\*\*\s*\|\s*([^|]+?)\s*\|", re.MULTILINE)
+# FR-76: literal, because "first status past draft" is wrong for CHANGE (D-87, OD-37).
 FINAL_STATUS = {
-    phase: next(status for status, past_draft in spec["statuses"].items() if past_draft)
-    for phase, spec in PHASES.items()
+    "BRAINSTORM": "Ready for Define",
+    "DEFINE": "Ready for Design",
+    "DESIGN": "Ready for Build",
+    "BUILD_REPORT": "Complete",
+    "CHANGE": "Complete",
 }
 FINDING_ROW = re.compile(r"^\|\s*((?:I|F)-\d+)\s*\|(.*)$", re.MULTILINE)  # G-35 definition
 CITATION = re.compile(r"(?<![\w-])((?:I|F)-\d+)(?![\w-])")  # G-35 citation
@@ -446,6 +592,13 @@ def check_final_status(doc: Doc, report: Report) -> None:
 
 def check_folder(folder: Folder, report: Report) -> None:
     where = f"archive/{folder.name}"
+    if any(doc.phase == "CHANGE" for doc in folder.phase_docs):  # FR-79: change folder
+        others = sorted(d.path.name for d in folder.phase_docs if d.phase != "CHANGE")
+        others += sorted(d.path.name for d in folder.shipped) + sorted(folder.unknown)
+        for name in others:
+            msg = f"change folder holds only CHANGE_{folder.name}.md, found '{name}' (rule a)"
+            report.error(where, msg)
+        return
     if len(folder.shipped) != 1:
         found = len(folder.shipped)
         report.error(where, f"{found} SHIPPED document(s), expected exactly one (rule a)")
@@ -585,7 +738,9 @@ def check_archive(root: Path, report: Report) -> int:
         check_folder(folder, report)
         check_traceability(folder.phase_docs, report)  # FR-65: one folder at a time
         for doc in folder.phase_docs:
-            if doc.phase == "BUILD_REPORT":
+            if doc.phase == "CHANGE":
+                check_change(doc, report)
+            if doc.phase in ("BUILD_REPORT", "CHANGE"):
                 open_findings(doc, report)
     check_citations(root, citation_violations(root, folders), report)
     return sum(len(f.phase_docs) + len(f.shipped) for f in folders)
@@ -593,9 +748,11 @@ def check_archive(root: Path, report: Report) -> int:
 
 def run(root: Path) -> Report:
     report = Report()
-    docs = load_docs(root)
+    docs = load_docs(root, report)
     for doc in docs:
         check_doc(doc, report)
+        if doc.phase == "CHANGE":
+            check_change(doc, report)
     check_traceability(docs, report)
     report.checked = len(docs) + check_adrs(root, report) + check_contracts(root, report)
     report.checked += check_archive(root, report)

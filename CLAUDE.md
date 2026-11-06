@@ -19,6 +19,8 @@ Household-level consumption peak prediction on a Databricks lakehouse, with stre
 This project follows Spec-Driven Development. Read `.claude/sdd/README.md`.
 
 - New feature: `/brainstorm` -> `/define` -> `/design` -> `/build` -> `/ship`.
+- Small tooling or process change meeting E1 to E8 (`.claude/sdd/README.md`): one `CHANGE_{FEATURE}.md`
+  (CHANGE track) instead of the four documents.
 - Changing an approved spec: `/iterate`.
 - Lasting decision: `/adr`.
 - Environment uncertainty (network, limits, auth): a throwaway spike in `spikes/`, recorded in
