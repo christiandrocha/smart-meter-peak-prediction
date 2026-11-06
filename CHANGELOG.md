@@ -7,6 +7,14 @@ Entries are added by `/ship`.
 
 ### Added
 
+- CHANGE track for small tooling or process changes (SMALL_CHANGE_TRACK): one document
+  `CHANGE_<FEATURE>.md` from `.claude/sdd/templates/CHANGE_TEMPLATE.md` replaces DEFINE, DESIGN,
+  BUILD_REPORT and SHIPPED for changes that meet the eligibility criteria E1 to E8. The checker
+  requires one row per criterion with result `Yes` (E8 may be `Relaxing`, with a `## Rule Changes`
+  section), traceability from every AC to Test Strategy and Evidence, and an `Evidence commit` SHA in
+  a `Complete` document. A change folder in `archive/` holds only the CHANGE document.
+- `scripts/check_specs.py` reports every `.md` file in `features/` or `reports/` whose name has no
+  phase prefix as an error; `.gitkeep` files give none.
 - `scripts/check_specs.py` checks the shipped specs in `.claude/sdd/archive/` (SPEC_ARCHIVE_GATES):
   the existing rules per archive folder; every archived document in its phase's final status and
   exactly one `SHIPPED_YYYY-MM-DD.md` per folder; SHIPPED documents as a checked phase (file-name
@@ -23,6 +31,8 @@ Entries are added by `/ship`.
 
 - The SHIPPED template ends with `## Self-Review`.
 - `.claude/sdd/README.md` describes the archive checks.
+- `.claude/sdd/README.md`, `docs/conventions/git.md` and `CLAUDE.md` describe the CHANGE track and
+  the branch names `spec/`, `build/`, `ship/` and `change/` (`feat/` is no longer the convention).
 
 ### Unchanged
 
