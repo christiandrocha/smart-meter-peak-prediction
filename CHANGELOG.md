@@ -12,7 +12,9 @@ Entries are added by `/ship`.
   BUILD_REPORT and SHIPPED for changes that meet the eligibility criteria E1 to E8. The checker
   requires one row per criterion with result `Yes` (E8 may be `Relaxing`, with a `## Rule Changes`
   section), traceability from every AC to Test Strategy and Evidence, and an `Evidence commit` SHA in
-  a `Complete` document. A change folder in `archive/` holds only the CHANGE document.
+  a `Complete` document. In a `Complete` document an Evidence result of `Fail` or `Not run` is an
+  error; `Deferred: <reason>` is accepted and listed as a warning, and `Deferred` without a reason
+  is an error. A change folder in `archive/` holds only the CHANGE document.
 - `scripts/check_specs.py` reports every `.md` file in `features/` or `reports/` whose name has no
   phase prefix as an error; `.gitkeep` files give none.
 - `scripts/check_specs.py` checks the shipped specs in `.claude/sdd/archive/` (SPEC_ARCHIVE_GATES):
@@ -32,7 +34,8 @@ Entries are added by `/ship`.
 - The SHIPPED template ends with `## Self-Review`.
 - `.claude/sdd/README.md` describes the archive checks.
 - `.claude/sdd/README.md`, `docs/conventions/git.md` and `CLAUDE.md` describe the CHANGE track and
-  the branch names `spec/`, `build/`, `ship/` and `change/` (`feat/` is no longer the convention).
+  the branch names `spec/`, `build/`, `ship/` and `change/` (`feat/` is no longer the convention);
+  the branch example in `docs/conventions/naming.md` follows them.
 
 ### Unchanged
 
