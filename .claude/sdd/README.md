@@ -84,6 +84,25 @@ SHIPPED document. Rules (b) and (c) read it as they read a BUILD_REPORT.
 Any other `.md` file directly in `features/` or `reports/` whose name has no phase prefix is an
 error (unrecognized name). Notes go in `notes/`, which git ignores.
 
+## Follow-ups
+
+A follow-up (`F-NN` in a SHIPPED Follow-ups table, or an open finding of a BUILD_REPORT or CHANGE
+document) gets its own file when someone picks it up:
+
+1. Copy `templates/FOLLOW_UP_TEMPLATE.md` to `follow-ups/F_<SPEC>_<NN>.md`, status `Open`. Cite the
+   follow-up and its finding with the spec prefix (`SMALL_CHANGE_TRACK F-05`).
+2. Triage it against E1 to E8. Every row `Yes` (E8 may be `Relaxing`) means the CHANGE track; any
+   `No` or `Unknown` means the full cycle. In doubt, full cycle.
+3. Write the done criterion; it becomes an acceptance criterion of the CHANGE document or spec
+   that does the work. Set severity, priority and target (or "Not scheduled" with a reason).
+4. Close it in the PR that does the work: fill Closure, set the status to `Closed` (or `Dropped`
+   with a reason), and update the source rows so that their Follow-up cell no longer starts with
+   `Open`; rule (b) of `check_specs.py` then stops warning. Read the merge commit with
+   `gh pr view` after the merge.
+
+`check_specs.py` does not read `follow-ups/`: the file and the source rows are kept in step by
+hand.
+
 ## Rules
 
 1. Specs describe *what* and *why* before code describes *how*. Code written before the spec
@@ -99,7 +118,8 @@ error (unrecognized name). Notes go in `notes/`, which git ignores.
 
 | Folder | Content |
 |---|---|
-| `templates/` | One template per phase, plus `CHANGE_TEMPLATE.md` for the CHANGE track. Agents copy them; do not edit them per feature |
+| `templates/` | One template per phase, plus `CHANGE_TEMPLATE.md` for the CHANGE track and `FOLLOW_UP_TEMPLATE.md` for follow-up tasks. Agents copy them; do not edit them per feature |
 | `features/` | Active feature documents |
 | `reports/` | Build reports |
 | `archive/` | Shipped features, one folder per feature |
+| `follow-ups/` | One file per follow-up task, `F_<SPEC>_<NN>.md`, from `templates/FOLLOW_UP_TEMPLATE.md`; not read by `check_specs.py` |
