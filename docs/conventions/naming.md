@@ -39,6 +39,6 @@ Defaults for data projects. A project may override an item through an ADR.
 | Item | Pattern | Example |
 |---|---|---|
 | Feature name in specs | UPPER_SNAKE_CASE | `SMART_METER_INGESTION` |
-| Branch | `<type>/<feature-kebab>` | `feat/smart-meter-ingestion` |
+| Branch | `<phase>/<feature-kebab>` (see `git.md`) | `build/smart-meter-ingestion`, `change/small-change-track` |
 | ADR file | `NNNN-kebab-title.md` | `0003-aiven-as-kafka-broker.md` |
 | Job / pipeline | `<project>_<purpose>` | `smart_meter_ingestion` |

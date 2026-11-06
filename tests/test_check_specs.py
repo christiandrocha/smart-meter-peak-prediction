@@ -957,6 +957,37 @@ def test_ac125_fail_word_in_evidence_text_is_not_a_failure(tmp_path):
     assert run_change(tmp_path, text) == []
 
 
+@pytest.mark.parametrize("result", ["Not run", "not run", "**Not run**", "Not run: no fixture"])
+def test_ac125_not_run_blocks_complete(tmp_path, result):
+    errors = run_change(tmp_path, change_doc(evidence_result=result))
+    assert errors == ["CHANGE_X.md: Complete with criteria not run: AC-01, AC-02"]
+
+
+def test_ac125_not_run_allowed_before_complete(tmp_path):
+    assert run_change(tmp_path, change_doc("Ready for Build", evidence_result="Not run")) == []
+
+
+def test_ac125_deferred_with_reason_passes_and_is_listed(tmp_path):
+    text = change_doc().replace(
+        "| AC-02 | Pass | output |", "| AC-02 | Deferred: needs a live workspace | none yet |"
+    )
+    write(tmp_path, "features", "CHANGE_X.md", text)
+    report = check_specs.run(tmp_path)
+    assert report.errors == []
+    assert report.warnings == ["CHANGE_X.md: AC-02 deferred: needs a live workspace"]
+
+
+@pytest.mark.parametrize("result", ["Deferred:", "Deferred: ", "Deferred", "Deferred - later"])
+def test_ac125_deferred_without_reason_is_an_error(tmp_path, result):
+    text = change_doc().replace("| AC-02 | Pass | output |", f"| AC-02 | {result} | none |")
+    write(tmp_path, "features", "CHANGE_X.md", text)
+    report = check_specs.run(tmp_path)
+    assert report.errors == [
+        "CHANGE_X.md: AC-02 is Deferred without a reason ('Deferred: <reason>')"
+    ]
+    assert report.warnings == []
+
+
 def test_ac122_no_acceptance_criteria_rows_is_an_error(tmp_path):
     text = (
         change_doc()

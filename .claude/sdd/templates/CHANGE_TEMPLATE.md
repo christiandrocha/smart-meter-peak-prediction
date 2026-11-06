@@ -111,7 +111,11 @@ on the final head and its output goes in the PR description.
 
 | AC | Result | Evidence |
 |---|---|---|
-| AC-01 | {Pass / Fail / Not run} | {Test output, command output} |
+| AC-01 | {Pass / Fail / Not run / Deferred: reason} | {Test output, command output} |
+
+In a `Complete` document `check_specs.py` reports `Fail` and `Not run` as errors. A deliberate
+deferral is written `Deferred: <reason>`: the check accepts it and lists it as a warning, so it
+stays visible without blocking the change. `Deferred` without a reason is an error.
 
 ---
 

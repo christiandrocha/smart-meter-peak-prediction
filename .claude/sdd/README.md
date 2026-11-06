@@ -66,6 +66,9 @@ The change is eligible only when every criterion holds for the files the PR chan
 
 `check_specs.py` checks the rows, the `## Rule Changes` parts, AC traceability (Acceptance
 Criteria, Test Strategy, Evidence) and an `Evidence commit <SHA>` line in a `Complete` document.
+In a `Complete` document an Evidence result of `Fail` or `Not run` is an error. A deliberate
+deferral is written `Deferred: <reason>`: it is accepted and listed as a warning in the output, so
+it stays visible; `Deferred` without a reason is an error.
 It does not read the git history. These process rules are therefore yours to follow:
 
 - STOP for the user's explicit OK on the rules diff before any commit that changes

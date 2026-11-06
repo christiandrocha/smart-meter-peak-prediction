@@ -10,7 +10,9 @@ Checks, per feature document in .claude/sdd/features and .claude/sdd/reports:
   - every .md file directly in features/ and reports/ has a phase prefix (else an error)
   - CHANGE documents (SMALL_CHANGE_TRACK): Eligibility rows E1 to E8, the Rule Changes gate when
     E8 is Relaxing, and AC traceability Acceptance Criteria -> Test Strategy -> Evidence with an
-    "Evidence commit" SHA when Complete
+    "Evidence commit" SHA when Complete; in a Complete document an Evidence result "Not run" is
+    an error and "Deferred: <reason>" is accepted and listed as a warning ("Deferred" alone is an
+    error)
 
 Also checks docs/adr/NNNN-*.md (file name, status, required sections, index entry, superseded
 references) and docs/contracts/*.yaml (required keys per kind, key columns present in the
@@ -236,6 +238,10 @@ ELIGIBILITY_ROW = re.compile(
 EVIDENCE_COMMIT = re.compile(
     r"Evidence commit\b[^\n]*?(?<![0-9A-Za-z])(?=[0-9a-f]*\d)([0-9a-f]{7,40})(?![0-9A-Za-z])"
 )
+# A CHANGE Evidence result: "Not run" blocks Complete; "Deferred: <reason>" passes and is listed.
+NOT_RUN_CELL = re.compile(r"^not\s+run\b", re.IGNORECASE)
+DEFERRED_CELL = re.compile(r"^deferred\b", re.IGNORECASE)
+DEFERRED_REASON = re.compile(r"^deferred\s*:\s*(\S.*?)\s*$", re.IGNORECASE)
 RULE_REF = re.compile(r"[\w./-]+\.md:\d+")
 USER_OK = re.compile(r"^\s*[*_`]*User OK:[*_`]*\s*[*_`]*\d{4}-\d{2}-\d{2}", re.MULTILINE)
 
@@ -290,11 +296,21 @@ def check_change(doc: Doc, report: Report) -> None:
     missing = sorted(set(ac_ids(doc.section("Acceptance Criteria"))) - set(evidence_rows))
     if missing:
         report.error(doc, f"Complete but acceptance criteria not in Evidence: {', '.join(missing)}")
-    failing = sorted(
-        ac for ac, row in evidence_rows.items() if FAILING_CELL.match(row.split("|")[0])
-    )
+    results = {ac: _cell(row.split("|")[0]) for ac, row in evidence_rows.items()}
+    failing = sorted(ac for ac, res in results.items() if FAILING_CELL.match(res))
     if failing:
         report.error(doc, f"Complete with failing criteria: {', '.join(failing)}")
+    not_run = sorted(ac for ac, res in results.items() if NOT_RUN_CELL.match(res))
+    if not_run:
+        report.error(doc, f"Complete with criteria not run: {', '.join(not_run)}")
+    for ac, res in sorted(results.items()):
+        if not DEFERRED_CELL.match(res):
+            continue
+        m = DEFERRED_REASON.match(res)
+        if m:
+            report.warn(doc, f"{ac} deferred: {m.group(1)}")
+        else:
+            report.error(doc, f"{ac} is Deferred without a reason ('Deferred: <reason>')")
     if not EVIDENCE_COMMIT.search(doc.section("Evidence")):
         report.error(doc, "Complete but Evidence has no 'Evidence commit <SHA>' line (G-42)")
 
