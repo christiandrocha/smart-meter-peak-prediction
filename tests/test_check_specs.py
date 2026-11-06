@@ -81,12 +81,13 @@ def test_template_marked_ready_fails_on_placeholders(tmp_path):
 
 
 def test_all_templates_have_required_sections(tmp_path):
-    """AC-117: all five templates pass their own section rule, SHIPPED included."""
+    """AC-117, AC-128: all six templates pass their own section rule, SHIPPED included."""
     names = {
         "BRAINSTORM": "BRAINSTORM_TEMPLATE.md",
         "DEFINE": "DEFINE_TEMPLATE.md",
         "DESIGN": "DESIGN_TEMPLATE.md",
         "BUILD_REPORT": "BUILD_REPORT_TEMPLATE.md",
+        "CHANGE": "CHANGE_TEMPLATE.md",
     }
     for phase, file in names.items():
         folder = "reports" if phase == "BUILD_REPORT" else "features"
@@ -629,12 +630,14 @@ def simulate_archive(tmp_path: Path, docs: list) -> list[str]:
         for doc in (d for d in docs if d.feature == feature):
             (folder / doc.path.name).write_text(doc.text, encoding="utf-8")
             added.append(f"{feature}/{doc.path.name}")
+        if any(d.phase == "CHANGE" for d in docs if d.feature == feature):
+            continue  # AC-129: a change folder holds the CHANGE document alone
         (folder / "SHIPPED_2026-11-06.md").write_text(generated_shipped(), encoding="utf-8")
     return added
 
 
-def final_status_docs() -> list:
-    docs = check_specs.load_docs(ROOT)
+def final_status_docs(root: Path = ROOT) -> list:
+    docs = check_specs.load_docs(root)
     return [d for d in docs if d.status == check_specs.FINAL_STATUS[d.phase]]
 
 
@@ -658,3 +661,289 @@ def test_ac119_folder_name_collision_fails_without_merging(tmp_path):
     assert copied.read_text(encoding="utf-8") == (
         ROOT / ".claude/sdd/archive" / existing / f"DEFINE_{existing}.md"
     ).read_text(encoding="utf-8")  # the archived document was not overwritten
+
+
+# ----------------------------------------------------------------- SMALL_CHANGE_TRACK
+CHANGE_SECTIONS = [
+    "Metadata",
+    "Problem Statement",
+    "Eligibility",
+    "Scope",
+    "Acceptance Criteria",
+    "Test Strategy",
+    "File Manifest",
+    "Evidence",
+    "Issues & Follow-ups",
+    "Self-Review",
+]
+SHA = "0a1b2c3d4e5f"
+RULE_CHANGES = """## Rule Changes
+Before (docs/conventions/git.md:20): "old text"
+After (docs/conventions/git.md:20): "new text"
+```text
+$ gh api repos/o/r/rulesets
+{"enforcement": "active"}
+```
+User OK: 2026-11-05
+"""
+
+
+def change_doc(
+    status: str = "Complete",
+    drop: tuple[str, ...] = (),
+    eligibility: dict[str, tuple[str, str]] | None = None,
+    extra_rows: str = "",
+    test_acs: tuple[str, ...] = ("AC-01", "AC-02"),
+    evidence_acs: tuple[str, ...] = ("AC-01", "AC-02"),
+    evidence_result: str = "Pass",
+    evidence_line: str | None = None,
+    issues: str = "| F-01 | later | Low | Closed |",
+    self_review: str = "- Weak points: none known.",
+    tail: str = "",
+    placeholder: str = "",
+) -> str:
+    results = {f"E{n}": ("Yes", f"`git diff` shows E{n} untouched") for n in range(1, 9)}
+    results.update(eligibility or {})
+    rows = "\n".join(
+        f"| {crit} | criterion {crit} | {res} | {ev} |" for crit, (res, ev) in results.items()
+    )
+    sections = {
+        "Metadata": f"| **Status** | {status} |",
+        "Problem Statement": "Small problem." + placeholder,
+        "Eligibility": "| ID | Criterion | Result | Evidence |\n|---|---|---|---|\n"
+        + rows
+        + extra_rows,
+        "Scope": "All of it.",
+        "Acceptance Criteria": "\n".join(
+            f"| {ac} | given | when | then |" for ac in ("AC-01", "AC-02")
+        ),
+        "Test Strategy": "\n".join(f"| {ac} | Unit | tests/t.py | proves |" for ac in test_acs),
+        "File Manifest": "| 1 | docs/x.md | Modify | text |",
+        "Evidence": (evidence_line if evidence_line is not None else f"Evidence commit: {SHA}")
+        + "\n"
+        + "\n".join(f"| {ac} | {evidence_result} | output |" for ac in evidence_acs),
+        "Issues & Follow-ups": "| ID | Issue | Severity | Follow-up |\n|---|---|---|---|\n"
+        + issues,
+        "Self-Review": self_review,
+    }
+    parts = ["# CHANGE: X"]
+    parts += [f"## {name}\n{body}" for name, body in sections.items() if name not in drop]
+    return "\n".join(parts) + "\n" + tail
+
+
+def run_change(tmp_path: Path, text: str, name: str = "CHANGE_X.md") -> list[str]:
+    write(tmp_path, "features", name, text)
+    return check_specs.run(tmp_path).errors
+
+
+def test_ac120_repository_has_no_errors():
+    report = check_specs.run(ROOT)
+    assert report.errors == []
+
+
+@pytest.mark.parametrize(
+    ("folder", "name", "errors"),
+    [
+        ("features", "NOTES.md", 1),
+        ("reports", "draft.md", 1),
+        ("features", ".gitkeep", 0),
+        ("reports", ".gitkeep", 0),
+        ("features", "DEFINE_X.md", 0),
+        ("reports", "BUILD_REPORT_X.md", 0),
+    ],
+)
+def test_ac121_unrecognized_names_fail(tmp_path, folder, name, errors):
+    write(tmp_path, folder, name, define_doc() if name.startswith("DEFINE") else build_doc())
+    report = check_specs.run(tmp_path)
+    assert len(report.errors) == errors, report.errors
+    assert report.warnings == []
+    if errors:
+        assert report.errors[0].startswith(f"{name}: unrecognized document name")
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "expected"),
+    [
+        ({"status": "Draft"}, None),
+        ({"status": "Ready for Build"}, None),
+        ({"status": "Complete"}, None),
+        ({"drop": ("Scope",)}, "missing section '## Scope'"),
+        ({"placeholder": " {todo}"}, "unfilled placeholders remain: {todo}"),
+        ({"self_review": ""}, "Self-Review is empty"),
+    ],
+)
+def test_ac122_change_document_rules(tmp_path, kwargs, expected):
+    errors = run_change(tmp_path, change_doc(**kwargs))
+    if expected is None:
+        assert errors == []
+    else:
+        assert len(errors) == 1, errors
+        assert errors[0].startswith("CHANGE_X.md: ")
+        assert expected in errors[0]
+
+
+def test_ac123_final_status_is_explicit():
+    assert check_specs.FINAL_STATUS == {
+        "BRAINSTORM": "Ready for Define",
+        "DEFINE": "Ready for Design",
+        "DESIGN": "Ready for Build",
+        "BUILD_REPORT": "Complete",
+        "CHANGE": "Complete",
+    }
+    assert check_specs.FINAL_STATUS["CHANGE"] != "Ready for Build"
+    assert set(check_specs.FINAL_STATUS) == set(check_specs.PHASES)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "expected"),
+    [
+        ({}, None),
+        ({"eligibility": {"E8": ("Yes", "")}}, "E8 has an empty evidence cell"),
+        ({"eligibility": {"E5": ("No", "changed the script")}}, "E5 result 'No'"),
+        ({"extra_rows": "\n| E3 | again | Yes | dup |"}, "E3 appears 2 times"),
+        ({"eligibility": {"E8": ("Relaxing", "see below")}}, "'## Rule Changes' is missing"),
+    ],
+)
+def test_ac124_eligibility_rows(tmp_path, kwargs, expected):
+    errors = run_change(tmp_path, change_doc(**kwargs))
+    if expected is None:
+        assert errors == []
+        return
+    assert len(errors) == 1, errors
+    assert expected in errors[0]
+
+
+def test_ac124_missing_row_names_the_criterion(tmp_path):
+    text = change_doc().replace("| E8 | criterion E8 | Yes | `git diff` shows E8 untouched |\n", "")
+    errors = run_change(tmp_path, text)
+    assert len(errors) == 1, errors
+    assert "E8 is missing" in errors[0]
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "expected"),
+    [
+        ({}, None),
+        ({"status": "Ready for Build", "test_acs": ("AC-01",)}, "not in Test Strategy: AC-02"),
+        ({"evidence_acs": ("AC-01",)}, "not in Evidence: AC-02"),
+        ({"evidence_result": "Fail"}, "failing criteria: AC-01, AC-02"),
+        ({"evidence_line": "No commit named."}, "no 'Evidence commit <SHA>' line"),
+        ({"evidence_line": "Evidence commit: abc12"}, "no 'Evidence commit <SHA>' line"),
+    ],
+)
+def test_ac125_change_traceability_and_evidence_commit(tmp_path, kwargs, expected):
+    errors = run_change(tmp_path, change_doc(**kwargs))
+    if expected is None:
+        assert errors == []
+        return
+    assert len(errors) == 1, errors
+    assert expected in errors[0]
+    assert errors[0].startswith("CHANGE_X.md: ")
+
+
+def archived_change(root: Path, folder: str = "FEAT", **kwargs) -> None:
+    write_archive(root, folder, f"CHANGE_{folder}.md", change_doc(**kwargs))
+
+
+def test_ac126_archived_change_folders(tmp_path):
+    write_allowlist(tmp_path)
+    archived_change(tmp_path, "OK")
+    archived_change(tmp_path, "DRAFTED", status="Ready for Build")
+    archived_change(tmp_path, "SHIP")
+    write_archive(tmp_path, "SHIP", "SHIPPED_2026-11-05.md", shipped_doc("2026-11-05"))
+    archived_change(tmp_path, "DEF")
+    write_archive(tmp_path, "DEF", "DEFINE_DEF.md", define_doc())
+    errors = check_specs.run(tmp_path).errors
+    assert not [e for e in errors if "OK" in e.split(":")[0]], errors
+    by_folder = {f: [e for e in errors if f in e.split(":")[0]] for f in ("DRAFTED", "SHIP", "DEF")}
+    assert len(by_folder["DRAFTED"]) == 1
+    assert "not 'Complete' (rule a)" in by_folder["DRAFTED"][0]
+    assert len(by_folder["SHIP"]) == 1, by_folder["SHIP"]
+    assert "archive/SHIP" in by_folder["SHIP"][0]
+    assert "SHIPPED_2026-11-05.md" in by_folder["SHIP"][0]
+    assert len(by_folder["DEF"]) == 1, by_folder["DEF"]
+    assert "archive/DEF" in by_folder["DEF"][0]
+    assert "DEFINE_DEF.md" in by_folder["DEF"][0]
+    assert len(errors) == 3, errors
+
+
+def test_ac127_rules_b_and_c_read_change_documents(tmp_path):
+    write_allowlist(tmp_path)
+    valid_folder(tmp_path, "OTHER")
+    issues = "| F-01 | a | Low | Open: later |\n| F-02 | b | Low | Closed |"
+    archived_change(
+        tmp_path, issues=issues, tail="Own F-01 and F-02 are fine. Foreign I-07 here.\n"
+    )
+    report = check_specs.run(tmp_path)
+    assert report.warnings == ["FEAT/CHANGE_FEAT.md: open finding FEAT F-01 (Low) (rule b)"]
+    assert len(report.errors) == 1, report.errors
+    assert "I-07 cited 1x without its spec prefix" in report.errors[0]
+    assert "CHANGE_FEAT.md" in report.errors[0]
+
+
+def test_ac128_change_template_sections_and_criteria():
+    text = (TEMPLATES / "CHANGE_TEMPLATE.md").read_text(encoding="utf-8")
+    headings = [h.strip() for h in check_specs.HEADING.findall(check_specs.FENCE.sub("", text))]
+    assert headings == CHANGE_SECTIONS == check_specs.PHASES["CHANGE"]["sections"]
+    rows = re.findall(r"^\|\s*(E[1-8])\s*\|", text, flags=re.MULTILINE)
+    assert rows == [f"E{n}" for n in range(1, 9)]
+    for needle in ("Relaxing", "Rule Changes", "User OK", "Evidence commit", "final commit"):
+        assert needle in text, needle
+    assert "check_specs.py" in text
+    assert "last commit" in text
+
+
+def test_ac128_template_copied_as_draft_has_no_missing_section(tmp_path):
+    write(tmp_path, "features", "CHANGE_X.md", (TEMPLATES / "CHANGE_TEMPLATE.md").read_text())
+    assert check_specs.run(tmp_path).errors == []
+
+
+def test_ac129_self_test_simulates_change_documents(tmp_path):
+    root = tmp_path / "repo"
+    write(root, "features", "CHANGE_DONE.md", change_doc("Complete"))
+    write(root, "features", "CHANGE_WIP.md", change_doc("Ready for Build"))
+    final = final_status_docs(root)
+    assert [d.feature for d in final] == ["DONE"]
+    added = simulate_archive(tmp_path / "sim", final)
+    assert added == ["DONE/CHANGE_DONE.md"]
+    folder = tmp_path / "sim" / ".claude" / "sdd" / "archive" / "DONE"
+    assert sorted(p.name for p in folder.iterdir()) == ["CHANGE_DONE.md"]
+    assert check_specs.run(tmp_path / "sim").errors == []
+
+
+def test_ac130_docs_describe_the_change_track():
+    readme = (ROOT / ".claude" / "sdd" / "README.md").read_text(encoding="utf-8")
+    for needle in ("CHANGE", "E1", "E8", "unrecognized", "Evidence commit", "final commit"):
+        assert needle in readme, needle
+    assert "check_specs.py" in readme
+    assert "final head" in readme
+    git = (ROOT / "docs" / "conventions" / "git.md").read_text(encoding="utf-8")
+    for needle in ("change/", "spec/", "build/", "ship/"):
+        assert needle in git, needle
+    claude = (ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+    assert "CHANGE" in claude
+
+
+@pytest.mark.parametrize(
+    ("rule_changes", "e8", "expected"),
+    [
+        (RULE_CHANGES, "Relaxing", None),
+        ("", "Yes", None),
+        ("", "Relaxing", "'## Rule Changes' is missing"),
+        (
+            RULE_CHANGES.replace("After (docs/conventions/git.md:20)", "After"),
+            "Relaxing",
+            "'After' line has no path:line",
+        ),
+        (RULE_CHANGES.replace("gh api", "curl"), "Relaxing", "no fenced block with 'gh api'"),
+        (RULE_CHANGES.replace("User OK: 2026-11-05", ""), "Relaxing", "no 'User OK: YYYY-MM-DD'"),
+    ],
+)
+def test_ac131_relaxing_needs_the_rule_changes_gate(tmp_path, rule_changes, e8, expected):
+    text = change_doc(eligibility={"E8": (e8, "diff quoted below")}, tail=rule_changes)
+    errors = run_change(tmp_path, text)
+    if expected is None:
+        assert errors == []
+    else:
+        assert len(errors) == 1, errors
+        assert expected in errors[0]
