@@ -12,7 +12,7 @@
 | **Date** | 2026-11-06 |
 | **Author** | christiandrocha (with Claude Code) |
 | **Branch** | `change/follow-up-template` |
-| **Status** | Ready for Build |
+| **Status** | Complete |
 | **Source** | SDD process retrospective of 2026-11-05, Step 2; SMALL_CHANGE_TRACK D-85 (the template is read by neither the script nor the tests, so it can use this track) |
 
 Allowed status values: `Draft`, `Ready for Build`, `Complete`.
@@ -22,13 +22,13 @@ Allowed status values: `Draft`, `Ready for Build`, `Complete`.
 ## Problem Statement
 
 Follow-ups exist only as rows in the Follow-ups table of a SHIPPED document (for example
-SMALL_CHANGE_TRACK F-01, F-02, F-05 to F-07). A row has an item and a target, but no place for
+SMALL_CHANGE_TRACK F-01, SMALL_CHANGE_TRACK F-02, SMALL_CHANGE_TRACK F-05 to SMALL_CHANGE_TRACK F-07). A row has an item and a target, but no place for
 the work itself: which track it needs, what closes it, and where it was closed. Two effects,
 measured on `main` 74cf210:
 
 - When a follow-up is picked up, the triage against E1 to E8 is redone from scratch each time.
 - Closing a follow-up needs an edit to the source BUILD_REPORT row, or `check_specs.py` rule (b)
-  keeps warning; INGESTION_GUARD I-11 and I-12 still warn today. Nothing records how the
+  keeps warning; INGESTION_GUARD I-11 and INGESTION_GUARD I-12 still warn today. Nothing records how the
   follow-up was closed or which source row was updated.
 
 The decision of 2026-11-06 (user): one file per follow-up in a new folder
@@ -45,16 +45,16 @@ Every criterion must hold for the files the PR changes. Result: `Yes` (E8 may al
 
 | ID | Criterion | Result | Evidence |
 |---|---|---|---|
-| E1 | No production file: nothing under `src/`, `resources/`, `notebooks/`, `pipelines/`, nor `databricks.yml` (`git diff --name-only origin/main...HEAD`) | Yes | Planned: the manifest touches only `.claude/sdd/`; the `git diff` output replaces this line at Complete |
-| E2 | No contract change: nothing under `docs/contracts/` (same output) | Yes | Planned: the manifest touches only `.claude/sdd/`; the `git diff` output replaces this line at Complete |
-| E3 | No new ADR: no added `docs/adr/NNNN-*.md` (`git diff --name-status origin/main...HEAD`) | Yes | Planned: the manifest touches only `.claude/sdd/`; the `git diff` output replaces this line at Complete |
-| E4 | No change to an archived DEFINE or DESIGN, which is `/iterate`; annotating archived BUILD_REPORT or SHIPPED rows is allowed (same output) | Yes | Planned: the manifest touches only `.claude/sdd/`; the `git diff` output replaces this line at Complete |
-| E5 | No change to the gates: neither `scripts/check_specs.py` nor a template that the script or the tests read (same output) | Yes | Planned: the manifest touches neither `scripts/check_specs.py` nor `tests/`; the `git diff` and a `grep -rn FOLLOW_UP scripts/check_specs.py tests/` with no match replace this line at Complete |
-| E6 | No change under `tests/integration/` (same output) | Yes | Planned: the manifest touches only `.claude/sdd/`; the `git diff` output replaces this line at Complete |
-| E7 | No change to the runtime `dependencies` of `pyproject.toml`; the `dev` extra may change (`git diff origin/main...HEAD -- pyproject.toml`) | Yes | Planned: the manifest touches only `.claude/sdd/`; the `git diff` output replaces this line at Complete |
-| E8 | Agent rules (`docs/conventions/git.md` and the rules for agents in `CLAUDE.md`) change only under a gate. Hardening is `Yes`; relaxing is `Relaxing` and needs a Rule Changes section. In doubt, it is relaxing (`git diff origin/main...HEAD -- docs/conventions/git.md CLAUDE.md`) | Yes | Planned: `docs/conventions/git.md` and `CLAUDE.md` are not in the manifest; the empty `git diff` replaces this line at Complete |
+| E1 | No production file: nothing under `src/`, `resources/`, `notebooks/`, `pipelines/`, nor `databricks.yml` (`git diff --name-only origin/main...HEAD`) | Yes | `git diff --name-only origin/main...HEAD` on 6d6e952 lists only `.claude/sdd/README.md`, `.claude/sdd/features/CHANGE_FOLLOW_UP_TEMPLATE.md`, `.claude/sdd/follow-ups/.gitkeep`, `.claude/sdd/templates/FOLLOW_UP_TEMPLATE.md`: nothing under `src/`, `resources/`, `notebooks/`, `pipelines/`, nor `databricks.yml` |
+| E2 | No contract change: nothing under `docs/contracts/` (same output) | Yes | Same output: nothing under `docs/contracts/` |
+| E3 | No new ADR: no added `docs/adr/NNNN-*.md` (`git diff --name-status origin/main...HEAD`) | Yes | `git diff --name-status origin/main...HEAD`: `M .claude/sdd/README.md`, `A` for the other three; no `docs/adr/` file |
+| E4 | No change to an archived DEFINE or DESIGN, which is `/iterate`; annotating archived BUILD_REPORT or SHIPPED rows is allowed (same output) | Yes | Same output: no file under `.claude/sdd/archive/` changed before the final commit, which only adds this document there |
+| E5 | No change to the gates: neither `scripts/check_specs.py` nor a template that the script or the tests read (same output) | Yes | Same output: neither `scripts/check_specs.py` nor a template read by them; `grep -rn FOLLOW_UP scripts/check_specs.py tests/` has no match (exit 1) |
+| E6 | No change under `tests/integration/` (same output) | Yes | Same output: nothing under `tests/` |
+| E7 | No change to the runtime `dependencies` of `pyproject.toml`; the `dev` extra may change (`git diff origin/main...HEAD -- pyproject.toml`) | Yes | `git diff origin/main...HEAD -- pyproject.toml`: empty (0 lines) |
+| E8 | Agent rules (`docs/conventions/git.md` and the rules for agents in `CLAUDE.md`) change only under a gate. Hardening is `Yes`; relaxing is `Relaxing` and needs a Rule Changes section. In doubt, it is relaxing (`git diff origin/main...HEAD -- docs/conventions/git.md CLAUDE.md`) | Yes | `git diff origin/main...HEAD -- docs/conventions/git.md CLAUDE.md`: empty (0 lines) |
 
-Planned: E1 to E8 all `Yes`. The manifest touches only `.claude/sdd/`. No new test reads the new
+E1 to E8 all `Yes`: the PR touches only `.claude/sdd/`. No new test reads the new
 template, because a test that read it would make it a template "the tests read" and break E5.
 
 ---
@@ -75,8 +75,9 @@ template, because a test that read it would make it a template "the tests read" 
 **Out of scope:**
 - Any check of follow-up files by `scripts/check_specs.py` (that would break E5; it needs a full
   cycle if wanted later).
-- Creating follow-up files for existing follow-ups (SMALL_CHANGE_TRACK F-01, F-02, F-05 to F-07,
-  INGESTION_GUARD I-11, I-12): done one by one later, when each is picked up.
+- Creating follow-up files for existing follow-ups (SMALL_CHANGE_TRACK F-01,
+  SMALL_CHANGE_TRACK F-02, SMALL_CHANGE_TRACK F-05 to SMALL_CHANGE_TRACK F-07,
+  INGESTION_GUARD I-11, INGESTION_GUARD I-12): done one by one later, when each is picked up.
 - Retrospective Step 3 (confirmation rules) and the template repository port
   (SMALL_CHANGE_TRACK F-02).
 - `CLAUDE.md` and `docs/conventions/git.md`: unchanged, so E8 stays `Yes`.
@@ -93,7 +94,7 @@ template, because a test that read it would make it a template "the tests read" 
 | AC-135 | The template's Closure section | It is read | It asks for the PR, the merge commit, the CHANGE document or spec that did the work, the source row updated (`file:line`, no longer starting with `Open`), and the `check_specs.py` output after the update |
 | AC-136 | A copy of the template saved as `.claude/sdd/follow-ups/F_X_01.md` | `python scripts/check_specs.py` runs | It reports 0 errors and no warning for that file: the folder is not scanned, so the file is neither an unrecognized name nor a checked document |
 | AC-137 | `.claude/sdd/README.md` | It is read | The Folders table lists `follow-ups/`, the `templates/` row names `FOLLOW_UP_TEMPLATE.md`, and a Follow-ups section covers creation, triage and closure |
-| AC-138 | The whole repository on the final head | `python scripts/check_specs.py`, `pytest tests/test_check_specs.py` and `pre-commit run --all-files` run | 0 errors; warnings only for INGESTION_GUARD I-11 and I-12 (as on `main`) and, once this document is archived, for its own findings still marked `Open` (rule b); all tests pass, all hooks pass |
+| AC-138 | The whole repository on the final head | `python scripts/check_specs.py`, `pytest tests/test_check_specs.py` and `pre-commit run --all-files` run | 0 errors; warnings only for INGESTION_GUARD I-11 and INGESTION_GUARD I-12 (as on `main`) and, once this document is archived, for its own findings still marked `Open` (rule b); all tests pass, all hooks pass |
 
 ---
 
@@ -127,7 +128,7 @@ Each criterion is proved by a command whose output goes in Evidence.
 
 ## Evidence
 
-Evidence commit: filled at Complete
+Evidence commit: 6d6e952
 
 Process rule D-91 (not checked by the script): the evidence commit is the last commit of the PR
 that touches files other than this document. The final commit touches only this document (status
@@ -136,13 +137,13 @@ again on the final head and its output goes in the PR description.
 
 | AC | Result | Evidence |
 |---|---|---|
-| AC-132 | Not run | Build not done yet |
-| AC-133 | Not run | Build not done yet |
-| AC-134 | Not run | Build not done yet |
-| AC-135 | Not run | Build not done yet |
-| AC-136 | Not run | Build not done yet |
-| AC-137 | Not run | Build not done yet |
-| AC-138 | Not run | Build not done yet |
+| AC-132 | Pass | Headings outside fences (`check_specs.FENCE`, `check_specs.HEADING`): `['Metadata', 'Problem', 'Triage', 'Done Criterion', 'Target and Priority', 'Closure', 'Self-Review']` |
+| AC-133 | Pass | `grep -nE '^\| E[1-8] '` gives eight rows E1 to E8 (lines 39 to 46); line 48 the Decision line naming both the CHANGE track and the full cycle; line 50 `In doubt, full cycle.` |
+| AC-134 | Pass | Line 13 `**Follow-up**` with the spec prefix (spec name, then `F-` and the number); line 18 `**Status** | Open`; line 20 allowed values `Open`, `In Progress`, `Closed`, `Dropped` |
+| AC-135 | Pass | Closure rows: Pull request, Merge commit (read with `gh pr view`), Work done in, Source rows updated (`file:line`, no longer starting with `Open`), check_specs.py after the update |
+| AC-136 | Pass | Without the copy: `58 document(s) checked, 0 error(s), 2 warning(s)`. With the template copied to `follow-ups/F_X_01.md`: the same line, exit 0, and `F_X_01` in no output line. Copy removed afterwards |
+| AC-137 | Pass | README line 87 `## Follow-ups` (creation, triage, closure in four steps); line 121 `templates/` row names `FOLLOW_UP_TEMPLATE.md`; line 125 Folders row `follow-ups/` |
+| AC-138 | Pass | On the final tree: `check_specs.py` `58 document(s) checked, 0 error(s), 4 warning(s)`, exit 0; the warnings are INGESTION_GUARD I-11, INGESTION_GUARD I-12 and this document's own FOLLOW_UP_TEMPLATE I-01 and I-02 (rule b). `pytest tests/test_check_specs.py`: 114 passed, 1 skipped (the AC-119 self-test, no `features/` or `reports/` document left). `pre-commit run --all-files`: all hooks passed. The first run on this tree found 5 errors in this document (quoted template braces read as placeholders; unprefixed citations, rule c), fixed before this commit |
 
 ---
 
@@ -161,7 +162,8 @@ again on the final head and its output goes in the PR description.
   template would break E5. The follow-up files have no automatic check (I-01).
 - **Risks:** Two places can describe one follow-up, the SHIPPED row and the file, and drift
   apart (I-02). The `F_<SPEC>_<NN>.md` name repeats the spec prefix rule by convention only.
-- **What I would do differently:** Nothing yet. This is the first real use of the CHANGE track, so
-  the evidence steps themselves are part of what is being tested.
-- **Next improvement:** Create the first follow-up file when SMALL_CHANGE_TRACK F-05 to F-07 are
+- **What I would do differently:** Write the Eligibility evidence as "Planned" from the start. At
+  `Ready for Build` the checker already requires a non-empty evidence cell, before any diff exists,
+  so the first CHANGE document had to fill it with the plan and replace it at `Complete`.
+- **Next improvement:** Create the first follow-up file when SMALL_CHANGE_TRACK F-05 to SMALL_CHANGE_TRACK F-07 are
   picked up, and check whether the triage shortens the next CHANGE document.
