@@ -234,7 +234,7 @@ ELIGIBILITY_ROW = re.compile(
     r"^\|\s*(E[1-8])\s*\|[^|\n]*\|\s*([^|\n]*?)\s*\|\s*([^|\n]*?)\s*\|", re.MULTILINE
 )  # G-41: ID | criterion | result | evidence
 EVIDENCE_COMMIT = re.compile(
-    r"Evidence commit\b[^\n]*?(?<![0-9A-Za-z])([0-9a-f]{7,40})(?![0-9A-Za-z])"
+    r"Evidence commit\b[^\n]*?(?<![0-9A-Za-z])(?=[0-9a-f]*\d)([0-9a-f]{7,40})(?![0-9A-Za-z])"
 )
 RULE_REF = re.compile(r"[\w./-]+\.md:\d+")
 USER_OK = re.compile(r"^\s*[*_`]*User OK:[*_`]*\s*[*_`]*\d{4}-\d{2}-\d{2}", re.MULTILINE)
@@ -277,6 +277,8 @@ def check_change(doc: Doc, report: Report) -> None:
     if relaxing:
         _check_rule_changes(doc, report)
 
+    if not ac_ids(doc.section("Acceptance Criteria")):
+        report.error(doc, "no acceptance criteria rows (| AC-01 | ...)")
     tested = set(ac_ids(doc.section("Test Strategy")))
     missing = sorted(set(ac_ids(doc.section("Acceptance Criteria"))) - tested)
     if missing:
@@ -289,9 +291,7 @@ def check_change(doc: Doc, report: Report) -> None:
     if missing:
         report.error(doc, f"Complete but acceptance criteria not in Evidence: {', '.join(missing)}")
     failing = sorted(
-        ac
-        for ac, row in evidence_rows.items()
-        if any(FAILING_CELL.match(cell) for cell in row.split("|"))
+        ac for ac, row in evidence_rows.items() if FAILING_CELL.match(row.split("|")[0])
     )
     if failing:
         report.error(doc, f"Complete with failing criteria: {', '.join(failing)}")
@@ -301,8 +301,15 @@ def check_change(doc: Doc, report: Report) -> None:
 
 def _check_rule_changes(doc: Doc, report: Report) -> None:
     """G-45: the reinforced gate of E8 Relaxing. Fences are read here, so use the raw text."""
-    parts = re.split(r"^##\s+", doc.text, flags=re.MULTILINE)
-    section = next((p.partition("\n")[2] for p in parts[1:] if p.startswith("Rule Changes")), None)
+    raw = doc.text.splitlines()
+    blank = _blank_fences(doc.text).splitlines()  # same line count; headings in fences are hidden
+    start = next((i for i, ln in enumerate(blank) if ln.strip() == "## Rule Changes"), None)
+    section = None
+    if start is not None:
+        end = next(
+            (i for i in range(start + 1, len(blank)) if blank[i].startswith("## ")), len(raw)
+        )
+        section = "\n".join(raw[start + 1 : end])
     if section is None:
         report.error(doc, "E8 is Relaxing but '## Rule Changes' is missing (G-45)")
         return

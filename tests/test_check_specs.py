@@ -829,6 +829,7 @@ def test_ac124_missing_row_names_the_criterion(tmp_path):
         ({"evidence_result": "Fail"}, "failing criteria: AC-01, AC-02"),
         ({"evidence_line": "No commit named."}, "no 'Evidence commit <SHA>' line"),
         ({"evidence_line": "Evidence commit: abc12"}, "no 'Evidence commit <SHA>' line"),
+        ({"evidence_line": "Evidence commit: defaced"}, "no 'Evidence commit <SHA>' line"),
     ],
 )
 def test_ac125_change_traceability_and_evidence_commit(tmp_path, kwargs, expected):
@@ -947,3 +948,27 @@ def test_ac131_relaxing_needs_the_rule_changes_gate(tmp_path, rule_changes, e8, 
     else:
         assert len(errors) == 1, errors
         assert expected in errors[0]
+
+
+def test_ac125_fail_word_in_evidence_text_is_not_a_failure(tmp_path):
+    text = change_doc().replace(
+        "| AC-01 | Pass | output |", "| AC-01 | Pass | fails before, passes after |"
+    )
+    assert run_change(tmp_path, text) == []
+
+
+def test_ac122_no_acceptance_criteria_rows_is_an_error(tmp_path):
+    text = (
+        change_doc()
+        .replace("| AC-01 | given | when | then |", "none")
+        .replace("| AC-02 | given | when | then |", "")
+    )
+    errors = run_change(tmp_path, text)
+    assert any("no acceptance criteria rows" in e for e in errors), errors
+
+
+def test_ac131_template_example_fence_does_not_hide_the_real_section(tmp_path):
+    fenced = "```markdown\n## Rule Changes\nnothing\n```\n"
+    text = change_doc(eligibility={"E8": ("Relaxing", "below")}, tail=RULE_CHANGES)
+    text = text.replace("## Scope\n", fenced + "## Scope\n")
+    assert run_change(tmp_path, text) == []
