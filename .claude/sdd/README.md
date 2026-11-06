@@ -13,6 +13,9 @@ phase starts only when the previous document passes its gate.
 /adr         ->  docs/adr/NNNN-title.md                (any phase)
 ```
 
+Small tooling or process changes that meet every criterion E1 to E8 below use the CHANGE track
+instead: one document, `features/CHANGE_{FEATURE}.md`, from `templates/CHANGE_TEMPLATE.md`.
+
 ## Phase gates
 
 | Phase | Gate to leave the phase | Status value when the gate passes |
@@ -43,6 +46,41 @@ Shipped features in `archive/` are checked as well (SPEC_ARCHIVE_GATES):
   unprefixed citations are frozen with exact counts in `citation_allowlist.json`; a count that
   differs or an entry that matches nothing is an error, so update the entry in the same change.
 
+## CHANGE track
+
+One document replaces DEFINE, DESIGN, BUILD_REPORT and SHIPPED. Statuses: `Draft`,
+`Ready for Build`, `Complete`; the final status of every phase is explicit in `check_specs.py`.
+The change is eligible only when every criterion holds for the files the PR changes (the
+`git diff` output is pasted as evidence in the Eligibility table):
+
+| ID | Criterion |
+|---|---|
+| E1 | No production file: nothing under `src/`, `resources/`, `notebooks/`, `pipelines/`, nor `databricks.yml` |
+| E2 | No change under `docs/contracts/` |
+| E3 | No new ADR |
+| E4 | No change to an archived DEFINE or DESIGN (that is `/iterate`) |
+| E5 | No change to `scripts/check_specs.py` or to a template that the script or the tests read |
+| E6 | No change under `tests/integration/` |
+| E7 | No change to the runtime `dependencies` of `pyproject.toml` |
+| E8 | Agent rules (`docs/conventions/git.md`, the rules for agents in `CLAUDE.md`) change only under a gate: hardening is `Yes`; relaxing is `Relaxing` and needs a `## Rule Changes` section (before and after with `file:line`, `gh api` output, `User OK: YYYY-MM-DD`). In doubt, it is relaxing |
+
+`check_specs.py` checks the rows, the `## Rule Changes` parts, AC traceability (Acceptance
+Criteria, Test Strategy, Evidence) and an `Evidence commit <SHA>` line in a `Complete` document.
+It does not read the git history. These process rules are therefore yours to follow:
+
+- STOP for the user's explicit OK on the rules diff before any commit that changes
+  `docs/conventions/git.md` or `CLAUDE.md` (E8 `Relaxing`).
+- The `Evidence commit` is the last commit of the PR that touches files other than the CHANGE
+  document. The final commit touches only the CHANGE document (status `Complete` and the move to
+  `archive/{FEATURE}/`). Run `python scripts/check_specs.py` again on the final head and put its
+  output in the PR description.
+
+A change folder in `archive/` holds only `CHANGE_{FEATURE}.md` with status `Complete`, and no
+SHIPPED document. Rules (b) and (c) read it as they read a BUILD_REPORT.
+
+Any other `.md` file directly in `features/` or `reports/` whose name has no phase prefix is an
+error (unrecognized name). Notes go in `notes/`, which git ignores.
+
 ## Rules
 
 1. Specs describe *what* and *why* before code describes *how*. Code written before the spec
@@ -58,7 +96,7 @@ Shipped features in `archive/` are checked as well (SPEC_ARCHIVE_GATES):
 
 | Folder | Content |
 |---|---|
-| `templates/` | One template per phase. Agents copy them; do not edit them per feature |
+| `templates/` | One template per phase, plus `CHANGE_TEMPLATE.md` for the CHANGE track. Agents copy them; do not edit them per feature |
 | `features/` | Active feature documents |
 | `reports/` | Build reports |
 | `archive/` | Shipped features, one folder per feature |

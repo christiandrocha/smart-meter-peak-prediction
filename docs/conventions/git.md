@@ -17,7 +17,9 @@ Types: `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `build`, `ci`, `chore`
 
 ## Branches and pull requests
 
-- One branch per feature: `feat/<feature-kebab>`. Spikes: `spike/<topic>`.
+- One branch per phase PR of a full spec: `spec/<feature-kebab>`, `build/<feature-kebab>`,
+  `ship/<feature-kebab>`. A CHANGE-track change (`.claude/sdd/README.md`): `change/<feature-kebab>`.
+  Spikes: `spike/<topic>`.
 - A pull request links its DEFINE and DESIGN documents and lists the ACs it covers
   (see `.github/pull_request_template.md`).
 - CI must pass: lint, tests, `scripts/check_specs.py`.
