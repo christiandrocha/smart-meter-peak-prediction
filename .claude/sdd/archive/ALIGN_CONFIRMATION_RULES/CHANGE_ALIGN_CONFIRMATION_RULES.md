@@ -12,7 +12,7 @@
 | **Date** | 2026-11-06 |
 | **Author** | christiandrocha (with Claude Code) |
 | **Branch** | `change/align-confirmation-rules` |
-| **Status** | Ready for Build |
+| **Status** | Complete |
 | **Source** | SDD process retrospective of 2026-11-05, Step 3; SMALL_CHANGE_TRACK D-84 and D-90 (Step 3 uses the CHANGE track with the reinforced E8 gate). Items chosen by the user on 2026-11-06: R1 and R2, R1 limited to branches of the current task |
 
 Allowed status values: `Draft`, `Ready for Build`, `Complete`.
@@ -52,14 +52,14 @@ Every criterion must hold for the files the PR changes. Result: `Yes` (E8 may al
 
 | ID | Criterion | Result | Evidence |
 |---|---|---|---|
-| E1 | No production file: nothing under `src/`, `resources/`, `notebooks/`, `pipelines/`, nor `databricks.yml` (`git diff --name-only origin/main...HEAD`) | Yes | Planned: the manifest touches `docs/conventions/git.md`, `CLAUDE.md` and this document only; the `git diff` output replaces this line at Complete |
-| E2 | No contract change: nothing under `docs/contracts/` (same output) | Yes | Planned: as E1 |
-| E3 | No new ADR: no added `docs/adr/NNNN-*.md` (`git diff --name-status origin/main...HEAD`) | Yes | Planned: as E1 |
-| E4 | No change to an archived DEFINE or DESIGN, which is `/iterate`; annotating archived BUILD_REPORT or SHIPPED rows is allowed (same output) | Yes | Planned: as E1 |
-| E5 | No change to the gates: neither `scripts/check_specs.py` nor a template that the script or the tests read (same output) | Yes | Planned: as E1 |
-| E6 | No change under `tests/integration/` (same output) | Yes | Planned: as E1 |
-| E7 | No change to the runtime `dependencies` of `pyproject.toml`; the `dev` extra may change (`git diff origin/main...HEAD -- pyproject.toml`) | Yes | Planned: as E1 |
-| E8 | Agent rules (`docs/conventions/git.md` and the rules for agents in `CLAUDE.md`) change only under a gate. Hardening is `Yes`; relaxing is `Relaxing` and needs the Rule Changes section. In doubt, it is relaxing (`git diff origin/main...HEAD -- docs/conventions/git.md CLAUDE.md`) | Relaxing | R1 narrows what needs confirmation (`--force-with-lease` on a branch of the current task); R2 is hardening. Diff and `gh api` output in Rule Changes |
+| E1 | No production file: nothing under `src/`, `resources/`, `notebooks/`, `pipelines/`, nor `databricks.yml` (`git diff --name-only origin/main...HEAD`) | Yes | `git diff --name-only origin/main...HEAD` on 1cbe301 lists only `.claude/sdd/features/CHANGE_ALIGN_CONFIRMATION_RULES.md`, `CLAUDE.md`, `docs/conventions/git.md`: nothing under `src/`, `resources/`, `notebooks/`, `pipelines/`, nor `databricks.yml` |
+| E2 | No contract change: nothing under `docs/contracts/` (same output) | Yes | Same output: nothing under `docs/contracts/` |
+| E3 | No new ADR: no added `docs/adr/NNNN-*.md` (`git diff --name-status origin/main...HEAD`) | Yes | `git diff --name-status origin/main...HEAD`: `A` for this document, `M` for `CLAUDE.md` and `docs/conventions/git.md`; no `docs/adr/` file |
+| E4 | No change to an archived DEFINE or DESIGN, which is `/iterate`; annotating archived BUILD_REPORT or SHIPPED rows is allowed (same output) | Yes | Same output: no file under `.claude/sdd/archive/` changed before the final commit, which only adds this document there |
+| E5 | No change to the gates: neither `scripts/check_specs.py` nor a template that the script or the tests read (same output) | Yes | Same output: neither `scripts/check_specs.py` nor a template |
+| E6 | No change under `tests/integration/` (same output) | Yes | Same output: nothing under `tests/` |
+| E7 | No change to the runtime `dependencies` of `pyproject.toml`; the `dev` extra may change (`git diff origin/main...HEAD -- pyproject.toml`) | Yes | `git diff origin/main...HEAD -- pyproject.toml`: empty (0 lines) |
+| E8 | Agent rules (`docs/conventions/git.md` and the rules for agents in `CLAUDE.md`) change only under a gate. Hardening is `Yes`; relaxing is `Relaxing` and needs the Rule Changes section. In doubt, it is relaxing (`git diff origin/main...HEAD -- docs/conventions/git.md CLAUDE.md`) | Relaxing | R1 narrows what needs confirmation (`--force-with-lease` on a branch of the current task); R2 is hardening. `git diff origin/main...HEAD -- docs/conventions/git.md CLAUDE.md` on 1cbe301: 2 hunks, 22 changed lines, all equal to the Before and After text of Rule Changes (AC-144); `gh api` output in Rule Changes; User OK 2026-11-06, committed in e51e01b before the rules commit 1cbe301 |
 
 ---
 
@@ -201,7 +201,7 @@ evidence commit), then the final commit of this document.
 
 ## Evidence
 
-Evidence commit: filled at Complete
+Evidence commit: 1cbe301
 
 Process rule D-91 (not checked by the script): the evidence commit is the last commit of the PR
 that touches files other than this document. The final commit touches only this document (status
@@ -210,13 +210,13 @@ runs again on the final head and its output goes in the PR description.
 
 | AC | Result | Evidence |
 |---|---|---|
-| AC-139 | Not run | Build not done yet |
-| AC-140 | Not run | Build not done yet |
-| AC-141 | Not run | Build not done yet |
-| AC-142 | Not run | Build not done yet |
-| AC-143 | Not run | Build not done yet |
-| AC-144 | Not run | Build not done yet |
-| AC-145 | Not run | Build not done yet |
+| AC-139 | Pass | `sed -n 44,46p docs/conventions/git.md`: the list names `git push --delete`, `git push origin :<branch>`, `git branch -D`, `git push --force`, `git reset --hard`, `gh pr close`, `gh repo delete`; `grep -n force-with-lease` matches only line 47, the R1 rule |
+| AC-140 | Pass | `sed -n 47,52p`: branch created for the current task, never `main`, never another task's branch, after a rebase; read ruleset 26640008 before each use; `active`, default branch, `non_fast_forward`, no bypass actors; "If not, or in doubt, ask." |
+| AC-141 | Pass | `sed -n 53,57p`: "only when ... `MERGED`" kept; GitHub removes the head branch (`delete_branch_on_merge`); no `git push --delete` after a merge; `git ls-remote --heads origin <branch>`; merge without `--delete-branch`; local delete with `git branch -d` |
+| AC-142 | Pass | `git diff origin/main...HEAD -- CLAUDE.md`: only rule 8, 3 lines removed and 4 added, adding the exception clause that points to `git.md` and rewrapping; the other clauses keep their words |
+| AC-143 | Pass | Read again on 2026-11-06 after 1cbe301: repository `delete_branch_on_merge` `true`, default branch `main`; ruleset 26640008 `main-protection` `enforcement` `active`, `include` `~DEFAULT_BRANCH`, `bypass_actors` `[]`, rules `deletion`, `non_fast_forward`, `pull_request`, `required_status_checks` |
+| AC-144 | Pass | `git diff -U0` of the two files: 22 changed lines in 2 hunks; each line is in the Before or After blocks of Rule Changes (0 missing), and no other hunk |
+| AC-145 | Pass | On the final tree: `check_specs.py` `59 document(s) checked, 0 error(s), 6 warning(s)`, exit 0, so the `Relaxing` gate of this document passes; the warnings are the four of `main` (INGESTION_GUARD I-11, INGESTION_GUARD I-12, FOLLOW_UP_TEMPLATE I-01, FOLLOW_UP_TEMPLATE I-02) and this document's own ALIGN_CONFIRMATION_RULES I-01 and I-02 (rule b). `pytest tests/test_check_specs.py`: 114 passed, 1 skipped (the AC-119 self-test). `pre-commit run --all-files`: all hooks passed |
 
 ---
 
