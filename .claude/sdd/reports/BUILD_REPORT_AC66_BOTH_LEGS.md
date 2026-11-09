@@ -9,14 +9,15 @@
 | **Feature** | AC66_BOTH_LEGS |
 | **Date** | 2026-11-09 |
 | **Source** | DESIGN_AC66_BOTH_LEGS.md (Ready for Build) |
-| **Status** | In Progress |
+| **Status** | Complete |
 
 Allowed status values: `In Progress`, `Blocked`, `Complete`.
 
 Status rule applied: `Complete` only when every AC is `Pass` or explicitly accepted by the user.
-AC-162, AC-163 and AC-164 are live criteria that need the `dev` workspace and the user-run reset
-(U-06, C-23), so they are `Pending` and the status stays `In Progress`. The eight unit criteria
-(AC-154 to AC-161) are `Pass`.
+All eleven criteria are `Pass`: the eight unit criteria (AC-154 to AC-161) in CI, and the three
+live criteria (AC-162 to AC-164) on the `dev` workspace on 2026-11-09. The user authorized the
+agent to run the live sequence and the reset (U-06) for this run, with the condition that
+`--confirm` ran only if the dry run listed exactly the three `dev` tables.
 
 ---
 
@@ -28,7 +29,9 @@ the expected MERGE metrics, the leg record, the verdict and the leg procedure wi
 injected. `Evidence` gains `folder`, `read_text` and `remove`; the reset script keeps its guards and
 changes only its docstring and two printed lines; the runbook gets the new order. Nothing under
 `src/`, `resources/`, `notebooks/` or `databricks.yml` changed (AC-161, checked against tag
-`v0.6.0`). The live evidence (AC-162 to AC-164) has not been run: it needs the user.
+`v0.6.0`). The live evidence (AC-162 to AC-164) passed on `dev` on 2026-11-09: each leg refused
+before any job run in the wrong state, the rerun leg merged nothing, the rebuild leg inserted the
+snapshot rows with equal checksums, and the verdict passed.
 
 ---
 
@@ -63,11 +66,29 @@ Commits (branch `build/ac66-both-legs`, not pushed): see the table at the end of
 | AC-159 | Pass | `tests/test_ac66_legs_docs.py::test_ac159_four_ac66_tests_are_collected_and_none_chooses_by_state`; `tests/test_integration_layout.py` (6 passed) |
 | AC-160 | Pass | `::test_ac160_runbook_docstring_and_script_state_the_order`, `::test_ac160_every_ac66_selector_selects_exactly_one_test` (4 selectors, one node each; `ac66_after` selects none) |
 | AC-161 | Pass | `::test_ac161_production_files_and_reset_guards_equal_v060` (tag `v0.6.0` present locally, so the tag comparison also ran), `::test_ac161_snapshot_test_and_its_helpers_are_kept`, `::test_ac161_specs_are_clean`; full gates in the Verification Log |
-| AC-162 | Pending (user-run live evidence) | Not run: needs the `dev` workspace. Commands in "Live evidence to run" below (step 4) |
-| AC-163 | Pending (user-run live evidence) | Not run: same (step 5) |
-| AC-164 | Pending (user-run live evidence) | Not run: needs the user-run reset (`--confirm`, U-06, C-23) (steps 6 and 7). The agent did not run the reset |
+| AC-162 | Pass | Live, `dev`, 2026-11-09. Tables present. Newest `smart_meter_peak_model` run before: `457575248055458`; `out/evidence/ac66_rebuild_leg.json` absent. `test_ac66_rebuild_leg_...` failed with `AC-66 rebuild leg refused before any job run: silver.weather_hourly is present; ml.household_features_daily is present; ml.household_labels_daily is present; next: run the rerun leg (...), then the user runs python scripts/reset_peak_model_outputs.py --confirm`. After: newest run `457575248055458`, no active run, leg file still absent |
+| AC-163 | Pass | Live, `dev`. `test_ac66_rerun_leg_...` passed (173 s), 1 run `323617648524483` (19:05:24Z to 19:07:45Z): MERGE inserted/updated/deleted 0/0/0 for `silver_weather`, `features`, `labels`; after = snapshot (21,165 / 36,480 / 36,480, checksums `2187688113305464081404` / `1034414841800262757266` / `364256581191297641381`); `snapshot_saved_at_ms` 1794251049629, record `saved_at_ms` 1794251282200, `outcome` `passed`. `test_ac66_verdict_...` then failed naming only `rebuild leg: missing: out/evidence/ac66_rebuild_leg.json is missing` (`verdict` `fail`, `rerun_saved_at_ms` 1794251282200, `rebuild_saved_at_ms` null) |
+| AC-164 | Pass | Live, `dev`. Reset dry run listed exactly `smart_meter_dev.silver.weather_hourly`, `smart_meter_dev.ml.household_features_daily`, `smart_meter_dev.ml.household_labels_daily`; `--confirm` printed `DROP  DROP TABLE smart_meter_dev.silver.weather_hourly`, `DROP  DROP TABLE smart_meter_dev.ml.household_features_daily`, `DROP  DROP TABLE smart_meter_dev.ml.household_labels_daily` (exit 0). Rerun leg then failed with `AC-66 rerun leg refused before any job run: silver.weather_hourly is missing; ml.household_features_daily is missing; ml.household_labels_daily is missing; next: ... run the rebuild leg (...)`; newest run `323617648524483` and `ac66_rerun_leg.json` sha256 `e2ed5267...b73c` equal before and after. `test_ac66_rebuild_leg_...` passed (148 s), 1 run `709940216068554` (19:09:41Z to 19:11:36Z), tables absent at start, inserted 21,165 / 36,480 / 36,480 (updated and deleted 0), after = snapshot counts and checksums, `outcome` `passed`, `saved_at_ms` 1794251512101. `test_ac66_verdict_...` passed: `verdict` `pass`, `problems` `[]` |
 
-### Live evidence to run (user, on a clean checkout of this branch, same checkout for all steps)
+### Live run record (2026-11-09, `dev`, run by the agent with the user's authorization)
+
+- Profile `dev`; jobs `smart_meter_peak_model` `324283392483306`, `smart_meter_ingestion`
+  `801565150507596`. Both had no active run before the deploy.
+- `databricks bundle validate -t dev -p dev`: `Validation OK!`, exit 0;
+  `databricks bundle deploy -t dev -p dev`: `Deployment complete!`, exit 0.
+- Snapshot `test_ac66_before_rebuild_snapshot`: passed; `saved_at_ms` 1794251049629.
+- DA-47 checked (I-02): `databricks jobs list-runs` listed runs newest first
+  (start times 1793883466661, 1793812305949, 1793812021068).
+- Final evidence files (`out/evidence/`, git-ignored), sha256:
+
+```text
+d07a2d106fae56ce9d263c21587b7d3d4b04800d8a9902405f8e911d1560d118  out/evidence/ac66_before_rebuild.json
+e2ed52677519334b4fbc4c57bb98f046e1b61f7a1f17fe82a63a917ad631b73c  out/evidence/ac66_rerun_leg.json
+6ead4d596df760fb8f05b5912dde4203ff2474eeb3d45be01496f54888d4089e  out/evidence/ac66_rebuild_leg.json
+0bbd0addaff2a5c2a80f7bb2f8dd321517a8fe9d53c0c420e741c8deaee62d3a  out/evidence/ac66_verdict.json
+```
+
+### Live evidence sequence (on one checkout of this branch, same checkout for all steps)
 
 DESIGN live plan. `out/evidence/` is git-ignored and local to one checkout (C-25). Peak job id:
 `databricks jobs list --name smart_meter_peak_model -p dev`, or the Jobs UI (the job name carries
@@ -142,15 +163,17 @@ No deviation needs `/iterate`.
 
 | ID | Issue | Severity | Follow-up |
 |---|---|---|---|
-| I-01 | AC-162, AC-163, AC-164 not run (live, user-run reset). Build status stays `In Progress` until their evidence is pasted | High (gate for `/ship`, Q-33) | The user runs the sequence above; then this report is completed |
-| I-02 | DA-47 (CLI lists runs newest first) not yet checked | Low | Checked at live plan step 4 |
-| I-03 | `code-reviewer`: no High. Medium (3) and Low findings fixed: after-state mismatch through `run_leg`, preflight-before-remove test, runbook section 9 states the rerun leg comes first, snapshot wording, dead assertion replaced by exact timestamps and `after` values, unreadable snapshot case, G-52 drop test | Medium | Fixed in commit f113d88. Left as is (Low, accepted): a `BaseException` during the failed-record save replaces the original; `Evidence.save` is non-atomic so an old verdict file can survive a failing save (the test still fails) |
+| I-01 | AC-162, AC-163, AC-164 needed the live `dev` run and the reset | High (gate for `/ship`, Q-33) | Resolved 2026-11-09: all three `Pass` (Acceptance Criteria Evidence, Live run record) |
+| I-02 | DA-47 (CLI lists runs newest first) not yet checked | Low | Resolved 2026-11-09: checked at live step 4, runs listed newest first |
+| I-03 | `code-reviewer`: no High. Medium (3) and Low findings fixed: after-state mismatch through `run_leg`, preflight-before-remove test, runbook section 9 states the rerun leg comes first, snapshot wording, dead assertion replaced by exact timestamps and `after` values, unreadable snapshot case, G-52 drop test | Medium | Fixed in commit f113d88. The two Low findings left are I-04 and I-05 |
+| I-04 | `code-reviewer` (Low): in `run_leg`, a `BaseException` raised while saving the `failed` record replaces the original exception, so the first cause is lost from the report | Low | Open: raise the save error from the original (`raise ... from`) or chain it, with a test of `run_leg` |
+| I-05 | `code-reviewer` (Low): `Evidence.save` is not atomic, so an old verdict file can survive a failing save; the verdict test still fails in that case | Low | Open: write to a temporary file in the same folder and `os.replace` it, with a test |
 
 ---
 
 ## Self-Review
 
-- **Weak points:** The three live criteria are unproven until the user runs the sequence. The
+- **Weak points:** The live criteria rest on one run on `dev` (2026-11-09). The
   AC-159 AST rules check the shape of today's live tests (a lambda passed as `exists=`). The
   verdict still trusts local files (accepted in the DEFINE). The "0 new runs" of AC-162 and AC-164
   is read by the operator, not asserted by the test.
@@ -159,11 +182,11 @@ No deviation needs `/iterate`.
   `smart_meter_peak_model`. Clock order (A-49) rests on one machine's wall clock.
 - **What I would do differently:** Have the leg tests read the job run list before and after a
   refusal and assert "0 new runs" themselves.
-- **Next improvement:** Run the live sequence, paste the evidence, set the status `Complete`, then
-  `/ship`.
+- **Next improvement:** I-04 and I-05 (open Low findings); then `/ship`.
 
 ---
 
 ## Next Step
 
-User runs the live sequence (AC-162 to AC-164); then `/ship AC66_BOTH_LEGS`.
+Build PR from `build/ac66-both-legs` (after the user authorizes the push); then
+`/ship AC66_BOTH_LEGS`.
