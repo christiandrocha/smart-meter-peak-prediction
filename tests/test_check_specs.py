@@ -616,9 +616,9 @@ def generated_shipped(day: str = "2026-11-06") -> str:
     return shipped_doc(day, self_review="- Weak points: generated for the AC-119 self-test.")
 
 
-def simulate_archive(tmp_path: Path, docs: list) -> list[str]:
-    """AC-119 (OD-35): real archive and allowlist, plus each feature as a new folder."""
-    sdd = ROOT / ".claude" / "sdd"
+def simulate_archive(tmp_path: Path, docs: list, source: Path = ROOT) -> list[str]:
+    """AC-119 (OD-35): the archive and allowlist of source, plus each feature as a new folder."""
+    sdd = source / ".claude" / "sdd"
     target_sdd = tmp_path / ".claude" / "sdd"
     shutil.copytree(sdd / "archive", target_sdd / "archive")
     shutil.copy(sdd / "citation_allowlist.json", target_sdd / "citation_allowlist.json")
@@ -652,15 +652,20 @@ def test_ac119_final_status_feature_docs_pass_the_archive_rules(tmp_path):
 
 
 def test_ac119_folder_name_collision_fails_without_merging(tmp_path):
-    """AC-119 safeguard: a feature named like an existing archive folder is refused, not merged."""
-    existing = sorted(p.name for p in (ROOT / ".claude/sdd/archive").iterdir() if p.is_dir())[0]
-    clash = check_specs.Doc(Path(f"DEFINE_{existing}.md"), "DEFINE", existing, define_doc())
-    with pytest.raises(AssertionError, match=re.escape(f"archive/{existing} already exists")):
-        simulate_archive(tmp_path, [clash])
-    copied = tmp_path / ".claude/sdd/archive" / existing / f"DEFINE_{existing}.md"
-    assert copied.read_text(encoding="utf-8") == (
-        ROOT / ".claude/sdd/archive" / existing / f"DEFINE_{existing}.md"
-    ).read_text(encoding="utf-8")  # the archived document was not overwritten
+    """AC-119 safeguard: a feature named like an existing archive folder is refused, not merged.
+
+    The source archive is built here, so the test does not depend on the repository's archive
+    (a new project from the template has none).
+    """
+    source = tmp_path / "source"
+    valid_folder(source, "FEAT")
+    write_allowlist(source)
+    archived = (source / ".claude/sdd/archive/FEAT/DEFINE_FEAT.md").read_text(encoding="utf-8")
+    clash = check_specs.Doc(Path("DEFINE_FEAT.md"), "DEFINE", "FEAT", define_doc(total=99))
+    with pytest.raises(AssertionError, match=re.escape("archive/FEAT already exists")):
+        simulate_archive(tmp_path / "sim", [clash], source=source)
+    copied = tmp_path / "sim/.claude/sdd/archive/FEAT/DEFINE_FEAT.md"
+    assert copied.read_text(encoding="utf-8") == archived  # not overwritten
 
 
 # ----------------------------------------------------------------- SMALL_CHANGE_TRACK
