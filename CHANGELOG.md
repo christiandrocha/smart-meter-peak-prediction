@@ -5,6 +5,36 @@ Entries are added by `/ship`.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-09
+
+### Added
+
+- Follow-up task template (FOLLOW_UP_TEMPLATE, CHANGE track):
+  `.claude/sdd/templates/FOLLOW_UP_TEMPLATE.md` with Metadata (spec-prefixed `F-NN`, source spec
+  and finding, status `Open`, `In Progress`, `Closed` or `Dropped`), Problem, Triage against E1 to
+  E8 (CHANGE track or full cycle; in doubt, full cycle), Done Criterion, Target and Priority,
+  Closure and Self-Review. Follow-up files live in `.claude/sdd/follow-ups/` as
+  `F_<SPEC>_<NN>.md`; `scripts/check_specs.py` does not read them.
+
+### Changed
+
+- Confirmation rules aligned with the repository guarantees (ALIGN_CONFIRMATION_RULES, CHANGE
+  track, E8 `Relaxing`): `git push --force-with-lease` runs without confirmation only on a branch
+  created for the current task, after a rebase, and only after reading ruleset `main-protection`
+  (26640008) and finding it active on the default branch with `non_fast_forward` and no bypass
+  actors; otherwise it still needs confirmation. `git push --force` stays on the confirmation
+  list. `CLAUDE.md` rule 8 names this one exception.
+- After a merge, the remote head branch is removed by GitHub (`delete_branch_on_merge`): no
+  `git push --delete`, removal confirmed with `git ls-remote --heads origin <branch>`, merge
+  without `--delete-branch`, local branch deleted with `git branch -d`.
+- `.claude/sdd/README.md` describes the follow-ups folder: creation, triage and closure.
+
+### Unchanged
+
+- No production file (`src/`, `resources/`, `notebooks/`, `databricks.yml`), no gate
+  (`scripts/check_specs.py`) and no archived document of an earlier feature changed; the package
+  version stays 0.4.1.
+
 ## [0.5.0] - 2026-11-06
 
 ### Added
