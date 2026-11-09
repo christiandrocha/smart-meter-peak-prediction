@@ -1,6 +1,7 @@
 """Guarded reset of the PEAK_MODEL rebuildable tables (AC-66). Run by the user, never by an agent.
 
-Drops exactly three tables so that the next daily run rebuilds them from Gold and Bronze weather:
+Drops exactly three tables so that the AC-66 rebuild leg (or a later daily run) rebuilds them from
+Gold and Bronze weather:
 
   <catalog>.silver.weather_hourly
   <catalog>.ml.household_features_daily
@@ -23,7 +24,7 @@ the output holds table names and row counts only.
 
 Usage (runbook "Reset"):
   python scripts/reset_peak_model_outputs.py                 # dry run
-  python scripts/reset_peak_model_outputs.py --confirm       # drop, then run the daily job
+  python scripts/reset_peak_model_outputs.py --confirm       # drop; then -k ac66_rebuild_leg
 Optional: DATABRICKS_CONFIG_PROFILE, DATABRICKS_WAREHOUSE_ID, SMART_METER_<FIELD> (as the tests).
 """
 
@@ -182,8 +183,14 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     for statement in statements:
         warehouse.run(statement)
-    print("done. Next: pytest -m integration tests/integration/test_peak_data.py -k ac66_after")
-    print("(it rebuilds the tables and compares; runbook, Reset)")
+    print(
+        "done. Next (rebuild leg): pytest -m integration "
+        "tests/integration/test_peak_data.py -k ac66_rebuild_leg"
+    )
+    print(
+        "(it starts ingest_weather, build_weather_silver, build_features and build_labels itself "
+        "and compares; then the AC-66 verdict; runbook, Reset)"
+    )
     return 0
 
 
