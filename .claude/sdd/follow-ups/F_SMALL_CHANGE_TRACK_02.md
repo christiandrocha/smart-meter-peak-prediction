@@ -15,7 +15,7 @@
 | **Source finding** | none |
 | **Source documents** | `.claude/sdd/archive/SMALL_CHANGE_TRACK/SHIPPED_2026-11-06.md` (Follow-ups row F-02), `.claude/sdd/archive/SPEC_ARCHIVE_GATES/SHIPPED_2026-11-05.md` (Follow-ups row F-01) |
 | **Created** | 2026-11-09 |
-| **Status** | In Progress |
+| **Status** | Closed |
 
 Allowed status values: `Open`, `In Progress`, `Closed`, `Dropped`. `Dropped` needs a reason in
 Closure.
@@ -86,11 +86,11 @@ Fill when the status becomes `Closed` or `Dropped`, in the same PR that does the
 
 | Item | Value |
 |---|---|
-| **Pull request** | Planned |
-| **Merge commit** | Planned |
+| **Pull request** | The PR of branch `change/template-port` (this repository); the template work is commit d520e24 on branch `sync/project-tooling` of `~/Documents/sdd-data-template`, local only, merged into its `master` by the user after review |
+| **Merge commit** | Read with `gh pr view <N> --json state,mergeCommit` after the merge |
 | **Work done in** | `CHANGE_TEMPLATE_PORT.md` |
-| **Source rows updated** | Planned |
-| **check_specs.py after the update** | Planned |
+| **Source rows updated** | `.claude/sdd/archive/SMALL_CHANGE_TRACK/SHIPPED_2026-11-06.md:108` and `.claude/sdd/archive/SPEC_ARCHIVE_GATES/SHIPPED_2026-11-05.md:98`: "Closed 2026-11-09: ported in `sdd-data-template` d520e24" |
+| **check_specs.py after the update** | `60 document(s) checked, 0 error(s), 6 warning(s)` (the six of `main`; neither row was a rule (b) warning, because Follow-ups rows of a SHIPPED table are not findings) |
 
 ---
 
@@ -98,4 +98,4 @@ Fill when the status becomes `Closed` or `Dropped`, in the same PR that does the
 
 - **Weak points:** The template port is proved by commands, not by a gate in the template.
 - **Risks:** The template drifts again with the next process change (TEMPLATE_PORT I-02).
-- **Next step:** Build the port on the template branch and fill Closure.
+- **Next step:** Merge `sync/project-tooling` into the template's `master` after review.
