@@ -200,9 +200,12 @@ back to back and follow this order, with the ingestion job idle. After a redeplo
 export DATABRICKS_CONFIG_PROFILE=dev
 pytest -m integration tests/integration/test_peak_data.py -k "ac36 or ac37 or ac39 or ac40 or ac41 or ac44 or ac47 or ac64"
 pytest -m integration tests/integration/test_peak_data.py -k "ac63"      # before, then after (starts build_labels)
-pytest -m integration tests/integration/test_peak_data.py -k "ac66_before"
-#   optional rebuild leg: python scripts/reset_peak_model_outputs.py --confirm, then the daily job
-pytest -m integration tests/integration/test_peak_data.py -k "ac66_after"
+pytest -m integration tests/integration/test_peak_data.py -k "ac66_before"       # snapshot, tables present
+pytest -m integration tests/integration/test_peak_data.py -k "ac66_rerun_leg"    # rerun leg: MERGE 0 / 0 / 0
+python scripts/reset_peak_model_outputs.py                                        # user only: dry run
+python scripts/reset_peak_model_outputs.py --confirm                              # user only: drops the three tables
+pytest -m integration tests/integration/test_peak_data.py -k "ac66_rebuild_leg"  # rebuild leg: starts the four data tasks
+pytest -m integration tests/integration/test_peak_data.py -k "ac66_verdict"      # green only with both legs
 pytest -m integration tests/integration/test_peak_training.py            # needs two training runs
 pytest -m integration tests/integration/test_peak_scoring.py -k "ac58 or ac59 or ac56"
 pytest -m integration tests/integration/test_peak_scoring.py -k "ac57"   # before, then after
@@ -224,6 +227,11 @@ The Aiven Kafka service must be on for AC-74, so the started ingestion run reach
 `refresh_silver_gold` (U-02). With the service off, the test still checks the pre-check but the
 ingestion run fails at `ingest_kafka` and sends a failure email.
 
+Each AC-66 leg refuses before any job run when the table state does not fit it (rerun leg: all
+three tables present; rebuild leg: none present). The verdict starts no run and reads
+`out/evidence/ac66_before_rebuild.json`, `ac66_rerun_leg.json` and `ac66_rebuild_leg.json`, and
+writes `ac66_verdict.json`; copy the four files into the build report.
+
 Snapshots go to `out/evidence/` (git-ignored); copy the output into the build report. AC-61
 (missing alias) is not run live because it would delete the alias of the shared model; the
 bootstrap order above shows the same failure when no model exists yet. AC-65 is
@@ -237,17 +245,31 @@ Bronze, the model, the MLflow runs or `gold.consumption_spike_predictions`. It r
 every table exists with the expected row count (21,165 and 36,480 twice), Bronze weather has rows
 and the AC-66 snapshot exists.
 
+Before the reset, the snapshot (`-k "ac66_before"`) and the rerun leg (`-k "ac66_rerun_leg"`) must
+have passed against the current snapshot (section 8); the verdict needs them in that order.
+
 ```bash
 python scripts/reset_peak_model_outputs.py            # dry run: prints the plan and the counts
 python scripts/reset_peak_model_outputs.py --confirm  # drops the three tables
-pytest -m integration tests/integration/test_peak_data.py -k "ac66_after"   # rebuilds them, then compares
+pytest -m integration tests/integration/test_peak_data.py -k "ac66_rebuild_leg"  # rebuild leg
+pytest -m integration tests/integration/test_peak_data.py -k "ac66_verdict"      # both legs, in order
 ```
 
-The script prints table names and row counts only. After the rebuild the feature table is a new
-Delta table with the same content (`ac66_after` starts `ingest_weather`, `build_weather_silver`,
-`build_features` and `build_labels` itself and compares counts and checksums, so no daily run is
-needed; run the daily job later as usual). The registered model and
-the predictions are kept. Retrain only if you also changed parameters or data.
+The script prints table names and row counts only. The rebuild leg (`-k "ac66_rebuild_leg"`) starts
+`ingest_weather`, `build_weather_silver`, `build_features` and `build_labels` itself and compares
+counts and checksums with the snapshot, so no job run is needed between the reset and the rebuild
+leg. After the rebuild the feature table is a new Delta table with the same content. Then the
+verdict (`-k "ac66_verdict"`) passes only when the rerun leg and the rebuild leg both passed against
+the current snapshot, in that order. The registered model and the predictions are kept. Retrain only
+if you also changed parameters or data.
+
+**If a leg refuses or fails.** A leg refuses before any job run and changes no evidence file; its
+message names the leg, every table in the wrong state and the next step. The rerun leg with the
+tables absent: run the rebuild leg. The rebuild leg with the tables present: run the rerun leg, then
+the user-run reset. A missing snapshot: run `-k "ac66_before"` with the three tables present. A
+failed rebuild leg can leave a partial state (one or two tables present), which both legs refuse: a
+full run of `smart_meter_peak_model` restores the missing tables, then start again with the
+snapshot.
 
 ## 10. Model cleanup (order matters, ADR 0007)
 

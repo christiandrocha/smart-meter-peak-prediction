@@ -299,20 +299,37 @@ def checksum(sql: Sql) -> Callable[[str, list[str]], dict[str, Any]]:
 
 # ----------------------------------------------------------------------------- evidence
 class Evidence:
-    """JSON snapshots for the ``*_before`` and ``*_after`` test pairs."""
+    """JSON snapshots for the ``*_before`` and ``*_after`` test pairs.
+
+    ``folder`` defaults to ``out/evidence``; AC66_BOTH_LEGS adds ``read_text`` and ``remove`` and
+    lets the unit tests use a temporary folder (DA-44).
+    """
+
+    def __init__(self, folder: Path = EVIDENCE_DIR) -> None:
+        self.folder = folder
 
     def save(self, name: str, data: dict[str, Any]) -> None:
-        EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
+        self.folder.mkdir(parents=True, exist_ok=True)
         payload = {"saved_at_ms": int(time.time() * 1000), **data}
-        (EVIDENCE_DIR / f"{name}.json").write_text(
+        (self.folder / f"{name}.json").write_text(
             json.dumps(payload, indent=2, sort_keys=True, default=str) + "\n", encoding="utf-8"
         )
 
     def load(self, name: str, before_test: str) -> dict[str, Any]:
-        path = EVIDENCE_DIR / f"{name}.json"
+        path = self.folder / f"{name}.json"
         if not path.is_file():
             pytest.fail(f"snapshot {path.name} is missing: run {before_test} first (see runbook)")
         return json.loads(path.read_text(encoding="utf-8"))
+
+    def read_text(self, name: str) -> str | None:
+        """The file's text (undecodable bytes replaced), or None when it does not exist."""
+        path = self.folder / f"{name}.json"
+        if not path.is_file():
+            return None
+        return path.read_text(encoding="utf-8", errors="replace")
+
+    def remove(self, name: str) -> None:
+        (self.folder / f"{name}.json").unlink(missing_ok=True)
 
 
 @pytest.fixture(scope="session")
