@@ -245,6 +245,9 @@ Bronze, the model, the MLflow runs or `gold.consumption_spike_predictions`. It r
 every table exists with the expected row count (21,165 and 36,480 twice), Bronze weather has rows
 and the AC-66 snapshot exists.
 
+Before the reset, the snapshot (`-k "ac66_before"`) and the rerun leg (`-k "ac66_rerun_leg"`) must
+have passed against the current snapshot (section 8); the verdict needs them in that order.
+
 ```bash
 python scripts/reset_peak_model_outputs.py            # dry run: prints the plan and the counts
 python scripts/reset_peak_model_outputs.py --confirm  # drops the three tables

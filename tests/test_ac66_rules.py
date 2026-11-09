@@ -441,12 +441,12 @@ def test_ac158_leg_passes_and_writes_the_full_record(tmp_path: Path, leg: str) -
     assert record["outcome"] == "passed"
     assert fakes.calls.count("run") == 1
     assert fakes.calls.index("preflight") < fakes.calls.index("run")
-    # the saved record is what the verdict rule accepts as one leg
-    other = "rebuild" if leg == "rerun" else "rerun"
+    assert saved["started_ts"] == "2023-11-14T22:13:20Z"
+    assert saved["ended_ts"] == "2023-11-14T22:17:06Z"
+    assert saved["after"] == _snapshot_tables()
     assert saved["merges"]["features"]["inserted"] == (
         COUNTS["features"] if leg == "rebuild" else 0
     )
-    assert other != leg
 
 
 def _bad_merges(leg: str) -> dict[str, Any]:
@@ -575,3 +575,57 @@ def test_ac158_real_evidence_class_keeps_its_shipped_defaults(tmp_path: Path) ->
     assert isinstance(store.read_text("bad"), str)
     store.remove("x")
     assert store.read_text("x") is None
+
+
+@pytest.mark.parametrize("leg", ["rerun", "rebuild"])
+def test_ac158_after_state_mismatch_fails_and_never_stores_a_secret(
+    tmp_path: Path, leg: str
+) -> None:
+    store = _store(tmp_path, leg)
+    fakes = Fakes(leg, _present(leg))
+    fakes.after["features"]["checksum"] = SECRETS[0]
+    fakes.after["labels"]["row_count"] += 1
+    with pytest.raises(AssertionError) as caught:
+        fakes.call(store)
+    message = str(caught.value)
+    assert "features: checksum differs" in message
+    assert "labels: row_count differs" in message
+    assert SECRETS[0] not in message
+    path = tmp_path / f"{rules.LEG_NAMES[leg]}.json"
+    saved = path.read_text(encoding="utf-8")
+    assert json.loads(saved)["outcome"] == "failed"
+    assert SECRETS[0] not in saved
+    assert json.loads(saved)["after"]["features"]["checksum"] is None
+
+
+@pytest.mark.parametrize("leg", ["rerun", "rebuild"])
+def test_ac158_failing_preflight_keeps_the_old_record(tmp_path: Path, leg: str) -> None:
+    store = _store(tmp_path, leg)
+    before = _files(tmp_path)
+    fakes = Fakes(leg, _present(leg))
+
+    def busy() -> None:
+        raise AssertionError("the shared pipeline is not idle")
+
+    with pytest.raises(AssertionError, match="not idle"):
+        rules.run_leg(
+            leg,
+            store=store,
+            exists=fakes.exists,
+            run_tasks=fakes.run_tasks,
+            state=fakes.state,
+            preflight=busy,
+        )
+    assert "run" not in fakes.calls
+    assert _files(tmp_path) == before
+
+
+def test_ac158_unreadable_snapshot_refuses(tmp_path: Path) -> None:
+    store = _store(tmp_path, "rerun")
+    (tmp_path / "ac66_before_rebuild.json").write_text("{broken", encoding="utf-8")
+    before = _files(tmp_path)
+    fakes = Fakes("rerun", _present("rerun"))
+    with pytest.raises(AssertionError, match="refused before any job run"):
+        fakes.call(store)
+    assert "run" not in fakes.calls
+    assert _files(tmp_path) == before

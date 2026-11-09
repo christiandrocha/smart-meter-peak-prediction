@@ -190,7 +190,7 @@ def _precondition(leg: str, snapshot_ok: bool, present: Mapping[str, Any]) -> Pr
     reasons: list[str] = []
     nexts: list[str] = []
     if not snapshot_ok:
-        reasons.append(f"the snapshot {_file(SNAPSHOT_NAME)} is missing or unreadable")
+        reasons.append(f"the snapshot {_file(SNAPSHOT_NAME)} is missing, unreadable or malformed")
         nexts.append(f"run {SNAPSHOT_TEST} with the three tables present")
     states: dict[str, Any] = {}
     for key, shown in TABLES:
