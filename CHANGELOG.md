@@ -5,6 +5,39 @@ Entries are added by `/ship`.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-09
+
+### Added
+
+- AC-66 evidence helpers in `tests/support/ac66_rules.py` (no SDK, no I/O, no clock): the
+  precondition of each leg, the expected MERGE metrics, the leg record, the verdict rule and the
+  leg procedure with every side effect injected. Unit tests in `tests/test_ac66_rules.py` and
+  docs tests in `tests/test_ac66_legs_docs.py`.
+- `Evidence.read_text` and `Evidence.remove` in `tests/integration/conftest.py`. `Evidence` takes
+  a `folder` argument whose default keeps the shipped `out/evidence/` path.
+
+### Changed
+
+- PEAK_MODEL AC-66 evidence is split into three live tests (PEAK_MODEL F-15, AC66_BOTH_LEGS): the
+  rerun leg (`-k "ac66_rerun_leg"`), the rebuild leg (`-k "ac66_rebuild_leg"`) and the verdict
+  (`-k "ac66_verdict"`). The verdict passes only when both legs passed against the current
+  snapshot, in the PEAK_MODEL AC-66 order (rerun leg first). The combined test
+  `test_ac66_after_rerun_and_rebuild_checksums_equal` and the selector `-k "ac66_after"` are
+  removed, so a sequence that runs only one leg now fails.
+- A leg whose tables are in the wrong state refuses before any job run and changes no evidence
+  file. The leg and verdict records are `out/evidence/ac66_rerun_leg.json`,
+  `ac66_rebuild_leg.json` and `ac66_verdict.json`; `ac66_after_rebuild.json` is no longer written.
+- Runbook `docs/runbooks/peak_model.md` sections 8 (Evidence order) and 9 (Reset) state the new
+  order. The module docstring of `tests/integration/test_peak_data.py` and the docstring and
+  printed next step of `scripts/reset_peak_model_outputs.py` name the legs. The reset guards are
+  unchanged.
+
+### Unchanged
+
+- No production file (`src/`, `resources/`, `notebooks/`, `databricks.yml`) changed, and the
+  package version stays 0.4.1 (D-92), as in v0.5.0 and v0.6.0. The snapshot test
+  `test_ac66_before_rebuild_snapshot` is unchanged.
+
 ## [0.6.0] - 2026-11-09
 
 ### Added
