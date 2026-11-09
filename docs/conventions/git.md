@@ -42,11 +42,19 @@ These rules bind any agent, and any person, running git or `gh` in this reposito
   Read the state, evaluate the result, and only then run the destructive command in a separate
   call.
 - These commands need the explicit confirmation of the user every time, one at a time:
-  `git push --delete`, `git push origin :<branch>`, `git branch -D`,
-  `git push --force` / `--force-with-lease`, `git reset --hard`, `gh pr close`,
-  `gh repo delete`.
-- Delete a remote branch only when its pull request state is exactly `MERGED`. Prefer
-  `gh pr merge <N> --delete-branch`, which removes the branch only after a successful merge.
+  `git push --delete`, `git push origin :<branch>`, `git branch -D`, `git push --force`,
+  `git reset --hard`, `gh pr close`, `gh repo delete`.
+- `git push --force-with-lease` needs the same confirmation, with one exception: it may run
+  without it on a branch created for the current task (never `main`, never a branch of another
+  task), to publish that branch after a rebase. Before each use, read the ruleset with
+  `gh api repos/christiandrocha/smart-meter-peak-prediction/rulesets/26640008`; the exception
+  holds only if `main-protection` is `active`, targets the default branch, has the
+  `non_fast_forward` rule and no bypass actors. If not, or in doubt, ask.
+- Delete a remote branch only when its pull request state is exactly `MERGED`. GitHub removes
+  the head branch on merge (`delete_branch_on_merge`), so after a merge do not run
+  `git push --delete`: confirm the removal with `git ls-remote --heads origin <branch>`. Merge
+  without `--delete-branch`, because `gh pr merge --delete-branch` also deletes the local branch
+  on its own; delete the local branch with `git branch -d`, which refuses an unmerged branch.
 - For a destructive command, check the exit code of that command itself. Do not combine `-q`
   with pipes, `grep` or `||` fallbacks to produce status messages. After a delete, confirm it with
   a separate read (for example `git ls-remote --heads origin <branch>`).

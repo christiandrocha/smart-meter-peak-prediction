@@ -38,9 +38,10 @@ This project follows Spec-Driven Development. Read `.claude/sdd/README.md`.
    not the author's learning process. Personal notes go in `notes/`, which git ignores.
 8. Git and `gh` follow the mandatory rules in `docs/conventions/git.md`: verify a pull request's
    state with `gh` before any post-merge step, never chain a destructive command after a state
-   read, get explicit confirmation for each destructive command, check that command's own exit
-   code (no `-q` with pipes, `grep` or `||` status messages), and confirm a delete with a
-   separate read.
+   read, get explicit confirmation for each destructive command (the one exception,
+   `--force-with-lease` on a branch of the current task, is in `git.md`), check that
+   command's own exit code (no `-q` with pipes, `grep` or `||` status messages), and confirm a
+   delete with a separate read.
 
 ## Commands
 
