@@ -1,14 +1,20 @@
 """PEAK_MODEL data tables on dev (AC-36, 37, 39, 40, 41, 44, 47, 63, 64, 66).
 
+AC66_BOTH_LEGS adds the live criteria AC-162 to AC-164 (rerun leg, rebuild leg, verdict).
+
 Run order (runbook ``docs/runbooks/peak_model.md``, "Evidence order"): after the bootstrap run of
 the daily job (weather uploaded, Gold present), run the read-only tests first; then the snapshot
 pairs, each pair back to back:
 
 - AC-63: ``before`` then ``after`` (the ``after`` test starts ``build_labels`` itself with the
   stricter parameters, checks them, and restores the defaults in a ``finally`` block).
-- AC-66: ``before``; optionally the user-run reset (``scripts/reset_peak_model_outputs.py``);
-  ``after`` (starts the weather, feature and label tasks itself, so no daily run is needed after
-  the reset; it expects inserts equal to the snapshot counts when the tables were dropped).
+- AC-66 (AC66_BOTH_LEGS), in this order: ``ac66_before`` (snapshot, the three tables present);
+  ``ac66_rerun_leg`` (rerun leg: MERGE 0 / 0 / 0, counts and checksums equal); the user runs
+  ``scripts/reset_peak_model_outputs.py`` as a dry run, then
+  ``reset_peak_model_outputs.py --confirm``; ``ac66_rebuild_leg`` (rebuild leg: starts the four
+  data tasks itself, inserts the snapshot rows, counts and checksums equal); ``ac66_verdict``
+  (reads out/evidence only; passes only when both legs passed against the current snapshot).
+  A leg in the wrong table state refuses before any job run and changes no evidence file.
 
 Keep ``smart_meter_ingestion`` idle during the whole sequence: the tests compare against Gold.
 
@@ -21,6 +27,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
+from support import ac66_rules
 
 from smart_meter_peak_prediction.model import FEATURE_COLUMNS
 from smart_meter_peak_prediction.peak_config import PeakParameters
@@ -400,23 +407,55 @@ def _table_exists(sql, settings, contracts, stem: str) -> bool:
     )
 
 
-def test_ac66_after_rerun_and_rebuild_checksums_equal(
+def _tables_present(sql, settings, contracts) -> dict[str, bool]:
+    return {key: _table_exists(sql, settings, contracts, stem) for stem, key in SNAPSHOT_TABLES}
+
+
+def _leg_run(peak_run) -> ac66_rules.LegRun:
+    run = peak_run.run
+    return ac66_rules.LegRun(
+        run_id=run.run_id, start_ms=run.start_time, end_ms=run.end_time, outputs=peak_run.outputs
+    )
+
+
+def test_ac66_rerun_leg_ac163_ac164_merges_nothing_and_checksums_equal(
     sql, settings, contracts, checksum, evidence, peak_job, peak_runner
 ) -> None:
-    """Rerun mode: 0 inserted, 0 updated, 0 deleted. Rebuild mode (after the user-run reset
-    script dropped the three tables): the rebuild inserts exactly the snapshot rows. Both modes
-    end with the snapshot counts and checksums."""
-    before = evidence.load("ac66_before_rebuild", "test_ac66_before_rebuild_snapshot")
-    rebuild = not all(_table_exists(sql, settings, contracts, stem) for stem, _ in SNAPSHOT_TABLES)
-    run = peak_runner.run(peak_job, only=DATA_TASKS)
-    merges = {
-        "silver_weather": run.outputs["build_weather_silver"]["merge"],
-        "features": run.outputs["build_features"]["merge"],
-        "labels": run.outputs["build_labels"]["merge"],
-    }
-    for key, merge in merges.items():
-        inserted = before[key]["row_count"] if rebuild else 0
-        assert merge == {"inserted": inserted, "updated": 0, "deleted": 0}, (key, rebuild)
-    after = _state(settings, contracts, checksum)
-    assert {k: v for k, v in after.items()} == {k: before[k] for k in after}
-    evidence.save("ac66_after_rebuild", {"rebuild_after_reset": rebuild, "merges": merges})
+    """PEAK_MODEL AC-66 rerun leg; AC66_BOTH_LEGS AC-163 (passes) and AC-164 (refuses after the
+    reset). Needs the snapshot and the three tables; starts the four data tasks once."""
+    ac66_rules.run_leg(
+        leg="rerun",
+        store=evidence,
+        exists=lambda: _tables_present(sql, settings, contracts),
+        run_tasks=lambda: _leg_run(peak_runner.run(peak_job, only=DATA_TASKS)),
+        state=lambda: _state(settings, contracts, checksum),
+        preflight=peak_runner.assert_ingestion_idle,
+    )
+
+
+def test_ac66_rebuild_leg_ac162_ac164_inserts_the_snapshot_rows_and_checksums_equal(
+    sql, settings, contracts, checksum, evidence, peak_job, peak_runner
+) -> None:
+    """PEAK_MODEL AC-66 rebuild leg (PEAK_MODEL NFR-17); AC66_BOTH_LEGS AC-162 (refuses before the
+    reset) and AC-164 (passes after it). Needs the snapshot and none of the three tables; starts
+    the four data tasks once and expects inserts equal to the snapshot counts."""
+    ac66_rules.run_leg(
+        leg="rebuild",
+        store=evidence,
+        exists=lambda: _tables_present(sql, settings, contracts),
+        run_tasks=lambda: _leg_run(peak_runner.run(peak_job, only=DATA_TASKS)),
+        state=lambda: _state(settings, contracts, checksum),
+        preflight=peak_runner.assert_ingestion_idle,
+    )
+
+
+def test_ac66_verdict_ac163_ac164_both_legs_passed_against_the_current_snapshot(evidence) -> None:
+    """AC66_BOTH_LEGS AC-163 (fails naming the rebuild leg) and AC-164 (passes with both legs).
+    Reads the three evidence files only: no job run, no SQL."""
+    verdict = ac66_rules.evaluate(
+        evidence.read_text(ac66_rules.SNAPSHOT_NAME),
+        evidence.read_text(ac66_rules.LEG_NAMES["rerun"]),
+        evidence.read_text(ac66_rules.LEG_NAMES["rebuild"]),
+    )
+    evidence.save(ac66_rules.VERDICT_NAME, verdict.record)
+    assert verdict.passed, ac66_rules.verdict_message(verdict)

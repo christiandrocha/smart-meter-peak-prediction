@@ -127,7 +127,9 @@ def test_integration_tests_are_collected_but_deselected_by_default() -> None:
     selected = _collect("-m", "integration", "-o", "addopts=", "tests/integration")
     assert "tests/integration/test_silver_tables.py::test_ac11_" in selected
     assert "tests/integration/test_reprocessing.py::test_ac27_after_" in selected
-    assert "tests/integration/test_peak_data.py::test_ac66_after_" in selected
+    assert "tests/integration/test_peak_data.py::test_ac66_rerun_leg_" in selected
+    assert "tests/integration/test_peak_data.py::test_ac66_rebuild_leg_" in selected
+    assert "tests/integration/test_peak_data.py::test_ac66_verdict_" in selected
     assert "tests/integration/test_peak_training.py::test_ac55_uc_lineage" in selected
     assert "tests/integration/test_peak_scoring.py::test_ac57_after_" in selected
     assert "tests/integration/test_peak_deployment.py::test_ac62_" in selected
