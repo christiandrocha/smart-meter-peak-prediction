@@ -12,7 +12,7 @@
 | **Date** | 2026-11-09 |
 | **Author** | christiandrocha (with Claude Code) |
 | **Branch** | `change/template-port` |
-| **Status** | Ready for Build |
+| **Status** | Complete |
 | **Source** | SMALL_CHANGE_TRACK F-02 and SPEC_ARCHIVE_GATES F-01; follow-up file `.claude/sdd/follow-ups/F_SMALL_CHANGE_TRACK_02.md`. User decisions of 2026-11-09: full resync of the generic tooling, `git.md` in the template without the R1 exception, work committed on a local branch of the template repository for review |
 
 Allowed status values: `Draft`, `Ready for Build`, `Complete`.
@@ -58,14 +58,14 @@ SHA.
 
 | ID | Criterion | Result | Evidence |
 |---|---|---|---|
-| E1 | No production file: nothing under `src/`, `resources/`, `notebooks/`, `pipelines/`, nor `databricks.yml` (`git diff --name-only origin/main...HEAD`) | Yes | Planned files (File Manifest): this document, `tests/test_check_specs.py`, the follow-up file and two archived SHIPPED rows; replaced by the real output at `Complete` |
-| E2 | No contract change: nothing under `docs/contracts/` (same output) | Yes | Planned: nothing under `docs/contracts/` |
-| E3 | No new ADR: no added `docs/adr/NNNN-*.md` (`git diff --name-status origin/main...HEAD`) | Yes | Planned: no `docs/adr/` file |
-| E4 | No change to an archived DEFINE or DESIGN, which is `/iterate`; annotating archived BUILD_REPORT or SHIPPED rows is allowed (same output) | Yes | Planned: only the Follow-ups rows SMALL_CHANGE_TRACK F-02 and SPEC_ARCHIVE_GATES F-01 of two SHIPPED documents |
-| E5 | No change to the gates: neither `scripts/check_specs.py` nor a template that the script or the tests read (same output) | Yes | Planned: `scripts/check_specs.py` and `.claude/sdd/templates/` unchanged here; only a test helper changes |
-| E6 | No change under `tests/integration/` (same output) | Yes | Planned: only `tests/test_check_specs.py` |
-| E7 | No change to the runtime `dependencies` of `pyproject.toml`; the `dev` extra may change (`git diff origin/main...HEAD -- pyproject.toml`) | Yes | Planned: `pyproject.toml` unchanged here |
-| E8 | Agent rules (`docs/conventions/git.md` and the rules for agents in `CLAUDE.md`) change only under a gate. Hardening (adding rules, raising requirements, fixing wording without changing the effect) is `Yes`. Relaxing (removing a rule, narrowing what needs confirmation, widening what is allowed without it, weakening a check) is `Relaxing` and needs the Rule Changes section below. In doubt, it is relaxing (`git diff origin/main...HEAD -- docs/conventions/git.md CLAUDE.md`) | Yes | Planned: `git.md` and `CLAUDE.md` unchanged here. In the template the port only adds rules (hardening): the rules for agents of 4699d1e and R2, without the R1 exception, so `--force-with-lease` stays on the confirmation list |
+| E1 | No production file: nothing under `src/`, `resources/`, `notebooks/`, `pipelines/`, nor `databricks.yml` (`git diff --name-only origin/main...HEAD`) | Yes | `git diff --name-status origin/main...HEAD` on 251e5f4: `M` `.claude/sdd/archive/SMALL_CHANGE_TRACK/SHIPPED_2026-11-06.md`, `M` `.claude/sdd/archive/SPEC_ARCHIVE_GATES/SHIPPED_2026-11-05.md`, `A` `.claude/sdd/features/CHANGE_TEMPLATE_PORT.md`, `A` `.claude/sdd/follow-ups/F_SMALL_CHANGE_TRACK_02.md`, `M` `tests/test_check_specs.py`: nothing under `src/`, `resources/`, `notebooks/`, `pipelines/`, nor `databricks.yml` |
+| E2 | No contract change: nothing under `docs/contracts/` (same output) | Yes | Same output: nothing under `docs/contracts/` |
+| E3 | No new ADR: no added `docs/adr/NNNN-*.md` (`git diff --name-status origin/main...HEAD`) | Yes | Same output: no `docs/adr/` file |
+| E4 | No change to an archived DEFINE or DESIGN, which is `/iterate`; annotating archived BUILD_REPORT or SHIPPED rows is allowed (same output) | Yes | Same output: the two archived files are SHIPPED documents, changed only in the Follow-ups rows SMALL_CHANGE_TRACK F-02 (line 108) and SPEC_ARCHIVE_GATES F-01 (line 98); no DEFINE or DESIGN |
+| E5 | No change to the gates: neither `scripts/check_specs.py` nor a template that the script or the tests read (same output) | Yes | `git diff --stat origin/main...HEAD -- scripts/check_specs.py .claude/sdd/templates` is empty; only `tests/test_check_specs.py` changes (a test helper and one test) |
+| E6 | No change under `tests/integration/` (same output) | Yes | Same output: nothing under `tests/integration/` |
+| E7 | No change to the runtime `dependencies` of `pyproject.toml`; the `dev` extra may change (`git diff origin/main...HEAD -- pyproject.toml`) | Yes | `git diff origin/main...HEAD -- pyproject.toml` is empty |
+| E8 | Agent rules (`docs/conventions/git.md` and the rules for agents in `CLAUDE.md`) change only under a gate. Hardening (adding rules, raising requirements, fixing wording without changing the effect) is `Yes`. Relaxing (removing a rule, narrowing what needs confirmation, widening what is allowed without it, weakening a check) is `Relaxing` and needs the Rule Changes section below. In doubt, it is relaxing (`git diff origin/main...HEAD -- docs/conventions/git.md CLAUDE.md`) | Yes | `git diff origin/main...HEAD -- docs/conventions/git.md CLAUDE.md` is empty. In the template the port only adds rules (hardening): the rules for agents of 4699d1e and R2, without the R1 exception, so `--force-with-lease` stays on the confirmation list |
 
 ---
 
@@ -82,7 +82,9 @@ SHA.
   `CLAUDE.md` (CHANGE track line and rule 8 without the exception; placeholders kept),
   `.pre-commit-config.yaml` (ruff v0.17.0, `ruff-check`, `check-specs` with `language: python`;
   not the exclude of this project's pinned files), `pyproject.toml` (`ruff==0.17.0` in `dev`),
-  `README.md` and `CHANGELOG.md` of the template.
+  and the template's own `README.md` (replaced by `.template/README.project.md` at init). The
+  template's `CHANGELOG.md` stays empty: `init_project.py` keeps it as the new project's
+  changelog.
 
 **In scope (this repository):**
 - `tests/test_check_specs.py`: `simulate_archive` takes the source root as a parameter, and the
@@ -135,7 +137,7 @@ SHA.
 |---|---|---|---|
 | 1 | `tests/test_check_specs.py` | Modify | `simulate_archive(..., source=ROOT)`; collision test with its own archive (AC-152) |
 | 2 | Template: copied and new files of Scope | Create / Modify | AC-146, AC-147 |
-| 3 | Template: `docs/conventions/git.md`, `CLAUDE.md`, `.claude/sdd/README.md`, `.pre-commit-config.yaml`, `pyproject.toml`, `README.md`, `CHANGELOG.md` | Modify | AC-148, AC-149 |
+| 3 | Template: `docs/conventions/git.md`, `CLAUDE.md`, `.claude/sdd/README.md`, `.pre-commit-config.yaml`, `pyproject.toml`, `README.md` | Modify | AC-148, AC-149 |
 | 4 | `.claude/sdd/follow-ups/F_SMALL_CHANGE_TRACK_02.md` | Create | Follow-up record, closed with the template commit (AC-153) |
 | 5 | `.claude/sdd/archive/SMALL_CHANGE_TRACK/SHIPPED_2026-11-06.md`, `.claude/sdd/archive/SPEC_ARCHIVE_GATES/SHIPPED_2026-11-05.md` | Modify | Follow-ups rows name the template commit (AC-153) |
 
@@ -143,7 +145,7 @@ SHA.
 
 ## Evidence
 
-Evidence commit: Planned
+Evidence commit: 251e5f4
 
 Process rule D-91 (not checked by the script): the evidence commit is the last commit of the PR
 that touches files other than this document. The final commit touches only this document (status
@@ -152,14 +154,14 @@ on the final head and its output goes in the PR description.
 
 | AC | Result | Evidence |
 |---|---|---|
-| AC-146 | Not run | Planned |
-| AC-147 | Not run | Planned |
-| AC-148 | Not run | Planned |
-| AC-149 | Not run | Planned |
-| AC-150 | Not run | Planned |
-| AC-151 | Not run | Planned |
-| AC-152 | Not run | Planned |
-| AC-153 | Not run | Planned |
+| AC-146 | Pass | Template d520e24: `cmp -s` exits 0 against this repository (28ad101 for the test file, `main` for the rest) for `scripts/check_specs.py`, `tests/test_check_specs.py`, `SHIPPED_TEMPLATE.md`, `CHANGE_TEMPLATE.md`, `FOLLOW_UP_TEMPLATE.md`, `ship-agent.md`, `naming.md` |
+| AC-147 | Pass | `ls -a .claude/sdd/follow-ups`: `.gitkeep`; `citation_allowlist.json`: `{"version": 1, "entries": []}` |
+| AC-148 | Pass | `git.md:44-46` confirmation list includes `git push --force-with-lease` with no exception; `git.md:50-54`: when `gh api repos/<owner>/<repo> --jq .delete_branch_on_merge` returns `true`, no `git push --delete` and `git ls-remote --heads origin <branch>`; otherwise `git push origin --delete <branch>` with confirmation; merge without `--delete-branch`, local delete with `git branch -d`. `grep -n "26640008\|smart-meter\|#3[0-9]\|feat/"` exits 1. A closing bullet says a project relaxes a confirmation only through an E8 `Relaxing` CHANGE |
+| AC-149 | Pass | `CLAUDE.md`: 3 lines with `{{`, CHANGE track line (22-23), rule 8 (39), `grep exception` exits 1. README: `## CHANGE track` (50), `## Follow-ups` (88), "Shipped features in `archive/` are checked as well:" (34), the allowlist "empty in a new project"; spec names only as citation examples. Hooks: `rev: v0.17.0`, `ruff-check`, `check-specs` `language: python`; `pyproject.toml:12` `"ruff==0.17.0"` |
+| AC-150 | Pass | Template d520e24, ruff 0.17.0: `ruff check .` "All checks passed!"; `ruff format --check .` "34 files already formatted"; `pytest` 128 passed, 1 skipped; `check_specs.py` "0 document(s) checked, 0 error(s), 0 warning(s)"; `pre-commit run --all-files` all 9 hooks pass, after `check-yaml` got `exclude: ^modules/` (it failed on `master` too: `modules/databricks/files/databricks.yml` holds the project-slug placeholder until init) |
+| AC-151 | Pass | Scratch copy: `init_project.py --name "Port Check" --modules databricks,kafka,mlflow --author Test` printed "Initialized 'Port Check' (package: port_check, ...)", placeholders replaced in 7 files; then `pytest` 121 passed, 1 skipped; `check_specs.py` 0 errors, 0 warnings; `ruff check .` exit 0; `CHANGE_TEMPLATE.md`, `FOLLOW_UP_TEMPLATE.md`, `follow-ups/` and the allowlist present; `grep` for `26640008`, the account name and this repository's name finds nothing |
+| AC-152 | Pass | `pytest tests/test_check_specs.py` 114 passed, 1 skipped; the collision test builds `archive/FEAT/` under `tmp_path` (`simulate_archive(..., source=source)`) and passes alone (1 passed); in the template (empty archive) it passes within AC-150 |
+| AC-153 | Pass | On the final tree: `check_specs.py` `60 document(s) checked, 0 error(s), 8 warning(s)`, exit 0; the warnings are the six of `main` and this document's own TEMPLATE_PORT I-01 and TEMPLATE_PORT I-02 (rule b). `pre-commit run --all-files`: all hooks passed. `F_SMALL_CHANGE_TRACK_02.md` status `Closed` with d520e24; the source rows at `SHIPPED_2026-11-06.md:108` and `SHIPPED_2026-11-05.md:98` name d520e24 |
 
 In a `Complete` document `check_specs.py` reports `Fail` and `Not run` as errors. A deliberate
 deferral is written `Deferred: <reason>`: the check accepts it and lists it as a warning, so it
@@ -173,6 +175,7 @@ stays visible without blocking the change. `Deferred` without a reason is an err
 |---|---|---|---|
 | I-01 | The template's `tests/test_check_specs.py` keeps this project's AC numbers in test names and comments (AC-107 to AC-131); they mean nothing in a new project. Kept so that the file stays byte-identical and the next resync is a plain copy | Low | Open |
 | I-02 | Nothing keeps the template in step: the next process change here drifts again until someone ports it | Low | Open |
+| I-03 | The template's `check-yaml` exclude of `modules/` was a defect on the template's `master` (placeholders in module YAML), found by AC-150 and fixed in d520e24; generated projects do not have `modules/` | Low | Closed in d520e24 |
 
 ---
 
