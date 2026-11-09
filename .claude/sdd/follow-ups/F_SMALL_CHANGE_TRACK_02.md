@@ -86,8 +86,8 @@ Fill when the status becomes `Closed` or `Dropped`, in the same PR that does the
 
 | Item | Value |
 |---|---|
-| **Pull request** | The PR of branch `change/template-port` (this repository); the template work is commit d520e24 on branch `sync/project-tooling` of `~/Documents/sdd-data-template`, local only, merged into its `master` by the user after review |
-| **Merge commit** | Read with `gh pr view <N> --json state,mergeCommit` after the merge |
+| **Pull request** | #51 (branch `change/template-port`, this repository); the template work is commit d520e24 on branch `sync/project-tooling` of `~/Documents/sdd-data-template`, local only, merged into its `master` by the user after review |
+| **Merge commit** | 7b50dd3 (`gh pr view 51 --json state,mergedAt,mergeCommit`: `MERGED`, 2026-11-09T14:02:18Z, 7b50dd387f41b5aa77db5446e26d0dab2960db30) |
 | **Work done in** | `CHANGE_TEMPLATE_PORT.md` |
 | **Source rows updated** | `.claude/sdd/archive/SMALL_CHANGE_TRACK/SHIPPED_2026-11-06.md:108` and `.claude/sdd/archive/SPEC_ARCHIVE_GATES/SHIPPED_2026-11-05.md:98`: "Closed 2026-11-09: ported in `sdd-data-template` d520e24" |
 | **check_specs.py after the update** | `60 document(s) checked, 0 error(s), 6 warning(s)` (the six of `main`; neither row was a rule (b) warning, because Follow-ups rows of a SHIPPED table are not findings) |
