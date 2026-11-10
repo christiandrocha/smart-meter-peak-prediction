@@ -167,7 +167,7 @@ No deviation needs `/iterate`.
 | I-02 | DA-47 (CLI lists runs newest first) not yet checked | Low | Resolved 2026-11-09: checked at live step 4, runs listed newest first |
 | I-03 | `code-reviewer`: no High. Medium (3) and Low findings fixed: after-state mismatch through `run_leg`, preflight-before-remove test, runbook section 9 states the rerun leg comes first, snapshot wording, dead assertion replaced by exact timestamps and `after` values, unreadable snapshot case, G-52 drop test | Medium | Fixed in commit f113d88. The two Low findings left are I-04 and I-05 |
 | I-04 | `code-reviewer` (Low): in `run_leg`, a `BaseException` raised while saving the `failed` record replaces the original exception, so the first cause is lost from the report | Low | Dropped 2026-11-10 (AC66_BOTH_LEGS F-01, `F_AC66_BOTH_LEGS_01.md`): implicit chaining keeps the original as `__context__` and pytest prints it; nothing is lost. Original proposal: raise the save error from the original (`raise ... from`) or chain it, with a test of `run_leg` |
-| I-05 | `code-reviewer` (Low): `Evidence.save` is not atomic, so an old verdict file can survive a failing save; the verdict test still fails in that case | Low | Open: write to a temporary file in the same folder and `os.replace` it, with a test |
+| I-05 | `code-reviewer` (Low): `Evidence.save` is not atomic, so an old verdict file can survive a failing save; the verdict test still fails in that case | Low | Dropped 2026-11-10 (AC66_BOTH_LEGS F-02, `F_AC66_BOTH_LEGS_02.md`): the verdict test fails in every failing-save case, and the proposed atomic write would keep a stale `pass` in every case. Original proposal: write to a temporary file in the same folder and `os.replace` it, with a test |
 
 ---
 
