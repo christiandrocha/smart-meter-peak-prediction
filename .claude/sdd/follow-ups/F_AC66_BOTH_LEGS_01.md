@@ -106,8 +106,8 @@ Fill when the status becomes `Closed` or `Dropped`, in the same PR that does the
 
 | Item | Value |
 |---|---|
-| **Pull request** | Pending: the PR of `change/drop-ac66-both-legs-f01`, recorded by a closure PR as in `F_AC66_BOTH_LEGS_06.md` |
-| **Merge commit** | Pending: read with `gh pr view <N> --json state,mergedAt,mergeCommit` after the merge |
+| **Pull request** | #63 (branch `change/drop-ac66-both-legs-f01`), recorded by a closure PR as in `F_AC66_BOTH_LEGS_06.md`; branch removed (remote by GitHub on merge, local with `git branch -d`) |
+| **Merge commit** | edb30cd, read with `gh pr view 63 --json state,mergedAt,mergeCommit`: `MERGED`, 2026-11-10T18:35:41Z |
 | **Work done in** | Dropped: the first cause is kept as `__context__` by implicit exception chaining and printed by pytest (evidence in Problem); the premise of AC66_BOTH_LEGS I-04 does not hold. The user chose to drop it on 2026-11-10 rather than pin the behaviour with a test or add an explicit `from` |
 | **Source rows updated** | `.claude/sdd/archive/AC66_BOTH_LEGS/BUILD_REPORT_AC66_BOTH_LEGS.md`, Issues row I-04: the Follow-up cell starts with "Dropped 2026-11-10"; `.claude/sdd/archive/AC66_BOTH_LEGS/SHIPPED_2026-11-09.md`, Follow-ups row F-01: the target cell reads "Dropped 2026-11-10" |
 | **check_specs.py after the update** | `69 document(s) checked, 0 error(s), 11 warning(s)`; the rule (b) warning for AC66_BOTH_LEGS I-04 is gone (12 before) |
