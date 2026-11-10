@@ -12,7 +12,7 @@
 | **Date** | 2026-11-10 |
 | **Author** | christiandrocha (with Claude Code) |
 | **Branch** | `change/ac119-fixture` |
-| **Status** | Ready for Build |
+| **Status** | Complete |
 | **Source** | Follow-up AC66_BOTH_LEGS F-06 (`.claude/sdd/follow-ups/F_AC66_BOTH_LEGS_06.md`, triage: every criterion `Yes`) |
 
 Allowed status values: `Draft`, `Ready for Build`, `Complete`.
@@ -39,14 +39,14 @@ Every criterion must hold for the files the PR changes. Result: `Yes` (E8 may al
 
 | ID | Criterion | Result | Evidence |
 |---|---|---|---|
-| E1 | No production file: nothing under `src/`, `resources/`, `notebooks/`, `pipelines/`, nor `databricks.yml` (`git diff --name-only origin/main...HEAD`) | Yes | Pending until the build: the planned files are `tests/test_check_specs.py`, this document and `.claude/sdd/follow-ups/F_AC66_BOTH_LEGS_06.md` |
-| E2 | No contract change: nothing under `docs/contracts/` (same output) | Yes | Planned: nothing under `docs/contracts/` |
-| E3 | No new ADR: no added `docs/adr/NNNN-*.md` (`git diff --name-status origin/main...HEAD`) | Yes | Planned: no `docs/adr/` file |
-| E4 | No change to an archived DEFINE or DESIGN, which is `/iterate`; annotating archived BUILD_REPORT or SHIPPED rows is allowed (same output) | Yes | Planned: only the Follow-ups row AC66_BOTH_LEGS F-06 of `archive/AC66_BOTH_LEGS/SHIPPED_2026-11-09.md` is annotated |
-| E5 | No change to the gates: neither `scripts/check_specs.py` nor a template that the script or the tests read (same output) | Yes | Planned: `scripts/check_specs.py` and `.claude/sdd/templates/` unchanged; a test file of the gates changes, not the gates |
-| E6 | No change under `tests/integration/` (same output) | Yes | Planned: nothing under `tests/integration/` |
-| E7 | No change to the runtime `dependencies` of `pyproject.toml`; the `dev` extra may change (`git diff origin/main...HEAD -- pyproject.toml`) | Yes | Planned: `pyproject.toml` unchanged |
-| E8 | Agent rules (`docs/conventions/git.md` and the rules for agents in `CLAUDE.md`) change only under a gate. Hardening is `Yes`; relaxing is `Relaxing` and needs a Rule Changes section. In doubt, it is relaxing (`git diff origin/main...HEAD -- docs/conventions/git.md CLAUDE.md`) | Yes | Planned: neither file changes |
+| E1 | No production file: nothing under `src/`, `resources/`, `notebooks/`, `pipelines/`, nor `databricks.yml` (`git diff --name-only origin/main...HEAD`) | Yes | `git diff --name-only origin/main...HEAD` on e07f9d7 lists only `.claude/sdd/archive/AC66_BOTH_LEGS/SHIPPED_2026-11-09.md`, `.claude/sdd/features/CHANGE_AC119_FIXTURE.md`, `.claude/sdd/follow-ups/F_AC66_BOTH_LEGS_06.md`, `tests/test_check_specs.py`: nothing under `src/`, `resources/`, `notebooks/`, `pipelines/`, nor `databricks.yml` |
+| E2 | No contract change: nothing under `docs/contracts/` (same output) | Yes | Same output: nothing under `docs/contracts/` |
+| E3 | No new ADR: no added `docs/adr/NNNN-*.md` (`git diff --name-status origin/main...HEAD`) | Yes | `git diff --name-status origin/main...HEAD`: `M` for the SHIPPED record and the test file, `A` for this document and the follow-up file; no `docs/adr/` file |
+| E4 | No change to an archived DEFINE or DESIGN, which is `/iterate`; annotating archived BUILD_REPORT or SHIPPED rows is allowed (same output) | Yes | Same output: under `archive/` only `AC66_BOTH_LEGS/SHIPPED_2026-11-09.md` changes, one line (Follow-ups row AC66_BOTH_LEGS F-06); no archived DEFINE or DESIGN |
+| E5 | No change to the gates: neither `scripts/check_specs.py` nor a template that the script or the tests read (same output) | Yes | Same output: neither `scripts/check_specs.py` nor any file under `.claude/sdd/templates/`; `tests/test_check_specs.py` is a test of the gates, not a gate |
+| E6 | No change under `tests/integration/` (same output) | Yes | Same output: nothing under `tests/integration/` |
+| E7 | No change to the runtime `dependencies` of `pyproject.toml`; the `dev` extra may change (`git diff origin/main...HEAD -- pyproject.toml`) | Yes | `git diff origin/main...HEAD -- pyproject.toml`: empty (0 lines) |
+| E8 | Agent rules (`docs/conventions/git.md` and the rules for agents in `CLAUDE.md`) change only under a gate. Hardening is `Yes`; relaxing is `Relaxing` and needs a Rule Changes section. In doubt, it is relaxing (`git diff origin/main...HEAD -- docs/conventions/git.md CLAUDE.md`) | Yes | `git diff origin/main...HEAD -- docs/conventions/git.md CLAUDE.md`: empty (0 lines) |
 
 ---
 
@@ -88,8 +88,8 @@ Every criterion must hold for the files the PR changes. Result: `Yes` (E8 may al
 
 | AC | Test type | Test location | How it proves the criterion |
 |---|---|---|---|
-| AC-176 | Unit | `tests/test_check_specs.py::test_ac176_fixture_feature_passes_the_archive_simulation` | Builds the three fixture documents as `check_specs.Doc` objects from the existing builders (`define_doc`, `design_doc`, `build_doc`), cites `<first archived folder> I-90` in the DESIGN text (an ID the fixture itself does not define, since its BUILD_REPORT defines I-01), calls `simulate_archive(tmp_path, docs)`, asserts the added names and `check_specs.run(tmp_path).errors == []` |
-| AC-177 | Unit | `tests/test_check_specs.py::test_ac177_unprefixed_citation_in_the_fixture_fails_rule_c` | Same fixture with `I-90` cited without the folder name; asserts one error, containing `DESIGN_FIXTURE_AC119.md` and `I-90 cited 1x without its spec prefix`, ending with `(rule c)` |
+| AC-176 | Unit | `tests/test_check_specs.py::test_ac176_fixture_feature_passes_the_archive_simulation` | Builds the three fixture documents as `check_specs.Doc` objects from the existing builders (`define_doc`, `design_doc`, `build_doc`), cites the made-up finding number 90 in the DESIGN text, with the first archived folder name directly in front (a finding the fixture itself does not define; its BUILD_REPORT defines only the first one), calls `simulate_archive(tmp_path, docs)`, asserts the added names and `check_specs.run(tmp_path).errors == []` |
+| AC-177 | Unit | `tests/test_check_specs.py::test_ac177_unprefixed_citation_in_the_fixture_fails_rule_c` | Same fixture with finding 90 cited without the folder name; asserts one error that contains `DESIGN_FIXTURE_AC119.md` and the "cited 1x without its spec prefix" text for finding 90, and ends with `(rule c)` (exact message under the Evidence table) |
 | AC-178 | Command | `pytest tests/test_check_specs.py -rs`; `pytest`; `git diff origin/main...HEAD -- tests/test_check_specs.py`; `ruff check . && ruff format --check .`; `python scripts/check_specs.py` | The summary shows the two new tests passed and the repository-state test skipped; the diff adds lines only after the AC-119 safeguard test |
 
 ---
@@ -100,14 +100,14 @@ Every criterion must hold for the files the PR changes. Result: `Yes` (E8 may al
 |---|---|---|---|
 | 1 | `tests/test_check_specs.py` | Modify | Add a fixture builder and the AC-176 and AC-177 tests after the AC-119 tests |
 | 2 | `.claude/sdd/follow-ups/F_AC66_BOTH_LEGS_06.md` | Create, then close | The follow-up task file (Closure filled in the closure PR) |
-| 3 | `.claude/sdd/archive/AC66_BOTH_LEGS/SHIPPED_2026-11-09.md` | Modify (one row) | Follow-ups row F-06: target cell points to AC119_FIXTURE |
+| 3 | `.claude/sdd/archive/AC66_BOTH_LEGS/SHIPPED_2026-11-09.md` | Modify (one row) | Follow-ups row AC66_BOTH_LEGS F-06: target cell points to AC119_FIXTURE |
 | 4 | `.claude/sdd/features/CHANGE_AC119_FIXTURE.md` | Create, then move to `archive/AC119_FIXTURE/` | This document |
 
 ---
 
 ## Evidence
 
-Evidence commit: Pending
+Evidence commit: e07f9d7
 
 Process rule D-91 (not checked by the script): the evidence commit is the last commit of the PR
 that touches files other than this document. The final commit touches only this document (status
@@ -116,9 +116,15 @@ on the final head and its output goes in the PR description.
 
 | AC | Result | Evidence |
 |---|---|---|
-| AC-176 | Not run | Build pending |
-| AC-177 | Not run | Build pending |
-| AC-178 | Not run | Build pending |
+| AC-176 | Pass | `tests/test_check_specs.py::test_ac176_fixture_feature_passes_the_archive_simulation` passed on e07f9d7 (cited spec: the first archived folder, `AC66_BOTH_LEGS`, as `AC66_BOTH_LEGS I-90`) |
+| AC-177 | Pass | `::test_ac177_unprefixed_citation_in_the_fixture_fails_rule_c` passed: one error, the rule (c) message for finding 90 in `DESIGN_FIXTURE_AC119.md` (exact text below) |
+| AC-178 | Pass | `pytest -q -rs tests/test_check_specs.py`: `116 passed, 1 skipped` (`SKIPPED [1] tests/test_check_specs.py:647: no document of features/ or reports/ is in its phase's final status`); full `pytest -q -rs`: `791 passed, 1 skipped, 92 deselected, 1 xfailed` (789 before plus the two new tests); `git diff -U0 origin/main...HEAD -- tests/test_check_specs.py` has one hunk, `@@ -670,0 +671,52 @@`, after the AC-119 safeguard test, so the repository-state test is unchanged; `ruff check .` and `ruff format --check .` clean; `python scripts/check_specs.py`: `69 document(s) checked, 0 error(s), 12 warning(s)` |
+
+The AC-177 error, verbatim (fenced, so that rule (c) does not read it as a citation):
+
+```text
+.claude/sdd/archive/FIXTURE_AC119/DESIGN_FIXTURE_AC119.md: I-90 cited 1x without its spec prefix and not in .claude/sdd/citation_allowlist.json (rule c)
+```
 
 In a `Complete` document `check_specs.py` reports `Fail` and `Not run` as errors. A deliberate
 deferral is written `Deferred: <reason>`: the check accepts it and lists it as a warning, so it
@@ -141,5 +147,5 @@ stays visible without blocking the change. `Deferred` without a reason is an err
   its skip. The negative case covers rule (c) only, the rule that failed on 2026-11-10.
 - **Risks:** Taking the cited spec from the copied archive makes the fixture depend on the
   archive's folder names; a folder renamed later still works, an empty archive does not (I-01).
-- **What I would do differently:** Nothing yet; decided before the build.
-- **Next improvement:** Build entry 1, fill the Evidence table, then close AC66_BOTH_LEGS F-06.
+- **What I would do differently:** Read the exact rule (c) message before writing the assertion: the first AC-177 run failed because the message ends with `(rule c)`, not `rule (c)`. And run `check_specs.py` on this document in its archive place before the final commit: the move surfaced two rule (c) errors in it (the made-up finding written as an ID, and one unprefixed follow-up), which the AC-176 fixture would have caught as well.
+- **Next improvement:** After the merge, record the PR number and merge commit in `F_AC66_BOTH_LEGS_06.md` with a closure PR.
