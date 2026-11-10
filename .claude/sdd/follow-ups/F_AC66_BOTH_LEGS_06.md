@@ -86,8 +86,8 @@ Fill when the status becomes `Closed` or `Dropped`, in the same PR that does the
 
 | Item | Value |
 |---|---|
-| **Pull request** | Pending: the PR of `change/ac119-fixture`; its number and merge commit are read with `gh pr view` after the merge and recorded in a closure PR, as in `F_AC66_BOTH_LEGS_03.md` |
-| **Merge commit** | Pending: read with `gh pr view <N> --json state,mergedAt,mergeCommit` after the merge |
+| **Pull request** | #61 (branch `change/ac119-fixture`), recorded by a closure PR as in `F_AC66_BOTH_LEGS_03.md`; branch removed (remote by GitHub on merge, local with `git branch -d`) |
+| **Merge commit** | 18a9128, read with `gh pr view 61 --json state,mergedAt,mergeCommit`: `MERGED`, 2026-11-10T18:00:05Z |
 | **Work done in** | `CHANGE_AC119_FIXTURE.md` (archived in `archive/AC119_FIXTURE/`): `test_ac176_fixture_feature_passes_the_archive_simulation` and `test_ac177_unprefixed_citation_in_the_fixture_fails_rule_c` run the AC-119 simulation on a fixture feature in every test run. DC-01 is met: on 2026-11-10, with no document in a final status, both pass and the repository-state test skips |
 | **Source rows updated** | `.claude/sdd/archive/AC66_BOTH_LEGS/SHIPPED_2026-11-09.md`, Follow-ups row F-06: the target cell reads "Closed 2026-11-10 by AC119_FIXTURE"; the row never started with `Open`, and rule (b) reads only BUILD_REPORT and CHANGE tables |
 | **check_specs.py after the update** | `69 document(s) checked, 0 error(s), 12 warning(s)` on the change branch, as on `main` plus the CHANGE document |
