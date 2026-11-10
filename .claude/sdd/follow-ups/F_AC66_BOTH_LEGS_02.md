@@ -110,8 +110,8 @@ Fill when the status becomes `Closed` or `Dropped`, in the same PR that does the
 
 | Item | Value |
 |---|---|
-| **Pull request** | Pending: the PR of `change/drop-ac66-both-legs-f02`, recorded by a closure PR as in `F_AC66_BOTH_LEGS_05.md` |
-| **Merge commit** | Pending: read with `gh pr view <N> --json state,mergedAt,mergeCommit` after the merge |
+| **Pull request** | #67 (branch `change/drop-ac66-both-legs-f02`), recorded by a closure PR as in `F_AC66_BOTH_LEGS_05.md`; branch removed (remote by GitHub on merge, local with `git branch -d`) |
+| **Merge commit** | 01ddf3d, read with `gh pr view 67 --json state,mergedAt,mergeCommit`: `MERGED`, 2026-11-10T20:04:13Z |
 | **Work done in** | Dropped: the verdict test fails in every failing-save case, no code reads the verdict file, and the proposed atomic write keeps the stale `pass` in every case and turns the mid-write case into a stale `pass` (evidence in Problem). The user chose to drop it on 2026-11-10 rather than remove the old verdict before the evaluation (full cycle) or apply the atomic write |
 | **Source rows updated** | `.claude/sdd/archive/AC66_BOTH_LEGS/BUILD_REPORT_AC66_BOTH_LEGS.md`, Issues row I-05: the Follow-up cell starts with "Dropped 2026-11-10"; `.claude/sdd/archive/AC66_BOTH_LEGS/SHIPPED_2026-11-09.md`, Follow-ups row F-02: the target cell reads "Dropped 2026-11-10" |
 | **check_specs.py after the update** | `69 document(s) checked, 0 error(s), 10 warning(s)`; the rule (b) warning for AC66_BOTH_LEGS I-05 is gone (11 before), so AC66_BOTH_LEGS has no open finding left |
