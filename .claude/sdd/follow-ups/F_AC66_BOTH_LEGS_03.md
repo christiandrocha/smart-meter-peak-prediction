@@ -15,7 +15,7 @@
 | **Source finding** | none |
 | **Source documents** | `.claude/sdd/archive/AC66_BOTH_LEGS/SHIPPED_2026-11-09.md` (Follow-ups row F-03), `.claude/sdd/archive/AC66_BOTH_LEGS/BUILD_REPORT_AC66_BOTH_LEGS.md` (AC-162 and AC-164 rows, Self-Review) |
 | **Created** | 2026-11-10 |
-| **Status** | In Progress |
+| **Status** | Closed |
 
 Allowed status values: `Open`, `In Progress`, `Closed`, `Dropped`. `Dropped` needs a reason in
 Closure.
@@ -86,11 +86,11 @@ Fill when the status becomes `Closed` or `Dropped`, in the same PR that does the
 
 | Item | Value |
 |---|---|
-| **Pull request** | Pending |
-| **Merge commit** | Pending |
-| **Work done in** | The spec AC66_ZERO_NEW_RUNS |
-| **Source rows updated** | Pending: `.claude/sdd/archive/AC66_BOTH_LEGS/SHIPPED_2026-11-09.md`, Follow-ups row F-03 |
-| **check_specs.py after the update** | Pending |
+| **Pull request** | Pending: the ship PR of AC66_ZERO_NEW_RUNS (branch `ship/ac66-zero-new-runs`), recorded in a closure PR |
+| **Merge commit** | Pending: the ship PR of AC66_ZERO_NEW_RUNS, recorded in a closure PR |
+| **Work done in** | The spec AC66_ZERO_NEW_RUNS (`.claude/sdd/archive/AC66_ZERO_NEW_RUNS/`): each live leg test reads the run list of `smart_meter_peak_model` before and after and asserts `0 new runs` on a refusal (AC-166). DC-01 is met live on `dev` on 2026-11-10: the rebuild leg refused with `0 new runs` (AC-173) and the rerun leg refused with `0 new runs` after the reset (AC-175). Release v0.7.1 (CHANGELOG `[0.7.1]`) |
+| **Source rows updated** | `.claude/sdd/archive/AC66_BOTH_LEGS/SHIPPED_2026-11-09.md`, Follow-ups row F-03: the Target release cell reads `Closed in v0.7.1 by AC66_ZERO_NEW_RUNS`. The row did not start with `Open` before the update, and rule (b) reads only the BUILD_REPORT and CHANGE tables |
+| **check_specs.py after the update** | `68 document(s) checked, 0 error(s), 12 warning(s)` on the ship branch, with the source row updated. The warnings are the open findings of the archived BUILD_REPORTs (rule b), among them AC66_ZERO_NEW_RUNS I-07 and I-08; none is for F-03 |
 
 ---
 
