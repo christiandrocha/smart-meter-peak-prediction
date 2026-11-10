@@ -100,8 +100,8 @@ Fill when the status becomes `Closed` or `Dropped`, in the same PR that does the
 
 | Item | Value |
 |---|---|
-| **Pull request** | Pending: the PR of `change/drop-ac66-both-legs-f05`, recorded by a closure PR as in `F_AC66_BOTH_LEGS_01.md` |
-| **Merge commit** | Pending: read with `gh pr view <N> --json state,mergedAt,mergeCommit` after the merge |
+| **Pull request** | #65 (branch `change/drop-ac66-both-legs-f05`), recorded by a closure PR as in `F_AC66_BOTH_LEGS_01.md`; branch removed (remote by GitHub on merge, local with `git branch -d`) |
+| **Merge commit** | c2dabc6, read with `gh pr view 65 --json state,mergedAt,mergeCommit`: `MERGED`, 2026-11-10T19:34:37Z |
 | **Work done in** | Dropped: the shape checks are the mechanism of the AC-159 guard; a looser check that passes the likely refactor (one shared helper) would weaken it, and loosening `exists=` alone does not pass that refactor (evidence in Problem). The user chose to drop it on 2026-11-10 rather than loosen `exists=` and `runs=` or leave it unscheduled |
 | **Source rows updated** | `.claude/sdd/archive/AC66_BOTH_LEGS/SHIPPED_2026-11-09.md`, Follow-ups row F-05: the target cell reads "Dropped 2026-11-10". F-05 has no BUILD_REPORT finding row, so rule (b) never warned on it |
 | **check_specs.py after the update** | `69 document(s) checked, 0 error(s), 11 warning(s)`, as on `main` (no warning was tied to F-05) |
