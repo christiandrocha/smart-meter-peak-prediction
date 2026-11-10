@@ -668,6 +668,58 @@ def test_ac119_folder_name_collision_fails_without_merging(tmp_path):
     assert copied.read_text(encoding="utf-8") == archived  # not overwritten
 
 
+FIXTURE_FEATURE = "FIXTURE_AC119"
+
+
+def fixture_feature_docs(citation: str) -> list:
+    """AC119_FIXTURE: a feature in its final statuses whose DESIGN cites another spec's finding.
+
+    Built from the same builders as the rule tests, so it is valid by construction; only the
+    citation line changes between AC-176 and AC-177.
+    """
+    design = design_doc(["AC-01", "AC-02"]) + f"\nSee {citation} for the gap this closes.\n"
+    texts = {
+        ("DEFINE", f"DEFINE_{FIXTURE_FEATURE}.md"): define_doc(),
+        ("DESIGN", f"DESIGN_{FIXTURE_FEATURE}.md"): design,
+        ("BUILD_REPORT", f"BUILD_REPORT_{FIXTURE_FEATURE}.md"): build_doc(),
+    }
+    docs = [
+        check_specs.Doc(Path(name), phase, FIXTURE_FEATURE, text)
+        for (phase, name), text in texts.items()
+    ]
+    assert all(check_specs.FINAL_STATUS[d.phase] == d.status for d in docs)
+    return docs
+
+
+def first_archived_spec() -> str:
+    folders = sorted(p.name for p in (ROOT / ".claude/sdd/archive").iterdir() if p.is_dir())
+    assert folders, "AC119_FIXTURE I-01: the fixture needs at least one archived folder to cite"
+    return folders[0]
+
+
+def test_ac176_fixture_feature_passes_the_archive_simulation(tmp_path):
+    """AC119_FIXTURE AC-176: the AC-119 simulation runs on every test run, with no skip path."""
+    docs = fixture_feature_docs(f"{first_archived_spec()} I-90")
+    added = simulate_archive(tmp_path, docs)
+    assert sorted(added) == sorted(f"{FIXTURE_FEATURE}/{d.path.name}" for d in docs), added
+    folder = tmp_path / ".claude/sdd/archive" / FIXTURE_FEATURE
+    assert sorted(p.name for p in folder.iterdir()) == sorted(
+        [d.path.name for d in docs] + ["SHIPPED_2026-11-06.md"]
+    )
+    errors = check_specs.run(tmp_path).errors
+    assert errors == [], errors
+
+
+def test_ac177_unprefixed_citation_in_the_fixture_fails_rule_c(tmp_path):
+    """AC119_FIXTURE AC-177: the same fixture without the spec name in front fails rule (c)."""
+    simulate_archive(tmp_path, fixture_feature_docs("I-90"))
+    errors = check_specs.run(tmp_path).errors
+    assert len(errors) == 1, errors
+    assert f"archive/{FIXTURE_FEATURE}/DESIGN_{FIXTURE_FEATURE}.md" in errors[0]
+    assert "I-90 cited 1x without its spec prefix" in errors[0]
+    assert errors[0].endswith("(rule c)")
+
+
 # ----------------------------------------------------------------- SMALL_CHANGE_TRACK
 CHANGE_SECTIONS = [
     "Metadata",
