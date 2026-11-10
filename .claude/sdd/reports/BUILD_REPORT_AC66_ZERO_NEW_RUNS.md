@@ -9,13 +9,13 @@
 | **Feature** | AC66_ZERO_NEW_RUNS |
 | **Date** | 2026-11-10 |
 | **Source** | DESIGN_AC66_ZERO_NEW_RUNS.md (Ready for Build) |
-| **Status** | In Progress |
+| **Status** | Complete |
 
 Allowed status values: `In Progress`, `Blocked`, `Complete`.
 
-Status rule applied: the CI criteria AC-165 to AC-172 are `Pass`. AC-173 to AC-175 and the A-53
-and A-54 checks are `Not run` (live gate, run in a separate step after the user confirms), so the
-build stays `In Progress`.
+Status rule applied: the CI criteria AC-165 to AC-172 are `Pass`, and the live criteria AC-173 to
+AC-175 and the A-53 and A-54 checks are `Pass` on `dev` on 2026-11-10 (Live run record below). No
+AC is partial or waived, so the build is `Complete`.
 
 ---
 
@@ -27,7 +27,8 @@ id (`count_runs`). A clean refusal ends with `0 new runs of smart_meter_peak_mod
 during which a run started, a wrong run count on the pass path and an unreadable list each fail
 with their own message; a pass prints one line with its run id. `PeakRunner.run_ids` is the live
 reader (one list request, one page of 25, every state). Nothing under `src/`, `resources/`,
-`notebooks/`, `databricks.yml` or the reset script changed. The live gate is not run yet.
+`notebooks/`, `databricks.yml` or the reset script changed. The live gate passed on `dev` on
+2026-11-10, run by the agent with the user's authorization, including the reset (Deviations).
 
 ---
 
@@ -45,7 +46,8 @@ reader (one list request, one page of 25, every state). Nothing under `src/`, `r
 Entries 7 to 9 (CHANGELOG, follow-up closure, SHIPPED row) are "Update at /ship" and were not
 touched. Commits (branch `build/ac66-zero-new-runs`, not pushed): `8b7b9b2` (entries 1 to 4 in
 one commit, as the Delivery Plan requires), `327e358` (runbook), `5b21218` (docs tests),
-`3b1d90d` (code-review gaps).
+`3b1d90d` (code-review gaps), `488e3bc` (this report, CI part); the live evidence is recorded
+in a later commit.
 
 ---
 
@@ -61,13 +63,13 @@ one commit, as the Delivery Plan requires), `327e358` (runbook), `5b21218` (docs
 | AC-170 | Pass | `tests/test_ac66_legs_docs.py::test_ac170_both_live_legs_pass_a_reader_bound_to_the_peak_job`; `tests/test_ac66_rules.py::test_ac170_run_ids_reads_one_page_of_every_state_for_the_given_job` |
 | AC-171 | Pass | `tests/test_ac66_legs_docs.py::test_ac171_v070_unit_tests_are_kept_with_their_asserts`, `::test_ac171_rule_constants_and_reset_script_equal_v070` (tag `v0.7.0` present, tag comparison ran); shipped AC66_BOTH_LEGS AC-154 to AC-161 tests green; full gates below |
 | AC-172 | Pass | `::test_ac172_runbook_and_docstring_name_the_run_list_reads`, `::test_ac172_leg_command_lines_carry_rp` |
-| AC-173 | Not run | Live: rebuild-leg refusal on `dev` (plan step 6) |
-| AC-174 | Not run | Live: rerun-leg pass with one own run (plan step 7) |
-| AC-175 | Not run | Live: user reset, then rerun-leg refusal, rebuild-leg pass, verdict (plan steps 8 and 9) |
-| A-53 | Not run | Live plan step 2 |
-| A-54 | Not run | Live plan step 3 (U-08 answered yes by the user on 2026-11-10) |
+| AC-173 | Pass (live) | 2026-11-10, `dev`, step 6: the rebuild leg refused with the three tables present and ended `0 new runs of smart_meter_peak_model (newest run before: 263891533624085, after: 263891533624085)`; `out/evidence/ac66_rebuild_leg.json` unchanged (still dated 2026-11-09) |
+| AC-174 | Pass (live) | 2026-11-10, `dev`, step 7: `AC-66 rerun leg passed: 1 new run of smart_meter_peak_model, run 559956433114287 (newest run before: 263891533624085)` in 159 s; `ac66_rerun_leg.json` `outcome` `passed`, `run_id` 559956433114287, MERGE 0 / 0 / 0 |
+| AC-175 | Pass (live) | 2026-11-10, `dev`, steps 8 and 9: the reset dry run listed exactly the three `dev` tables and `--confirm` dropped them (exit 0); the rerun leg refused naming the three missing tables and ended `0 new runs of smart_meter_peak_model (newest run before: 559956433114287, after: 559956433114287)`, its record unchanged; the rebuild leg passed in 152 s with `1 new run of smart_meter_peak_model, run 1095873634832183`, `ac66_rebuild_leg.json` `run_id` 1095873634832183, inserted 21,165 / 36,480 / 36,480, updated and deleted 0; the verdict passed (`verdict` `pass`, `problems` empty) |
+| A-53 | Pass (live) | 2026-11-10, step 2: `smart_meter_peak_model` (job 324283392483306) `schedule.pause_status` `PAUSED`, no `trigger` or `continuous` block, `max_concurrent_runs` 1 |
+| A-54 | Pass (live) | 2026-11-10, step 3 (U-08): run 263891533624085 started with `--only check_pipeline_idle --no-wait`; the `list-runs --limit 1` right after it (4.3 s from the start command, 1.4 s list call) returned 263891533624085 `RUNNING`; the run ended `TERMINATED` `SUCCESS`. No settle wait needed (DA-56 fallback not applied) |
 
-### Live plan (not run; commands in order)
+### Live plan (run on 2026-11-10; commands in order)
 
 One session, one checkout of `build/ac66-zero-new-runs`, clean tree. Profile `dev`.
 
@@ -107,6 +109,24 @@ its run ids, `run_id` of each leg record, the verdict record and the reset outpu
 start 2 job runs; step 3 starts 1 read-only run outside the sequence. No `list-runs` read is used
 for AC-173 to AC-175 evidence.
 
+### Live run record (2026-11-10, `dev`, branch `build/ac66-zero-new-runs` at 488e3bc)
+
+Run by the agent, with the user's authorization (Deviations). Times are UTC.
+
+| Step | Result |
+|---|---|
+| 1 | `bundle validate -t dev` exit 0 (`Validation OK!`); `bundle deploy -t dev` exit 0 |
+| 2 | A-53 Pass (see the table above) |
+| 3 | A-54 Pass: started run 263891533624085, newest listed 263891533624085 `RUNNING`; ended `TERMINATED` `SUCCESS` at 15:15:20 |
+| 4 | `smart_meter_peak_model` and `smart_meter_ingestion`: 0 active runs; the step 6 refusal shows the three tables present |
+| 5 | `-k "ac66_before"`: 1 passed; `ac66_before_rebuild.json` written with `saved_at_ms` |
+| 6 | AC-173: 1 failed, as expected (refusal, `0 new runs`) |
+| 7 | AC-174: 1 passed, 15:16:29 to 15:19:09, run 559956433114287 |
+| 8 | Dry run: `would DROP TABLE` for `smart_meter_dev.silver.weather_hourly`, `smart_meter_dev.ml.household_features_daily`, `smart_meter_dev.ml.household_labels_daily` (exactly the three; exit 0); `--confirm`: three `DROP` lines, exit 0, 15:19:59 |
+| 9 | Rerun leg: 1 failed, as expected (refusal, three tables missing, `0 new runs`); rebuild leg: 1 passed, 15:20:28 to 15:23:01, run 1095873634832183; verdict: 1 passed, `pass`, `problems` empty. Both jobs idle afterwards |
+
+Job runs started: 1 read-only (step 3) plus 2 data runs (steps 7 and 9), as planned.
+
 ---
 
 ## Verification Log
@@ -127,6 +147,7 @@ for AC-173 to AC-175 evidence.
 | Entry 6 test for `-rP` | AC-172 covers the texts | Added `test_ac172_leg_command_lines_carry_rp` | Code review: DA-55 requires `-rP` on the leg lines and no test guarded it | No (within the design) |
 | Extra unit tests | AC-165 to AC-169 test list | Added the foreign-run-instead-of-own, BaseException, no-second-read and failing-pass-line tests | Code review Medium findings | No (within the design) |
 | `Fakes.runs` raises `BaseException` | `Exception` or value | The fake raises any `BaseException` reply | Needed to test that `Stop` propagates (G-54) | No (mechanical) |
+| Reset run by the agent (C-27, U-07) | The user runs `scripts/reset_peak_model_outputs.py --confirm`, or authorizes the agent for one run | The agent ran the dry run and then `--confirm` once, on 2026-11-10 at 15:19:59 UTC, after the dry run listed exactly the three `dev` tables | The user's answer of 2026-11-10 to the live-gate question: "I run steps 1-9 with the reset" (authorizing the agent for the whole sequence, including `--confirm` for this one run, only if the dry run lists exactly the three dev tables) | No (per-run authorization the DESIGN provides for) |
 
 No deviation needs `/iterate`. No line over 100 characters and no module-loading problem
 occurred; `_load_conftest` keeps its `sys.modules` step (DA-59).
@@ -137,7 +158,7 @@ occurred; `_load_conftest` keeps its `sys.modules` step (DA-59).
 
 | ID | Issue | Severity | Follow-up |
 |---|---|---|---|
-| I-01 | AC-173 to AC-175 and the A-53 and A-54 checks need the live `dev` run and the user's reset | High (gate for `/ship`, Q-38) | Open: live plan above |
+| I-01 | AC-173 to AC-175 and the A-53 and A-54 checks need the live `dev` run and the user's reset | High (gate for `/ship`, Q-38) | Closed 2026-11-10: all Pass live (Live run record) |
 | I-02 | `code-reviewer` Medium: no test for one new run that is not the leg's own (`own` could weaken to `len(new) == 1`) | Medium | Fixed in `3b1d90d` (`test_ac165_one_new_run_...`, `test_ac168_one_foreign_run_...`) |
 | I-03 | `code-reviewer` Medium: no test that a `BaseException` from `runs()` propagates | Medium | Fixed in `3b1d90d` (AC-169 BaseException tests) |
 | I-04 | `code-reviewer` Medium: no test of "no second read" on `exists()`, `preflight()` and `run_tasks()` error exits (DA-54) | Medium | Fixed in `3b1d90d` (`test_ac168_error_exits_make_no_second_read`) |
@@ -153,16 +174,17 @@ No High finding.
 
 ## Self-Review
 
-- **Weak points:** The live criteria are not run. The call-log tests pin the exact order of
+- **Weak points:** The live criteria rest on one run of the sequence on `dev`. The call-log tests pin the exact order of
   `run_leg`, so a harmless refactor needs the tests to change. AC-171 detects removed, not
   weakened, assertions.
-- **Risks:** A-54 (a started run is listed at once) is unchecked until live step 3; the CI order
-  proof carries it until then. A foreign run during the rebuild leg costs a new sequence.
+- **Risks:** A-54 (a started run is listed at once) was checked once, with a 4.3 s gap; a slower
+  listing on another day is covered only by the CI order proof. A foreign run during the rebuild
+  leg costs a new sequence.
 - **What I would do differently:** Decide I-08 (`from None`) in the DESIGN before building.
-- **Next improvement:** Run the live plan after the user confirms, then fill AC-173 to AC-175.
+- **Next improvement:** Decide I-08 at `/ship` (follow-up or `/iterate`).
 
 ---
 
 ## Next Step
 
-Live gate (plan above), then set the status and `/ship AC66_ZERO_NEW_RUNS`.
+`/ship AC66_ZERO_NEW_RUNS`.
