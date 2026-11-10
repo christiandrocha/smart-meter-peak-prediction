@@ -5,6 +5,36 @@ Entries are added by `/ship`.
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-11-10
+
+### Added
+
+- Run count of `smart_meter_peak_model` for the AC-66 legs: `count_runs` in
+  `tests/support/ac66_rules.py` (no SDK, no I/O, no clock) compares two run-id reads and never
+  raises; `RUN_JOB_NAME` names the job. `PeakRunner.run_ids` in `tests/integration/conftest.py` is
+  the live reader (one list request, one page of 25, every state). Unit tests in
+  `tests/test_ac66_rules.py` and docs tests in `tests/test_ac66_legs_docs.py`.
+
+### Changed
+
+- Both AC-66 live legs (`ac66_rerun_leg`, `ac66_rebuild_leg`) read the run list of
+  `smart_meter_peak_model` before anything else and again after the refusal or the job run
+  (AC66_ZERO_NEW_RUNS, closes AC66_BOTH_LEGS F-03). A clean refusal ends with `0 new runs`; a
+  refusal during which a run started fails with its own message; a pass needs exactly its own run
+  and prints one line with its run id. A run list that cannot be read never reports a pass or a
+  clean refusal. `run_leg` takes a required `runs` reader, so a caller cannot omit the count.
+
+### Docs
+
+- Runbook `docs/runbooks/peak_model.md`: sections 8 and 9 describe the run-list reads, and the leg
+  command lines carry `-rP`, so the pass line is printed.
+
+### Unchanged
+
+- No production file (`src/`, `resources/`, `notebooks/`, `databricks.yml`) and no reset script
+  changed, and the package version stays 0.4.1 (D-99, as D-92 for v0.7.0). The evidence files,
+  record fields, verdict and test names are unchanged.
+
 ## [0.7.0] - 2026-11-09
 
 ### Added
