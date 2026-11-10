@@ -5,6 +5,11 @@ golden constants were computed from that tag with the functions of this file (``
 ``reset_digest`` and ``kept_digest`` applied to ``git show v0.6.0:...``), not typed by hand. The
 tag-based comparisons run only when the tag exists locally; the constants guard a clone without
 tags (CI checks out one commit, DA-46).
+
+AC66_ZERO_NEW_RUNS adds AC-170 to AC-172: the two live legs pass a reader bound to the peak job
+(AST, AC-170), the v0.7.0 tests, rule constants and reset script are kept (AC-171; constants
+computed from tag ``v0.7.0`` with the functions of this file) and the runbook and the live
+docstring name the run list reads (AC-172).
 """
 
 from __future__ import annotations
@@ -38,6 +43,51 @@ AC_NAME = re.compile(r"^test_ac(\d{2,3})_")
 V060_TREE_SHA256 = "297fb0ca3b57415d59e433d92cfe6a6bd228da52baa881d3d6d16acff21617f2"
 V060_RESET_SHA256 = "7fde3832bb4dbbbaca502b10272eecb90b317b357a32ed8db9001813b92323bd"
 V060_KEPT_AST_SHA256 = "9c3671268db4680190432887012fa3c4327ac7ae966309fc24124f1f15ea08c7"
+
+V070_TAG = "v0.7.0"
+CONFTEST_REL = "tests/integration/conftest.py"
+RULES_REL = "tests/support/ac66_rules.py"
+V070_ASSERT_COUNTS = {
+    "tests/test_ac66_rules.py": {
+        "test_ac154_both_legs_on_the_current_snapshot_pass_deterministically": 10,
+        "test_ac154_secret_like_strings_never_reach_the_record_or_the_message": 5,
+        "test_ac154_rules_import_no_sdk_and_read_no_clock": 8,
+        "test_ac155_missing_evidence_names_each_missing_leg_or_the_snapshot": 14,
+        "test_ac156_stale_out_of_order_failed_inconsistent_or_malformed_legs_fail": 7,
+        "test_ac156_odd_inputs_never_raise": 9,
+        "test_ac157_precondition_over_all_table_states": 10,
+        "test_ac158_leg_passes_and_writes_the_full_record": 14,
+        "test_ac158_leg_failure_leaves_no_passed_record": 8,
+        "test_ac158_wrong_state_refuses_before_the_runner": 5,
+        "test_ac158_unknown_leg_refuses": 1,
+        "test_ac158_unsaved_failed_record_does_not_mask_the_failure": 4,
+        "test_ac158_real_evidence_class_keeps_its_shipped_defaults": 6,
+        "test_ac158_after_state_mismatch_fails_and_never_stores_a_secret": 6,
+        "test_ac158_failing_preflight_keeps_the_old_record": 2,
+        "test_ac158_unreadable_snapshot_refuses": 2,
+    },
+    "tests/test_ac66_legs_docs.py": {
+        "test_ac159_four_ac66_tests_are_collected_and_none_chooses_by_state": 17,
+        "test_ac160_runbook_docstring_and_script_state_the_order": 10,
+        "test_ac160_every_ac66_selector_selects_exactly_one_test": 4,
+        "test_ac161_production_files_and_reset_guards_equal_v060": 6,
+        "test_ac161_snapshot_test_and_its_helpers_are_kept": 4,
+        "test_ac161_specs_are_clean": 1,
+    },
+}
+V070_RULE_CONSTANTS_SHA256 = "6adb18da228fe3831b6c2cee8facea54a942ecad56de6092d5107391051d2946"
+V070_RESET_SHA256 = "1c51d65973ab7341308ecd63b4c5710f2abe0a1526fe1f8027e462e7567fa731"
+RULE_CONSTANTS = (
+    "SNAPSHOT_NAME",
+    "LEG_NAMES",
+    "VERDICT_NAME",
+    "SNAPSHOT_TEST",
+    "RERUN_TEST",
+    "REBUILD_TEST",
+    "VERDICT_TEST",
+    "RECORD_FIELDS",
+    "VERDICT_FIELDS",
+)
 
 
 # ----------------------------------------------------------------------------- git helpers
@@ -124,6 +174,19 @@ KEPT = (
 
 def kept_digest(source: str) -> str:
     return _sha("\n".join(ast.unparse(_top(source, name)) for name in KEPT))
+
+
+def assert_counts(source: str) -> dict[str, int]:
+    """Top-level test functions and their ``assert`` statements (AC-171)."""
+    return {
+        node.name: sum(isinstance(n, ast.Assert) for n in ast.walk(node))
+        for node in ast.parse(source).body
+        if isinstance(node, ast.FunctionDef) and node.name.startswith("test_")
+    }
+
+
+def rule_constants_digest(source: str) -> str:
+    return _sha("\n".join(ast.unparse(_top(source, name)) for name in RULE_CONSTANTS))
 
 
 def _function(source: str, name: str) -> ast.FunctionDef:
@@ -341,3 +404,112 @@ def test_ac161_snapshot_test_and_its_helpers_are_kept() -> None:
 
 def test_ac161_specs_are_clean() -> None:
     assert check_specs.run(ROOT).errors == []
+
+
+# ----------------------------------------------------------------------------- AC66_ZERO_NEW_RUNS
+def _method(source: str, cls: str, name: str) -> ast.FunctionDef:
+    klass = _top(source, cls)
+    assert isinstance(klass, ast.ClassDef)
+    for node in klass.body:
+        if isinstance(node, ast.FunctionDef) and node.name == name:
+            return node
+    raise AssertionError(f"{cls}.{name} not found")
+
+
+def test_ac170_both_live_legs_pass_a_reader_bound_to_the_peak_job() -> None:
+    tree = ast.parse(LIVE.read_text(encoding="utf-8"))
+    seen = 0
+    for func in (n for n in tree.body if isinstance(n, ast.FunctionDef)):
+        for call in _calls(func):
+            if ast.unparse(call.func) != "ac66_rules.run_leg":
+                continue
+            seen += 1
+            keywords = {k.arg: k.value for k in call.keywords}
+            lam = keywords["runs"]
+            assert isinstance(lam, ast.Lambda)
+            assert not lam.args.args
+            assert not lam.args.kwonlyargs
+            assert lam.args.vararg is None
+            body = lam.body
+            assert isinstance(body, ast.Call)
+            assert ast.unparse(body.func) == "peak_runner.run_ids"
+            assert [ast.unparse(a) for a in body.args] == ["peak_job"]
+            assert body.keywords == []
+            params = {a.arg for a in func.args.args + func.args.kwonlyargs}
+            assert not params & {"job", "training_job"}, func.name
+    assert seen == 2
+
+    reader = _method((ROOT / CONFTEST_REL).read_text(encoding="utf-8"), "PeakRunner", "run_ids")
+    listed = [c for c in _calls(reader) if getattr(c.func, "attr", "") == "list_runs"]
+    assert len(listed) == 1
+    keywords = {k.arg: ast.unparse(k.value) for k in listed[0].keywords}
+    assert set(keywords) == {"job_id", "limit"}
+    assert keywords["job_id"] == "job.job_id"
+    for banned in (
+        "active_only",
+        "completed_only",
+        "start_time_from",
+        "start_time_to",
+        "run_type",
+        "page_token",
+    ):
+        assert banned not in keywords
+
+
+def test_ac171_v070_unit_tests_are_kept_with_their_asserts() -> None:
+    for path, golden in V070_ASSERT_COUNTS.items():
+        found = assert_counts((ROOT / path).read_text(encoding="utf-8"))
+        for name, count in golden.items():
+            assert name in found, (path, name)
+            assert found[name] >= count, (path, name)
+        if tag_exists(V070_TAG):
+            assert assert_counts(tagged(V070_TAG, path).decode()) == golden, path
+
+
+def test_ac171_rule_constants_and_reset_script_equal_v070() -> None:
+    rules_source = RULES_FILE.read_text(encoding="utf-8")
+    reset_bytes = (ROOT / RESET_REL).read_bytes()
+    assert rule_constants_digest(rules_source) == V070_RULE_CONSTANTS_SHA256
+    assert hashlib.sha256(reset_bytes).hexdigest() == V070_RESET_SHA256
+    if tag_exists(V070_TAG):
+        assert rule_constants_digest(tagged(V070_TAG, RULES_REL).decode()) == (
+            V070_RULE_CONSTANTS_SHA256
+        )
+        assert reset_bytes == tagged(V070_TAG, RESET_REL)
+
+
+def _flat(text: str) -> str:
+    return " ".join(text.replace("`", "").split()).casefold()
+
+
+def test_ac172_runbook_and_docstring_name_the_run_list_reads() -> None:
+    text = RUNBOOK.read_text(encoding="utf-8")
+    eight = _section(text, "## 8. Evidence order (integration tests)")
+    nine = _section(text, "## 9. Reset (user-run, AC-66)")
+    leg_note = nine[nine.index("**If a leg refuses or fails.**") :]
+    docstring = ast.get_docstring(ast.parse(LIVE.read_text(encoding="utf-8"))) or ""
+    for where in (leg_note, docstring):
+        flat = _flat(where)
+        for needle in (
+            "run list of smart_meter_peak_model",
+            "again after its refusal or its job run",
+            "0 new runs of smart_meter_peak_model",
+            "names the new run ids",
+            "1 new run of smart_meter_peak_model",
+        ):
+            assert needle in flat, needle
+    for section in (eight, nine):
+        for paragraph in re.split(r"\n\s*\n", section):
+            if re.search(r"ac66|AC-66|\bleg\b", paragraph, flags=re.IGNORECASE):
+                assert "list-runs" not in paragraph, paragraph
+
+
+def test_ac172_leg_command_lines_carry_rp() -> None:
+    text = RUNBOOK.read_text(encoding="utf-8")
+    seen = 0
+    for heading in ("## 8. Evidence order (integration tests)", "## 9. Reset (user-run, AC-66)"):
+        for line in _section(text, heading).splitlines():
+            if line.startswith("pytest ") and re.search(r"ac66_(rerun|rebuild)_leg", line):
+                seen += 1
+                assert "-rP" in line, line
+    assert seen == 3

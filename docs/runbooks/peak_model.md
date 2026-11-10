@@ -201,10 +201,10 @@ export DATABRICKS_CONFIG_PROFILE=dev
 pytest -m integration tests/integration/test_peak_data.py -k "ac36 or ac37 or ac39 or ac40 or ac41 or ac44 or ac47 or ac64"
 pytest -m integration tests/integration/test_peak_data.py -k "ac63"      # before, then after (starts build_labels)
 pytest -m integration tests/integration/test_peak_data.py -k "ac66_before"       # snapshot, tables present
-pytest -m integration tests/integration/test_peak_data.py -k "ac66_rerun_leg"    # rerun leg: MERGE 0 / 0 / 0
+pytest -m integration -rP tests/integration/test_peak_data.py -k "ac66_rerun_leg"    # rerun leg: MERGE 0 / 0 / 0
 python scripts/reset_peak_model_outputs.py                                        # user only: dry run
 python scripts/reset_peak_model_outputs.py --confirm                              # user only: drops the three tables
-pytest -m integration tests/integration/test_peak_data.py -k "ac66_rebuild_leg"  # rebuild leg: starts the four data tasks
+pytest -m integration -rP tests/integration/test_peak_data.py -k "ac66_rebuild_leg"  # rebuild leg: starts the four data tasks
 pytest -m integration tests/integration/test_peak_data.py -k "ac66_verdict"      # green only with both legs
 pytest -m integration tests/integration/test_peak_training.py            # needs two training runs
 pytest -m integration tests/integration/test_peak_scoring.py -k "ac58 or ac59 or ac56"
@@ -228,9 +228,11 @@ The Aiven Kafka service must be on for AC-74, so the started ingestion run reach
 ingestion run fails at `ingest_kafka` and sends a failure email.
 
 Each AC-66 leg refuses before any job run when the table state does not fit it (rerun leg: all
-three tables present; rebuild leg: none present). The verdict starts no run and reads
-`out/evidence/ac66_before_rebuild.json`, `ac66_rerun_leg.json` and `ac66_rebuild_leg.json`, and
-writes `ac66_verdict.json`; copy the four files into the build report.
+three tables present; rebuild leg: none present), and counts the new runs of
+`smart_meter_peak_model` itself (section 9, "If a leg refuses or fails"); `-rP` prints the line
+of a passing leg. The verdict starts no run and reads `out/evidence/ac66_before_rebuild.json`,
+`ac66_rerun_leg.json` and `ac66_rebuild_leg.json`, and writes `ac66_verdict.json`; copy the four
+files into the build report.
 
 Snapshots go to `out/evidence/` (git-ignored); copy the output into the build report. AC-61
 (missing alias) is not run live because it would delete the alias of the shared model; the
@@ -251,7 +253,7 @@ have passed against the current snapshot (section 8); the verdict needs them in 
 ```bash
 python scripts/reset_peak_model_outputs.py            # dry run: prints the plan and the counts
 python scripts/reset_peak_model_outputs.py --confirm  # drops the three tables
-pytest -m integration tests/integration/test_peak_data.py -k "ac66_rebuild_leg"  # rebuild leg
+pytest -m integration -rP tests/integration/test_peak_data.py -k "ac66_rebuild_leg"  # rebuild leg
 pytest -m integration tests/integration/test_peak_data.py -k "ac66_verdict"      # both legs, in order
 ```
 
@@ -270,6 +272,15 @@ the user-run reset. A missing snapshot: run `-k "ac66_before"` with the three ta
 failed rebuild leg can leave a partial state (one or two tables present), which both legs refuse: a
 full run of `smart_meter_peak_model` restores the missing tables, then start again with the
 snapshot.
+
+Each leg reads the run list of `smart_meter_peak_model` (by its job id, runs in every state)
+before anything else and again after its refusal or its job run, and compares the run ids. A
+clean refusal ends with `0 new runs of smart_meter_peak_model` and the newest run id of both
+reads. A refusal during which a run of the job started fails with a message that names the new
+run ids instead of "refused before any job run": find what started the run, then run the leg
+again. A passing leg prints `1 new run of smart_meter_peak_model` and its run id (`-rP`); any
+other count fails the leg with `outcome` `failed`, and a run list that cannot be read is never
+reported as a clean refusal or a pass.
 
 ## 10. Model cleanup (order matters, ADR 0007)
 

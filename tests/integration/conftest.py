@@ -39,6 +39,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, fields
 from datetime import timedelta
 from decimal import Decimal
+from itertools import islice
 from pathlib import Path
 from typing import Any
 
@@ -434,11 +435,22 @@ class PeakRunner:
 
     TERMINAL = tuple(sorted(pipeline_guard.TERMINAL_RUN_STATES))
     NEVER_RAN = ("DISABLED", "UPSTREAM_FAILED", "UPSTREAM_CANCELED")
+    RUN_LIST_LIMIT = 25  # one list page, the API maximum (AC66_ZERO_NEW_RUNS DA-50)
 
     def __init__(self, client: Any, ingestion_job_id: int, pipeline_id: str) -> None:
         self.client = client
         self.ingestion_job_id = ingestion_job_id
         self.pipeline_id = pipeline_id
+
+    def run_ids(self, job: Any) -> list[Any]:
+        """Run ids of ``job``, newest first, in every life-cycle state, from one request.
+
+        No ``active_only``, ``completed_only`` or time filter, so a queued, pending, running
+        or finished run all count; ``islice`` stops before a second page (AC66_ZERO_NEW_RUNS
+        G-58). The values are returned raw; ``ac66_rules.run_ids`` validates them.
+        """
+        listed = self.client.jobs.list_runs(job_id=job.job_id, limit=self.RUN_LIST_LIMIT)
+        return [run.run_id for run in islice(listed, self.RUN_LIST_LIMIT)]
 
     def assert_ingestion_idle(self) -> None:
         report = pipeline_guard.check(self.client, self.ingestion_job_id, self.pipeline_id)
