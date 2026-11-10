@@ -86,8 +86,8 @@ Fill when the status becomes `Closed` or `Dropped`, in the same PR that does the
 
 | Item | Value |
 |---|---|
-| **Pull request** | Pending: the ship PR of AC66_BOTH_LEGS (branch `ship/ac66-both-legs`, based on main 91c69e7, not yet opened on 2026-11-09). Its number is read with `gh pr view` after the merge and recorded in a closure PR, as in `F_SMALL_CHANGE_TRACK_02.md` |
-| **Merge commit** | Pending: read with `gh pr view <N> --json state,mergedAt,mergeCommit` after the merge |
+| **Pull request** | #55, the ship PR of AC66_BOTH_LEGS (branch `ship/ac66-both-legs`), recorded by a closure PR as in `F_SMALL_CHANGE_TRACK_02.md` |
+| **Merge commit** | f1a48a7, read with `gh pr view 55 --json state,mergedAt,mergeCommit`: `MERGED`, 2026-11-10T13:54:41Z |
 | **Work done in** | The spec AC66_BOTH_LEGS (`.claude/sdd/archive/AC66_BOTH_LEGS/`): rerun leg, rebuild leg and verdict as separate live tests, with the pure rules in `tests/support/ac66_rules.py`. DC-01 is met live on `dev` on 2026-11-09: the verdict failed naming `rebuild leg: missing` after the rerun leg alone (BUILD_REPORT AC-163), and passed after the rebuild leg (AC-164). Release v0.7.0 (CHANGELOG `[0.7.0]`) |
 | **Source rows updated** | `.claude/sdd/archive/PEAK_MODEL/SHIPPED_2026-10-22.md`, Follow-ups row F-15: the item text ends with "Closed 2026-11-09 by AC66_BOTH_LEGS (v0.7.0)" and the target reads "Closed (v0.7.0)"; the cell did not start with `Open` before the update, and rule (b) reads only the BUILD_REPORT and CHANGE tables, so the row was never a warning |
 | **check_specs.py after the update** | `64 document(s) checked, 0 error(s), 10 warning(s)` on the ship branch before the commits. The two new warnings are AC66_BOTH_LEGS I-04 and I-05 (rule b), carried by the SHIPPED Follow-ups table; none is for F-15, whose row does not start with `Open` |
