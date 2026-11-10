@@ -1,5 +1,8 @@
 """AC-154 to AC-158: the AC-66 verdict, precondition and leg procedure, proved on fixtures in CI.
 
+AC66_ZERO_NEW_RUNS adds AC-165 to AC-170 (the run count, its order of side effects and the live
+reader on a fake client); the AC-154 to AC-158 tests above are those of AC66_BOTH_LEGS.
+
 The rules live in ``tests/support/ac66_rules.py`` (no SDK, no I/O, no clock). The leg procedure is
 run with fakes for the runner, the table reads and the preflight, and with the real ``Evidence``
 class of ``tests/integration/conftest.py`` on a temporary folder (DA-44), loaded by path under a
@@ -10,12 +13,15 @@ concatenation so the hygiene scans of tracked files stay clean.
 from __future__ import annotations
 
 import ast
+import dataclasses
 import importlib.util
 import itertools
 import json
 import re
 import sys
+from collections.abc import Callable
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -356,9 +362,27 @@ class Fakes:
         self.merges = merges
         self.after: dict[str, Any] = {k: dict(v) for k, v in _snapshot_tables().items()}
         self.raises: BaseException | None = None
+        self.listed: list[Any] = [30, 20, 10]  # the fake run list, newest first
+        self.started: list[int] = [42]  # ids the fake runner adds at the head of the list
+        self.run_id = 42
+        self.replies: dict[int, Any] = {}  # read number -> value to return or Exception to raise
+        self.on_exists: Callable[[], None] | None = None
+        self.reads = 0
+
+    def runs(self) -> Any:
+        self.calls.append("runs")
+        self.reads += 1
+        reply = self.replies.get(self.reads)
+        if isinstance(reply, Exception):
+            raise reply
+        if self.reads in self.replies:
+            return reply
+        return list(self.listed)
 
     def exists(self) -> dict[str, bool]:
         self.calls.append("exists")
+        if self.on_exists is not None:
+            self.on_exists()
         return dict(self.present)
 
     def preflight(self) -> None:
@@ -368,6 +392,8 @@ class Fakes:
         self.calls.append("run")
         if self.raises is not None:
             raise self.raises
+        for run_id in self.started:
+            self.listed.insert(0, run_id)
         merges = self.merges or {
             key: {
                 "inserted": COUNTS[key] if self.leg == "rebuild" else 0,
@@ -377,7 +403,7 @@ class Fakes:
             for key in KEYS
         }
         outputs = {TASKS[key]: {"merge": merges[key]} for key in KEYS}
-        return rules.LegRun(42, 1_700_000_000_000, 1_700_000_226_000, outputs)
+        return rules.LegRun(self.run_id, 1_700_000_000_000, 1_700_000_226_000, outputs)
 
     def state(self) -> dict[str, Any]:
         self.calls.append("state")
@@ -390,6 +416,7 @@ class Fakes:
             exists=self.exists,
             run_tasks=self.run_tasks,
             state=self.state,
+            runs=self.runs,
             preflight=self.preflight,
             report=report,
         )
@@ -529,6 +556,7 @@ def test_ac158_unknown_leg_refuses(tmp_path: Path) -> None:
             exists=fakes.exists,
             run_tasks=fakes.run_tasks,
             state=fakes.state,
+            runs=fakes.runs,
         )
     assert fakes.calls == []
 
@@ -614,6 +642,7 @@ def test_ac158_failing_preflight_keeps_the_old_record(tmp_path: Path, leg: str) 
             exists=fakes.exists,
             run_tasks=fakes.run_tasks,
             state=fakes.state,
+            runs=fakes.runs,
             preflight=busy,
         )
     assert "run" not in fakes.calls
@@ -629,3 +658,278 @@ def test_ac158_unreadable_snapshot_refuses(tmp_path: Path) -> None:
         fakes.call(store)
     assert "run" not in fakes.calls
     assert _files(tmp_path) == before
+
+
+# ----------------------------------------------------------------------------- AC66_ZERO_NEW_RUNS
+UTC_TIME = re.compile(r"\d{4}-\d{2}-\d{2}T\S*")
+READER_ERROR = RuntimeError(" ".join(SECRETS) + " someone" + "@example.com")
+JOB = "smart_meter_peak_model"
+
+
+class Logged:
+    """A store that appends its calls to a shared log, then delegates."""
+
+    def __init__(self, inner: Any, log: list[str]) -> None:
+        self.inner = inner
+        self.log = log
+
+    def read_text(self, name: str) -> str | None:
+        self.log.append(f"read_text:{name}")
+        return self.inner.read_text(name)
+
+    def remove(self, name: str) -> None:
+        self.log.append(f"remove:{name}")
+        self.inner.remove(name)
+
+    def save(self, name: str, data: dict[str, Any]) -> None:
+        self.log.append(f"save:{name}")
+        self.inner.save(name, data)
+
+
+def _no_secret(text: str) -> None:
+    for marker in ("https://", "dapi", "Bearer", "@"):
+        assert marker not in text, marker
+    assert not any(secret in text for secret in SECRETS)
+
+
+def _utc_only(text: str) -> None:
+    for match in UTC_TIME.findall(text):
+        assert re.fullmatch(rules.UTC_PATTERN, match.strip("),.;")), match
+
+
+def _logged(tmp_path: Path, leg: str, fakes: Fakes, **kwargs: Any) -> Logged:
+    return Logged(_store(tmp_path, leg, **kwargs), fakes.calls)
+
+
+REFUSAL_LOG = ["runs", "read_text:ac66_before_rebuild", "exists", "runs"]
+
+
+# AC-165
+PAIRS = [
+    ("a", [3, 2, 1], [3, 2, 1], (), None, 3, 3),
+    ("b", [3, 2, 1], [4, 3, 2, 1], (4,), None, 3, 4),
+    ("c", [], [7], (7,), None, None, 7),
+    ("d", [3, 2, 1], [5, 4, 3, 2], (4, 5), None, 3, 5),
+]
+
+
+@pytest.mark.parametrize("leg_id", [None, 4])
+@pytest.mark.parametrize(("case", "first", "second", "new", "_unused", "nb", "na"), PAIRS)
+def test_ac165_run_count_rule_over_pairs_of_reads(
+    case: str, first: Any, second: Any, new: Any, _unused: Any, nb: Any, na: Any, leg_id: Any
+) -> None:
+    one = rules.count_runs(list(first), list(second), leg_id)
+    two = rules.count_runs(list(first), list(second), leg_id)
+    assert one.unreadable == ""
+    assert one.new == new
+    assert (one.newest_before, one.newest_after) == (nb, na)
+    assert one.own is (case == "b" and leg_id == 4)
+    dumped = json.dumps(dataclasses.asdict(one), sort_keys=True)
+    assert dumped == json.dumps(dataclasses.asdict(two), sort_keys=True)
+
+
+class _BadList(list):  # type: ignore[type-arg]
+    def __iter__(self) -> Any:
+        raise RuntimeError("no iteration")
+
+
+@pytest.mark.parametrize("leg_id", [None, 4, "4"])
+def test_ac165_run_count_rule_never_raises_on_odd_reads(leg_id: Any) -> None:
+    cases: list[tuple[Any, Any, str]] = []
+    for odd in (True, "4", None, 4.0, [4]):
+        cases.append(([3, 2, 1], [odd, 3, 2, 1], "second read"))
+    for whole in (None, (4, 3), "4,3"):
+        cases.append(([3, 2, 1], whole, "second read"))
+    for first in (None, (3, 2, 1), "3,2,1", {3: 1}, 3):
+        cases.append((first, [4, 3, 2, 1], "first read"))
+    cases.append((_BadList([3]), [3], "comparison rule"))
+    for first, second, unreadable in cases:
+        one = rules.count_runs(first, second, leg_id)
+        two = rules.count_runs(first, second, leg_id)
+        assert one.unreadable == unreadable, (first, second)
+        assert one.new == ()
+        assert one.own is False
+        assert json.dumps(dataclasses.asdict(one), sort_keys=True) == json.dumps(
+            dataclasses.asdict(two), sort_keys=True
+        )
+    assert rules.count_runs([1], [1, 2], object()).own is False  # an odd leg run id never raises
+
+
+# AC-166
+@pytest.mark.parametrize(("leg", "present", "with_snapshot"), REFUSALS)
+def test_ac166_refusal_reads_the_run_list_twice_and_reports_0_new_runs(
+    tmp_path: Path, leg: str, present: dict[str, bool], with_snapshot: bool
+) -> None:
+    messages = []
+    for _ in range(2):
+        fakes = Fakes(leg, present)
+        store = _logged(tmp_path, leg, fakes, with_snapshot=with_snapshot)
+        before = _files(tmp_path)
+        with pytest.raises(AssertionError) as caught:
+            fakes.call(store)
+        assert fakes.calls == REFUSAL_LOG
+        assert _files(tmp_path) == before
+        messages.append(str(caught.value))
+    assert messages[0] == messages[1]
+    message = messages[0]
+    assert message.startswith(f"AC-66 {leg} leg refused before any job run:")
+    assert message.endswith(f"; 0 new runs of {JOB} (newest run before: 30, after: 30)")
+    _no_secret(message)
+    _utc_only(message)
+
+
+# AC-167
+@pytest.mark.parametrize(("leg", "present", "with_snapshot"), REFUSALS)
+def test_ac167_a_run_started_during_a_refusal_fails_differently(
+    tmp_path: Path, leg: str, present: dict[str, bool], with_snapshot: bool
+) -> None:
+    fakes = Fakes(leg, present)
+    fakes.on_exists = lambda: fakes.listed.insert(0, 40)
+    store = _logged(tmp_path, leg, fakes, with_snapshot=with_snapshot)
+    before = _files(tmp_path)
+    with pytest.raises(AssertionError) as caught:
+        fakes.call(store)
+    message = str(caught.value)
+    assert fakes.calls == REFUSAL_LOG
+    assert _files(tmp_path) == before
+    assert message.startswith(f"AC-66 {leg} leg found 1 new run of {JOB} while refusing")
+    assert "new run ids: 40" in message
+    assert "after: 40" in message
+    assert "refused before any job run" not in message
+    _no_secret(message)
+    _utc_only(message)
+
+
+# AC-168
+@pytest.mark.parametrize("leg", ["rerun", "rebuild"])
+def test_ac168_pass_checks_exactly_its_own_run(tmp_path: Path, leg: str) -> None:
+    name = rules.LEG_NAMES[leg]
+    lines: list[str] = []
+    # (a) the runner adds its own run only
+    fakes = Fakes(leg, _present(leg))
+    fakes.call(_logged(tmp_path, leg, fakes), report=lines.append)
+    assert fakes.calls == [
+        "runs",
+        "read_text:ac66_before_rebuild",
+        "exists",
+        "preflight",
+        f"remove:{name}",
+        "run",
+        "runs",
+        "state",
+        f"save:{name}",
+    ]
+    saved = json.loads((tmp_path / f"{name}.json").read_text(encoding="utf-8"))
+    assert set(saved) == set(rules.RECORD_FIELDS) | {"saved_at_ms"}
+    assert saved["outcome"] == "passed"
+    assert saved["run_id"] == 42
+    assert lines == [f"AC-66 {leg} leg passed: 1 new run of {JOB}, run 42 (newest run before: 30)"]
+    for line in lines:
+        _no_secret(line)
+        _utc_only(line)
+    # (b) a foreign run too, (c) no run at all
+    for started, ids in (([42, 43], "2 new runs of " + JOB + " (new run ids: 42, 43)"), ([], None)):
+        fakes = Fakes(leg, _present(leg))
+        fakes.started = started
+        lines = []
+        with pytest.raises(AssertionError) as caught:
+            fakes.call(_logged(tmp_path, leg, fakes), report=lines.append)
+        message = str(caught.value)
+        assert message.startswith(f"AC-66 {leg} leg failed:")
+        if ids is None:
+            assert f"0 new runs of {JOB} (new run ids: none)" in message
+        else:
+            assert ids in message
+        assert "expected exactly the leg's run 42" in message
+        assert "state" in fakes.calls
+        saved = json.loads((tmp_path / f"{name}.json").read_text(encoding="utf-8"))
+        assert saved["outcome"] == "failed"
+        assert saved["run_id"] == 42
+        for candidate in tmp_path.glob("*.json"):
+            data = json.loads(candidate.read_text(encoding="utf-8"))
+            assert not (data.get("leg") == leg and data.get("outcome") == "passed")
+        assert lines == []
+        _no_secret(message)
+        _utc_only(message)
+
+
+# AC-169
+@pytest.mark.parametrize("leg", ["rerun", "rebuild"])
+@pytest.mark.parametrize("reply", [READER_ERROR, "x", None, [True]], ids=type)
+def test_ac169_unreadable_run_list_never_reports_a_pass(
+    tmp_path: Path, leg: str, reply: Any
+) -> None:
+    # (a) the first read is unusable: nothing else is called
+    fakes = Fakes(leg, _present(leg))
+    fakes.replies = {1: reply}
+    store = _logged(tmp_path, leg, fakes)
+    before = _files(tmp_path)
+    with pytest.raises(AssertionError) as caught:
+        fakes.call(store)
+    message = str(caught.value)
+    assert fakes.calls == ["runs"]
+    assert _files(tmp_path) == before
+    assert f"the run list of {JOB} could not be read" in message
+    if isinstance(reply, Exception):
+        assert "first read: RuntimeError" in message
+        assert caught.value.__cause__ is reply
+    else:
+        assert "first read: not a list of integer run ids" in message
+    _no_secret(message)
+    # (c) the right state, the second read raises after the runner returned 42
+    fakes = Fakes(leg, _present(leg))
+    fakes.replies = {2: READER_ERROR}
+    lines: list[str] = []
+    with pytest.raises(AssertionError) as caught:
+        fakes.call(_store(tmp_path, leg), report=lines.append)
+    message = str(caught.value)
+    assert (
+        f"the count of new runs of {JOB} could not be confirmed (second read: RuntimeError), "
+        "the leg's run 42"
+    ) in message
+    assert "0 new runs" not in message
+    assert caught.value.__cause__ is READER_ERROR
+    saved = json.loads((tmp_path / f"{rules.LEG_NAMES[leg]}.json").read_text(encoding="utf-8"))
+    assert saved["outcome"] == "failed"
+    assert saved["run_id"] == 42
+    assert lines == []
+    _no_secret(message)
+
+
+@pytest.mark.parametrize(("leg", "present", "with_snapshot"), REFUSALS[:2])
+def test_ac169_unreadable_second_read_never_reports_a_clean_refusal(
+    tmp_path: Path, leg: str, present: dict[str, bool], with_snapshot: bool
+) -> None:
+    fakes = Fakes(leg, present)
+    fakes.replies = {2: READER_ERROR}
+    store = _logged(tmp_path, leg, fakes)
+    before = _files(tmp_path)
+    with pytest.raises(AssertionError) as caught:
+        fakes.call(store)
+    message = str(caught.value)
+    assert "could not be confirmed (second read: RuntimeError; newest run before: 30)" in message
+    assert "0 new runs" not in message
+    assert "refused before any job run" not in message
+    assert fakes.calls == REFUSAL_LOG
+    assert _files(tmp_path) == before
+    assert caught.value.__cause__ is READER_ERROR
+    _no_secret(message)
+
+
+# AC-170 (reader on a fake client)
+def test_ac170_run_ids_reads_one_page_of_every_state_for_the_given_job() -> None:
+    seen: list[dict[str, Any]] = []
+    pulled: list[int] = []
+    states = ("QUEUED", "PENDING", "RUNNING", "TERMINATED", "SKIPPED")
+
+    def list_runs(**kwargs: Any) -> Any:
+        seen.append(kwargs)
+        for index, run_id in enumerate(range(130, 100, -1)):
+            pulled.append(run_id)
+            yield SimpleNamespace(run_id=run_id, state=states[index % len(states)])
+
+    client = SimpleNamespace(jobs=SimpleNamespace(list_runs=list_runs))
+    got = conftest.PeakRunner(client, 1, "p").run_ids(SimpleNamespace(job_id=7))
+    assert seen == [{"job_id": 7, "limit": 25}]
+    assert got == list(range(130, 105, -1))
+    assert len(pulled) == 25

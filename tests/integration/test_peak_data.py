@@ -1,6 +1,7 @@
 """PEAK_MODEL data tables on dev (AC-36, 37, 39, 40, 41, 44, 47, 63, 64, 66).
 
 AC66_BOTH_LEGS adds the live criteria AC-162 to AC-164 (rerun leg, rebuild leg, verdict).
+AC66_ZERO_NEW_RUNS adds AC-173 to AC-175: each leg counts the new runs of the peak job itself.
 
 Run order (runbook ``docs/runbooks/peak_model.md``, "Evidence order"): after the bootstrap run of
 the daily job (weather uploaded, Gold present), run the read-only tests first; then the snapshot
@@ -15,6 +16,11 @@ pairs, each pair back to back:
   data tasks itself, inserts the snapshot rows, counts and checksums equal); ``ac66_verdict``
   (reads out/evidence only; passes only when both legs passed against the current snapshot).
   A leg in the wrong table state refuses before any job run and changes no evidence file.
+  Each leg reads the run list of ``smart_meter_peak_model`` (its job id only, runs in every
+  state) before anything else and again after its refusal or its job run (AC66_ZERO_NEW_RUNS
+  AC-173 to AC-175). A clean refusal ends with ``0 new runs of smart_meter_peak_model``; a
+  refusal during which a run started fails with a message that names the new run ids; a
+  passing leg prints ``1 new run of smart_meter_peak_model`` and its run id (``-rP``).
 
 Keep ``smart_meter_ingestion`` idle during the whole sequence: the tests compare against Gold.
 
@@ -422,13 +428,15 @@ def test_ac66_rerun_leg_ac163_ac164_merges_nothing_and_checksums_equal(
     sql, settings, contracts, checksum, evidence, peak_job, peak_runner
 ) -> None:
     """PEAK_MODEL AC-66 rerun leg; AC66_BOTH_LEGS AC-163 (passes) and AC-164 (refuses after the
-    reset). Needs the snapshot and the three tables; starts the four data tasks once."""
+    reset); AC66_ZERO_NEW_RUNS AC-174 (1 new run, its own) and AC-175 (0 new runs). Needs the
+    snapshot and the three tables; starts the four data tasks once."""
     ac66_rules.run_leg(
         leg="rerun",
         store=evidence,
         exists=lambda: _tables_present(sql, settings, contracts),
         run_tasks=lambda: _leg_run(peak_runner.run(peak_job, only=DATA_TASKS)),
         state=lambda: _state(settings, contracts, checksum),
+        runs=lambda: peak_runner.run_ids(peak_job),
         preflight=peak_runner.assert_ingestion_idle,
     )
 
@@ -437,14 +445,16 @@ def test_ac66_rebuild_leg_ac162_ac164_inserts_the_snapshot_rows_and_checksums_eq
     sql, settings, contracts, checksum, evidence, peak_job, peak_runner
 ) -> None:
     """PEAK_MODEL AC-66 rebuild leg (PEAK_MODEL NFR-17); AC66_BOTH_LEGS AC-162 (refuses before the
-    reset) and AC-164 (passes after it). Needs the snapshot and none of the three tables; starts
-    the four data tasks once and expects inserts equal to the snapshot counts."""
+    reset) and AC-164 (passes after it); AC66_ZERO_NEW_RUNS AC-173 (0 new runs) and AC-175 (1 new
+    run, its own). Needs the snapshot and none of the three tables; starts the four data tasks
+    once and expects inserts equal to the snapshot counts."""
     ac66_rules.run_leg(
         leg="rebuild",
         store=evidence,
         exists=lambda: _tables_present(sql, settings, contracts),
         run_tasks=lambda: _leg_run(peak_runner.run(peak_job, only=DATA_TASKS)),
         state=lambda: _state(settings, contracts, checksum),
+        runs=lambda: peak_runner.run_ids(peak_job),
         preflight=peak_runner.assert_ingestion_idle,
     )
 

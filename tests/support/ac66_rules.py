@@ -6,6 +6,9 @@ the wrong table state, FR-86, and leaves no ``passed`` record after a failure, F
 that passes only when both legs passed against the current snapshot in order (FR-88, FR-89).
 Guards G-46 to G-53 of DESIGN_AC66_BOTH_LEGS.md are marked where they apply. The only project import
 is ``pipeline_guard.utc_text`` (SDK-free), the single place that renders UTC text (NFR-43).
+AC66_ZERO_NEW_RUNS (FR-96 to FR-100, guards G-54 to G-58) adds the run count: ``run_leg``
+reads the run ids of smart_meter_peak_model through the injected ``runs`` before anything
+else and again after its refusal or its job run, and ``count_runs`` compares the two reads.
 """
 
 from __future__ import annotations
@@ -479,6 +482,132 @@ def verdict_message(verdict: Verdict) -> str:
 
 
 # ----------------------------------------------------------------------------- leg procedure
+RUN_JOB_NAME = "smart_meter_peak_model"  # the only job whose runs a leg counts (D-102)
+_UNREAD = "not a list of integer run ids"
+
+
+@dataclass(frozen=True)
+class RunCount:
+    """Two run-list reads compared by run id only (G-55)."""
+
+    unreadable: str  # "", "first read", "second read" or "comparison rule"
+    new: tuple[int, ...]  # in the second read and not in the first, ascending
+    newest_before: int | None  # first entry of the first read (newest first, A-55)
+    newest_after: int | None  # first entry of the second read
+    own: bool  # exactly one new run, equal to the leg's run id
+
+
+def run_ids(value: Any) -> tuple[int, ...] | None:
+    """A read as int run ids, or None unless it is a list of int (not bool) items (G-54)."""
+    if not isinstance(value, list) or not all(_is_int(item) for item in value):
+        return None
+    return tuple(value)
+
+
+def count_runs(before: Any, after: Any, leg_run_id: Any = None) -> RunCount:
+    """The pure comparison rule (FR-100, NFR-50); never raises."""
+    try:
+        return _count_runs(before, after, _as_run_id(leg_run_id))
+    except Exception:  # totality, as AC66_BOTH_LEGS G-51
+        return RunCount("comparison rule", (), None, None, False)
+
+
+def _count_runs(before: Any, after: Any, leg_run_id: int | None) -> RunCount:
+    first = run_ids(before)
+    if first is None:
+        return RunCount("first read", (), None, None, False)
+    newest_before = first[0] if first else None
+    second = run_ids(after)
+    if second is None:
+        return RunCount("second read", (), newest_before, None, False)
+    new = tuple(sorted(set(second) - set(first)))
+    own = leg_run_id is not None and new == (leg_run_id,)
+    return RunCount("", new, newest_before, second[0] if second else None, own)
+
+
+def _as_run_id(raw: Any) -> int | None:
+    if _is_int(raw):
+        return raw
+    if isinstance(raw, str) and raw.isascii() and raw.isdigit():
+        return int(raw)
+    return None
+
+
+def _read(runs: Callable[[], Any]) -> tuple[Any, Exception | None]:
+    """One run-list read; an exception is kept for its class name and as the cause (G-57)."""
+    try:
+        return runs(), None
+    except Exception as exc:  # a BaseException such as pytest.fail propagates
+        return None, exc
+
+
+def _id_text(value: int | None) -> str:
+    return "none" if value is None else str(value)
+
+
+def _ids_text(ids: tuple[int, ...]) -> str:
+    return ", ".join(str(run_id) for run_id in ids) or "none"
+
+
+def _count_text(count: int) -> str:
+    return f"{count} new run{'' if count == 1 else 's'} of {RUN_JOB_NAME}"
+
+
+def _why(count: RunCount, error: Exception | None) -> str:
+    """Class name only: a reader message can hold a host name or a token (G-57)."""
+    if error is not None:
+        return type(error).__name__
+    return "internal error" if count.unreadable == "comparison rule" else _UNREAD
+
+
+def _first_read_message(leg: str, error: Exception | None) -> str:
+    why = type(error).__name__ if error is not None else _UNREAD
+    return (
+        f"AC-66 {leg} leg: the run list of {RUN_JOB_NAME} could not be read "
+        f"(first read: {why}); no table was read, no job run was started and no "
+        "evidence file was changed; next: check the CLI profile, then run the leg again"
+    )
+
+
+def _refusal_message(leg: str, refusal: str, count: RunCount, error: Exception | None) -> str:
+    reasons = refusal.removeprefix(f"AC-66 {leg} leg refused before any job run: ")
+    before = _id_text(count.newest_before)
+    if count.unreadable:
+        return (
+            f"AC-66 {leg} leg refused, but the count of new runs of {RUN_JOB_NAME} "
+            f"could not be confirmed ({count.unreadable}: {_why(count, error)}; "
+            f"newest run before: {before}); precondition: {reasons}"
+        )
+    reads = f"newest run before: {before}, after: {_id_text(count.newest_after)}"
+    if not count.new:
+        return f"{refusal}; {_count_text(0)} ({reads})"
+    return (
+        f"AC-66 {leg} leg found {_count_text(len(count.new))} while refusing "
+        f"(new run ids: {_ids_text(count.new)}; {reads}); find what started them "
+        f"before the next attempt; precondition: {reasons}"
+    )
+
+
+def _count_problem(count: RunCount, leg_run_id: Any, error: Exception | None) -> str:
+    own = _id_text(_as_run_id(leg_run_id))
+    if count.unreadable:
+        return (
+            f"the count of new runs of {RUN_JOB_NAME} could not be confirmed "
+            f"({count.unreadable}: {_why(count, error)}), the leg's run {own}"
+        )
+    return (
+        f"{_count_text(len(count.new))} (new run ids: {_ids_text(count.new)}), "
+        f"expected exactly the leg's run {own}"
+    )
+
+
+def _pass_line(leg: str, count: RunCount) -> str:
+    return (
+        f"AC-66 {leg} leg passed: {_count_text(1)}, run {count.new[0]} "
+        f"(newest run before: {_id_text(count.newest_before)})"
+    )
+
+
 def run_leg(
     leg: str,
     *,
@@ -486,18 +615,28 @@ def run_leg(
     exists: Callable[[], Mapping[str, Any]],
     run_tasks: Callable[[], LegRun],
     state: Callable[[], Mapping[str, Any]],
+    runs: Callable[[], Any],
     preflight: Callable[[], None] = lambda: None,
     report: Callable[[str], None] = print,
 ) -> dict[str, Any]:
-    """One leg: refuse in the wrong state, run once, check, save the record (G-46, G-47)."""
+    """One leg: refuse in the wrong state, run once, check, save the record (G-46, G-47).
+
+    ``runs`` returns the run ids of smart_meter_peak_model and has no default, so no caller
+    can skip the run count (AC66_ZERO_NEW_RUNS DA-49, order G-56).
+    """
     if leg not in LEG_NAMES:
         raise AssertionError(precondition(leg, snapshot_ok=False, present={}).message)
     name = LEG_NAMES[leg]
+    before, error = _read(runs)  # first read, before any other side effect
+    if run_ids(before) is None:
+        raise AssertionError(_first_read_message(leg, error)) from error
     snapshot, _ = parse_snapshot(store.read_text(SNAPSHOT_NAME))
     present = dict(exists())
     decision = precondition(leg, snapshot_ok=snapshot is not None, present=present)
     if not decision.allowed or snapshot is None:
-        raise AssertionError(decision.message)
+        listed, error = _read(runs)  # second read, after the refusal decision
+        count = count_runs(before, listed)
+        raise AssertionError(_refusal_message(leg, decision.message, count, error)) from error
     preflight()
     store.remove(name)  # no exit path can keep an old record from here on (OD-43)
     run: LegRun | None = None
@@ -505,16 +644,20 @@ def run_leg(
     after: Mapping[str, Any] | None = None
     try:
         run = run_tasks()
+        listed, error = _read(runs)  # second read, right after the job run ended (DA-53)
+        count = count_runs(before, listed, run.run_id)
         merges = merges_from_outputs(run.outputs)
         after = state()
-        problems = check_leg(leg, snapshot, merges, after)
+        problems = [] if count.own else [_count_problem(count, run.run_id, error)]
+        problems += check_leg(leg, snapshot, merges, after)
         if problems:
             raise AssertionError(
                 f"AC-66 {leg} leg failed: {'; '.join(problems)}; "
                 f"record outcome failed in {_file(name)}"
-            )
+            ) from error
         record = leg_record(leg, "passed", snapshot.saved_at_ms, run, present, merges, after)
         store.save(name, record)
+        report(_pass_line(leg, count))
         return record
     except BaseException:
         try:
