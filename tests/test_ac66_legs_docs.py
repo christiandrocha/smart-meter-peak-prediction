@@ -502,3 +502,14 @@ def test_ac172_runbook_and_docstring_name_the_run_list_reads() -> None:
         for paragraph in re.split(r"\n\s*\n", section):
             if re.search(r"ac66|AC-66|\bleg\b", paragraph, flags=re.IGNORECASE):
                 assert "list-runs" not in paragraph, paragraph
+
+
+def test_ac172_leg_command_lines_carry_rp() -> None:
+    text = RUNBOOK.read_text(encoding="utf-8")
+    seen = 0
+    for heading in ("## 8. Evidence order (integration tests)", "## 9. Reset (user-run, AC-66)"):
+        for line in _section(text, heading).splitlines():
+            if line.startswith("pytest ") and re.search(r"ac66_(rerun|rebuild)_leg", line):
+                seen += 1
+                assert "-rP" in line, line
+    assert seen == 3

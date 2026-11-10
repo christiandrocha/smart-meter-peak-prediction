@@ -373,7 +373,7 @@ class Fakes:
         self.calls.append("runs")
         self.reads += 1
         reply = self.replies.get(self.reads)
-        if isinstance(reply, Exception):
+        if isinstance(reply, BaseException):
             raise reply
         if self.reads in self.replies:
             return reply
@@ -933,3 +933,93 @@ def test_ac170_run_ids_reads_one_page_of_every_state_for_the_given_job() -> None
     assert seen == [{"job_id": 7, "limit": 25}]
     assert got == list(range(130, 105, -1))
     assert len(pulled) == 25
+
+
+# Review additions (AC-165, AC-168, AC-169, DA-54, DA-55)
+def test_ac165_one_new_run_that_is_not_the_legs_own_is_not_own() -> None:
+    count = rules.count_runs([3, 2, 1], [4, 3, 2, 1], 5)
+    assert count.new == (4,)
+    assert count.own is False
+
+
+@pytest.mark.parametrize("leg", ["rerun", "rebuild"])
+def test_ac168_one_foreign_run_instead_of_its_own_fails(tmp_path: Path, leg: str) -> None:
+    fakes = Fakes(leg, _present(leg))
+    fakes.started = [43]  # the runner reports run 42 but only a foreign 43 is listed
+    with pytest.raises(AssertionError) as caught:
+        fakes.call(_store(tmp_path, leg))
+    message = str(caught.value)
+    assert f"1 new run of {JOB} (new run ids: 43), expected exactly the leg's run 42" in message
+
+
+@pytest.mark.parametrize("leg", ["rerun", "rebuild"])
+@pytest.mark.parametrize("read", [1, 2])
+def test_ac169_a_base_exception_from_the_reader_propagates(
+    tmp_path: Path, leg: str, read: int
+) -> None:
+    fakes = Fakes(leg, _present(leg))
+    fakes.replies = {read: Stop("stop")}  # a BaseException: the reader maps only Exception
+    with pytest.raises(Stop):
+        fakes.call(_store(tmp_path, leg))
+
+
+def test_ac169_a_base_exception_from_the_second_refusal_read_propagates(tmp_path: Path) -> None:
+    fakes = Fakes("rerun", {key: False for key in KEYS})
+    fakes.replies = {2: Stop("stop")}
+    with pytest.raises(Stop):
+        fakes.call(_store(tmp_path, "rerun"))
+
+
+@pytest.mark.parametrize("leg", ["rerun", "rebuild"])
+def test_ac168_error_exits_make_no_second_read(tmp_path: Path, leg: str) -> None:
+    def boom() -> dict[str, bool]:
+        raise OSError("exists failed")
+
+    fakes = Fakes(leg, _present(leg))
+    with pytest.raises(OSError, match="exists failed"):
+        rules.run_leg(
+            leg,
+            store=_store(tmp_path, leg),
+            exists=boom,
+            run_tasks=fakes.run_tasks,
+            state=fakes.state,
+            runs=fakes.runs,
+        )
+    assert fakes.reads == 1
+    for raises in (AssertionError("run ended FAILED"), Stop("stop")):
+        fakes = Fakes(leg, _present(leg))
+        fakes.raises = raises
+        with pytest.raises(type(raises)):
+            fakes.call(_store(tmp_path, leg))
+        assert fakes.reads == 1
+    fakes = Fakes(leg, _present(leg))
+
+    def busy() -> None:
+        raise AssertionError("not idle")
+
+    with pytest.raises(AssertionError, match="not idle"):
+        rules.run_leg(
+            leg,
+            store=_store(tmp_path, leg),
+            exists=fakes.exists,
+            run_tasks=fakes.run_tasks,
+            state=fakes.state,
+            runs=fakes.runs,
+            preflight=busy,
+        )
+    assert fakes.reads == 1
+
+
+@pytest.mark.parametrize("leg", ["rerun", "rebuild"])
+def test_ac168_a_pass_line_that_cannot_be_written_leaves_a_failed_record(
+    tmp_path: Path, leg: str
+) -> None:
+    def report(line: str) -> None:
+        if "passed" in line:
+            raise OSError("closed")
+
+    fakes = Fakes(leg, _present(leg))
+    with pytest.raises(OSError, match="closed"):
+        fakes.call(_store(tmp_path, leg), report=report)
+    saved = json.loads((tmp_path / f"{rules.LEG_NAMES[leg]}.json").read_text(encoding="utf-8"))
+    assert saved["outcome"] == "failed"
