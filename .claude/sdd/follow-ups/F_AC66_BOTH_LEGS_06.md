@@ -15,7 +15,7 @@
 | **Source finding** | none |
 | **Source documents** | `.claude/sdd/archive/AC66_BOTH_LEGS/SHIPPED_2026-11-09.md` (Follow-ups row F-06; Template Feedback row "Test (`check_specs` AC-119, SPEC_ARCHIVE_GATES)") |
 | **Created** | 2026-11-10 |
-| **Status** | In Progress |
+| **Status** | Closed |
 
 Allowed status values: `Open`, `In Progress`, `Closed`, `Dropped`. `Dropped` needs a reason in
 Closure.
@@ -86,11 +86,11 @@ Fill when the status becomes `Closed` or `Dropped`, in the same PR that does the
 
 | Item | Value |
 |---|---|
-| **Pull request** | Pending |
-| **Merge commit** | Pending |
-| **Work done in** | `CHANGE_AC119_FIXTURE.md` |
-| **Source rows updated** | Pending: `.claude/sdd/archive/AC66_BOTH_LEGS/SHIPPED_2026-11-09.md`, Follow-ups row F-06 |
-| **check_specs.py after the update** | Pending |
+| **Pull request** | Pending: the PR of `change/ac119-fixture`; its number and merge commit are read with `gh pr view` after the merge and recorded in a closure PR, as in `F_AC66_BOTH_LEGS_03.md` |
+| **Merge commit** | Pending: read with `gh pr view <N> --json state,mergedAt,mergeCommit` after the merge |
+| **Work done in** | `CHANGE_AC119_FIXTURE.md` (archived in `archive/AC119_FIXTURE/`): `test_ac176_fixture_feature_passes_the_archive_simulation` and `test_ac177_unprefixed_citation_in_the_fixture_fails_rule_c` run the AC-119 simulation on a fixture feature in every test run. DC-01 is met: on 2026-11-10, with no document in a final status, both pass and the repository-state test skips |
+| **Source rows updated** | `.claude/sdd/archive/AC66_BOTH_LEGS/SHIPPED_2026-11-09.md`, Follow-ups row F-06: the target cell reads "Closed 2026-11-10 by AC119_FIXTURE"; the row never started with `Open`, and rule (b) reads only BUILD_REPORT and CHANGE tables |
+| **check_specs.py after the update** | `69 document(s) checked, 0 error(s), 12 warning(s)` on the change branch, as on `main` plus the CHANGE document |
 
 ---
 
