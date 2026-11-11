@@ -136,7 +136,7 @@ stays visible without blocking the change. `Deferred` without a reason is an err
 
 | ID | Issue | Severity | Follow-up |
 |---|---|---|---|
-| I-01 | The fixture needs at least one archived folder to cite; a project with an empty `archive/` would fail AC-176 rather than skip | Low | Accepted for this repository (twelve archived folders); revisit when the test is ported to the template |
+| I-01 | The fixture needs at least one archived folder to cite; a project with an empty `archive/` would fail AC-176 rather than skip | Low | Closed 2026-11-11 by AC119_EMPTY_ARCHIVE (follow-up AC119_FIXTURE F-01): a source with an empty archive gets one generated folder to cite, and AC-179 forces that path |
 
 ---
 

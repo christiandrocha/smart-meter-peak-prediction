@@ -15,7 +15,7 @@
 | **Source finding** | AC119_FIXTURE I-01 |
 | **Source documents** | `.claude/sdd/archive/AC119_FIXTURE/CHANGE_AC119_FIXTURE.md` (Issues row I-01; a CHANGE folder has no SHIPPED document) |
 | **Created** | 2026-11-11 |
-| **Status** | In Progress |
+| **Status** | Closed |
 
 Allowed status values: `Open`, `In Progress`, `Closed`, `Dropped`. `Dropped` needs a reason in
 Closure.
@@ -91,11 +91,11 @@ Fill when the status becomes `Closed` or `Dropped`, in the same PR that does the
 
 | Item | Value |
 |---|---|
-| **Pull request** | Filled by the closure PR |
+| **Pull request** | Filled by the closure PR (branch `change/ac119-empty-archive`) |
 | **Merge commit** | Filled by the closure PR |
-| **Work done in** | `CHANGE_AC119_EMPTY_ARCHIVE.md` |
-| **Source rows updated** | Filled when the work is done |
-| **check_specs.py after the update** | Filled when the work is done |
+| **Work done in** | `CHANGE_AC119_EMPTY_ARCHIVE.md` (archived in `archive/AC119_EMPTY_ARCHIVE/`): `fixture_source` in `tests/test_check_specs.py` gives a source with an empty archive one generated folder, `CITED_AC119`, to cite, and `test_ac179_fixture_runs_on_an_empty_archive` forces that path. DC-01 is met: on 2026-11-11 the empty-archive copy of a3e2f5b gives `3 passed` for `-k "ac176 or ac177 or ac179"` (before: AC-176 failed) |
+| **Source rows updated** | `.claude/sdd/archive/AC119_FIXTURE/CHANGE_AC119_FIXTURE.md:139`, Issues row I-01: the Follow-up cell reads "Closed 2026-11-11 by AC119_EMPTY_ARCHIVE"; it never started with `Open`, so rule (b) did not warn on it before |
+| **check_specs.py after the update** | `70 document(s) checked, 0 error(s), 10 warning(s)` on the change branch, as on `main` plus the CHANGE document |
 
 ---
 
@@ -105,4 +105,4 @@ Fill when the status becomes `Closed` or `Dropped`, in the same PR that does the
   the template repository itself; the port is a separate step.
 - **Risks:** A fallback that this repository never takes would be untested code; the CHANGE
   document therefore adds a test that forces the empty-archive path on every run.
-- **Next step:** `CHANGE_AC119_EMPTY_ARCHIVE.md` to `Ready for Build`.
+- **Next step:** Port the test file to the template repository, which this change makes possible.
