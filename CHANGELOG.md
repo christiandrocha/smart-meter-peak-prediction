@@ -5,6 +5,8 @@ Entries are added by `/ship`.
 
 ## [Unreleased]
 
+## [0.7.3] - 2026-11-11
+
 ### Fixed
 
 - AC-66 first-read gate (AC66_FIRST_READ_GATE, CHANGE track, closes AC66_ZERO_NEW_RUNS F-01 from
