@@ -128,7 +128,7 @@ stays visible without blocking the change. `Deferred` without a reason is an err
 
 | ID | Issue | Severity | Follow-up |
 |---|---|---|---|
-| I-01 | The test file is not yet ported to the template repository, so a new project still gets the version without the empty-archive path; this change was proven on a generated source and on an emptied copy of this repository, not on the template itself | Low | Open: port the AC119_FIXTURE and AC119_EMPTY_ARCHIVE tests to the template |
+| I-01 | The test file is not yet ported to the template repository, so a new project still gets the version without the empty-archive path; this change was proven on a generated source and on an emptied copy of this repository, not on the template itself | Low | Closed 2026-11-11 by TEMPLATE_PORT_AC119 (follow-up AC119_EMPTY_ARCHIVE F-01): the test file is ported byte for byte to the template, commit 8366859 on its branch `sync/ac119-tests` |
 
 ---
 

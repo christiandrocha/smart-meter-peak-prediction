@@ -15,7 +15,7 @@
 | **Source finding** | AC119_EMPTY_ARCHIVE I-01 |
 | **Source documents** | `.claude/sdd/archive/AC119_EMPTY_ARCHIVE/CHANGE_AC119_EMPTY_ARCHIVE.md` (Issues row I-01; a CHANGE folder has no SHIPPED document) |
 | **Created** | 2026-11-11 |
-| **Status** | In Progress |
+| **Status** | Closed |
 
 Allowed status values: `Open`, `In Progress`, `Closed`, `Dropped`. `Dropped` needs a reason in
 Closure.
@@ -94,9 +94,9 @@ Fill when the status becomes `Closed` or `Dropped`, in the same PR that does the
 |---|---|
 | **Pull request** | Filled by the closure PR (branch `change/template-port-ac119`) |
 | **Merge commit** | Filled by the closure PR |
-| **Work done in** | `CHANGE_TEMPLATE_PORT_AC119.md` |
-| **Source rows updated** | Filled when the work is done |
-| **check_specs.py after the update** | Filled when the work is done |
+| **Work done in** | `CHANGE_TEMPLATE_PORT_AC119.md` (archived in `archive/TEMPLATE_PORT_AC119/`): template commit 8366859 on the local branch `sync/ac119-tests` (parent d520e24, `master` unchanged until the user's review) copies `tests/test_check_specs.py` byte for byte. DC-01 is met: on the template branch `131 passed, 1 skipped` and the three fixture tests pass on its empty archive; a project generated from it gives `124 passed, 1 skipped` |
+| **Source rows updated** | `.claude/sdd/archive/AC119_EMPTY_ARCHIVE/CHANGE_AC119_EMPTY_ARCHIVE.md:131`, Issues row I-01: the Follow-up cell reads "Closed 2026-11-11 by TEMPLATE_PORT_AC119" and names 8366859, so it no longer starts with `Open` |
+| **check_specs.py after the update** | `71 document(s) checked, 0 error(s), 10 warning(s)` on the change branch: the rule (b) warning for AC119_EMPTY_ARCHIVE I-01 is gone |
 
 ---
 
@@ -105,4 +105,4 @@ Fill when the status becomes `Closed` or `Dropped`, in the same PR that does the
 - **Weak points:** The template has no remote and no CI, so the proof is the commands run here
   on its branch and on a generated project.
 - **Risks:** Nothing keeps the template in step after this port (TEMPLATE_PORT I-02).
-- **Next step:** `CHANGE_TEMPLATE_PORT_AC119.md` to `Ready for Build`.
+- **Next step:** The user reviews the template branch `sync/ac119-tests`; on the OK, `master` is fast-forwarded to 8366859.
