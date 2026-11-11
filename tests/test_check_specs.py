@@ -691,33 +691,82 @@ def fixture_feature_docs(citation: str) -> list:
     return docs
 
 
-def first_archived_spec() -> str:
-    folders = sorted(p.name for p in (ROOT / ".claude/sdd/archive").iterdir() if p.is_dir())
-    assert folders, "AC119_FIXTURE I-01: the fixture needs at least one archived folder to cite"
-    return folders[0]
+CITED_SPEC = "CITED_AC119"
 
 
-def test_ac176_fixture_feature_passes_the_archive_simulation(tmp_path):
-    """AC119_FIXTURE AC-176: the AC-119 simulation runs on every test run, with no skip path."""
-    docs = fixture_feature_docs(f"{first_archived_spec()} I-90")
-    added = simulate_archive(tmp_path, docs)
+def archived_folders(source: Path) -> list[str]:
+    archive = source / ".claude/sdd/archive"
+    return sorted(p.name for p in archive.iterdir() if p.is_dir()) if archive.is_dir() else []
+
+
+def fixture_source(tmp_path: Path, source: Path = ROOT) -> tuple[Path, str]:
+    """AC119_EMPTY_ARCHIVE: the source archive to simulate over and the spec the fixture cites.
+
+    The first archived folder of source when there is one. A source with an empty archive (a new
+    project from the template) gets a copy of its allowlist plus one generated valid folder,
+    CITED_AC119, in tmp_path, so the fixture always has a spec to cite (AC119_FIXTURE I-01).
+    """
+    folders = archived_folders(source)
+    if folders:
+        return source, folders[0]
+    seeded = tmp_path / "seeded"
+    (seeded / ALLOWLIST).parent.mkdir(parents=True)
+    shutil.copy(source / ALLOWLIST, seeded / ALLOWLIST)
+    valid_folder(seeded, CITED_SPEC)
+    return seeded, CITED_SPEC
+
+
+def assert_fixture_passes(sim: Path, source: Path, cited: str) -> None:
+    """AC-176 and AC-179: the fixture with a prefixed citation is archived with no error."""
+    docs = fixture_feature_docs(f"{cited} I-90")
+    added = simulate_archive(sim, docs, source=source)
     assert sorted(added) == sorted(f"{FIXTURE_FEATURE}/{d.path.name}" for d in docs), added
-    folder = tmp_path / ".claude/sdd/archive" / FIXTURE_FEATURE
+    folder = sim / ".claude/sdd/archive" / FIXTURE_FEATURE
     assert sorted(p.name for p in folder.iterdir()) == sorted(
         [d.path.name for d in docs] + ["SHIPPED_2026-11-06.md"]
     )
-    errors = check_specs.run(tmp_path).errors
+    errors = check_specs.run(sim).errors
     assert errors == [], errors
 
 
-def test_ac177_unprefixed_citation_in_the_fixture_fails_rule_c(tmp_path):
-    """AC119_FIXTURE AC-177: the same fixture without the spec name in front fails rule (c)."""
-    simulate_archive(tmp_path, fixture_feature_docs("I-90"))
-    errors = check_specs.run(tmp_path).errors
+def assert_unprefixed_fails(sim: Path, source: Path) -> None:
+    """AC-177 and AC-180: the same fixture without the spec name in front fails rule (c) once."""
+    simulate_archive(sim, fixture_feature_docs("I-90"), source=source)
+    errors = check_specs.run(sim).errors
     assert len(errors) == 1, errors
     assert f"archive/{FIXTURE_FEATURE}/DESIGN_{FIXTURE_FEATURE}.md" in errors[0]
     assert "I-90 cited 1x without its spec prefix" in errors[0]
     assert errors[0].endswith("(rule c)")
+
+
+def test_ac176_fixture_feature_passes_the_archive_simulation(tmp_path):
+    """AC119_FIXTURE AC-176: the AC-119 simulation runs on every test run, with no skip path."""
+    source, cited = fixture_source(tmp_path)
+    if archived_folders(ROOT):  # AC119_EMPTY_ARCHIVE AC-181: this repository's archive is used
+        assert (source, cited) == (ROOT, archived_folders(ROOT)[0])
+    assert_fixture_passes(tmp_path / "sim", source, cited)
+
+
+def test_ac177_unprefixed_citation_in_the_fixture_fails_rule_c(tmp_path):
+    """AC119_FIXTURE AC-177: the same fixture without the spec name in front fails rule (c)."""
+    source, _ = fixture_source(tmp_path)
+    assert_unprefixed_fails(tmp_path / "sim", source)
+
+
+def test_ac179_fixture_runs_on_an_empty_archive(tmp_path):
+    """AC119_EMPTY_ARCHIVE AC-179 and AC-180: the fixture runs on a source with no archived folder.
+
+    Forces the path a new project from the template takes, which this repository never takes.
+    """
+    empty = tmp_path / "empty"
+    (empty / ".claude/sdd/archive").mkdir(parents=True)
+    write_allowlist(empty)
+    source, cited = fixture_source(tmp_path, source=empty)
+    assert source == tmp_path / "seeded"
+    assert cited == CITED_SPEC
+    assert_fixture_passes(tmp_path / "positive", source, cited)  # AC-179
+    assert archived_folders(tmp_path / "positive") == sorted([CITED_SPEC, FIXTURE_FEATURE])
+    assert_unprefixed_fails(tmp_path / "unprefixed", source)  # AC-180
 
 
 # ----------------------------------------------------------------- SMALL_CHANGE_TRACK
