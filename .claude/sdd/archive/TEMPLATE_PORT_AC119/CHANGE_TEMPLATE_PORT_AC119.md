@@ -12,7 +12,7 @@
 | **Date** | 2026-11-11 |
 | **Author** | christiandrocha (with Claude Code) |
 | **Branch** | `change/template-port-ac119` |
-| **Status** | Ready for Build |
+| **Status** | Complete |
 | **Source** | Follow-up AC119_EMPTY_ARCHIVE F-01 (`.claude/sdd/follow-ups/F_AC119_EMPTY_ARCHIVE_01.md`, triage: every criterion `Yes`), from AC119_EMPTY_ARCHIVE I-01. Template work on a local branch of the template repository for review, as in TEMPLATE_PORT |
 
 Allowed status values: `Draft`, `Ready for Build`, `Complete`.
@@ -42,14 +42,14 @@ already specified, built and gated here, recorded in Evidence by commit SHA.
 
 | ID | Criterion | Result | Evidence |
 |---|---|---|---|
-| E1 | No production file: nothing under `src/`, `resources/`, `notebooks/`, `pipelines/`, nor `databricks.yml` (`git diff --name-only origin/main...HEAD`) | Yes | Predicted: this document, `.claude/sdd/follow-ups/F_AC119_EMPTY_ARCHIVE_01.md` and one row of `.claude/sdd/archive/AC119_EMPTY_ARCHIVE/CHANGE_AC119_EMPTY_ARCHIVE.md`; replaced by the command output at the evidence commit |
-| E2 | No contract change: nothing under `docs/contracts/` (same output) | Yes | Predicted: nothing under `docs/contracts/` |
-| E3 | No new ADR: no added `docs/adr/NNNN-*.md` (`git diff --name-status origin/main...HEAD`) | Yes | Predicted: no `docs/adr/` file |
-| E4 | No change to an archived DEFINE or DESIGN, which is `/iterate`; annotating archived BUILD_REPORT or SHIPPED rows is allowed (same output) | Yes | Predicted: under `archive/` only the Issues row of AC119_EMPTY_ARCHIVE I-01; rules (b) and (c) read an archived CHANGE document as a BUILD_REPORT |
-| E5 | No change to the gates: neither `scripts/check_specs.py` nor a template that the script or the tests read (same output) | Yes | Predicted: neither here; in the template only `tests/test_check_specs.py` changes |
-| E6 | No change under `tests/integration/` (same output) | Yes | Predicted: nothing under `tests/integration/` |
-| E7 | No change to the runtime `dependencies` of `pyproject.toml`; the `dev` extra may change (`git diff origin/main...HEAD -- pyproject.toml`) | Yes | Predicted: `pyproject.toml` unchanged, here and in the template |
-| E8 | Agent rules (`docs/conventions/git.md` and the rules for agents in `CLAUDE.md`) change only under a gate. Hardening is `Yes`; relaxing is `Relaxing` and needs a Rule Changes section. In doubt, it is relaxing (`git diff origin/main...HEAD -- docs/conventions/git.md CLAUDE.md`) | Yes | Predicted: neither file changes, here or in the template |
+| E1 | No production file: nothing under `src/`, `resources/`, `notebooks/`, `pipelines/`, nor `databricks.yml` (`git diff --name-only origin/main...HEAD`) | Yes | `git diff --name-status origin/main...HEAD` on 61462e2: `M` `.claude/sdd/archive/AC119_EMPTY_ARCHIVE/CHANGE_AC119_EMPTY_ARCHIVE.md`, `A` `.claude/sdd/features/CHANGE_TEMPLATE_PORT_AC119.md`, `A` `.claude/sdd/follow-ups/F_AC119_EMPTY_ARCHIVE_01.md`: nothing under `src/`, `resources/`, `notebooks/`, `pipelines/`, nor `databricks.yml`. Template: `git diff --name-only master...sync/ac119-tests` lists only `tests/test_check_specs.py` |
+| E2 | No contract change: nothing under `docs/contracts/` (same output) | Yes | Same output: nothing under `docs/contracts/` |
+| E3 | No new ADR: no added `docs/adr/NNNN-*.md` (`git diff --name-status origin/main...HEAD`) | Yes | Same output: `A` only for this document and the follow-up file; no `docs/adr/` file |
+| E4 | No change to an archived DEFINE or DESIGN, which is `/iterate`; annotating archived BUILD_REPORT or SHIPPED rows is allowed (same output) | Yes | Same output: under `archive/` only `AC119_EMPTY_ARCHIVE/CHANGE_AC119_EMPTY_ARCHIVE.md` changes, one line (Issues row of AC119_EMPTY_ARCHIVE I-01); rules (b) and (c) read an archived CHANGE document as a BUILD_REPORT; no archived DEFINE or DESIGN |
+| E5 | No change to the gates: neither `scripts/check_specs.py` nor a template that the script or the tests read (same output) | Yes | Same output: neither `scripts/check_specs.py` nor a template here; in the template only `tests/test_check_specs.py` changes, and its `scripts/check_specs.py` stays byte-identical to this repository's |
+| E6 | No change under `tests/integration/` (same output) | Yes | Same output: nothing under `tests/integration/` |
+| E7 | No change to the runtime `dependencies` of `pyproject.toml`; the `dev` extra may change (`git diff origin/main...HEAD -- pyproject.toml`) | Yes | `git diff origin/main...HEAD -- pyproject.toml`: empty; template: not in the branch's file list |
+| E8 | Agent rules (`docs/conventions/git.md` and the rules for agents in `CLAUDE.md`) change only under a gate. Hardening is `Yes`; relaxing is `Relaxing` and needs a Rule Changes section. In doubt, it is relaxing (`git diff origin/main...HEAD -- docs/conventions/git.md CLAUDE.md`) | Yes | `git diff origin/main...HEAD -- docs/conventions/git.md CLAUDE.md`: empty (0 lines); template: neither in the branch's file list |
 
 ---
 
@@ -105,7 +105,7 @@ already specified, built and gated here, recorded in Evidence by commit SHA.
 
 ## Evidence
 
-Evidence commit: 0000000
+Evidence commit: 61462e2
 
 Process rule D-91 (not checked by the script): the evidence commit is the last commit of the PR
 that touches files other than this document. The final commit touches only this document (status
@@ -114,10 +114,10 @@ again on the final head and its output goes in the PR description.
 
 | AC | Result | Evidence |
 |---|---|---|
-| AC-182 | Not run | Filled at build |
-| AC-183 | Not run | Filled at build |
-| AC-184 | Not run | Filled at build |
-| AC-185 | Not run | Filled at build |
+| AC-182 | Pass | Template commit 8366859 on `sync/ac119-tests` (parent d520e24 = `master`): `cmp -s` exits 0 for `tests/test_check_specs.py` and `scripts/check_specs.py` against this repository (`main` df831af, unchanged on this branch); `git diff --name-only master...sync/ac119-tests`: `tests/test_check_specs.py` only (101 lines added) |
+| AC-183 | Pass | Template branch, `archive/` holding only `.gitkeep`, ruff 0.17.0: `ruff check .` "All checks passed!"; `ruff format --check .` "34 files already formatted"; `pytest -q -rs` `131 passed, 1 skipped` (128 at TEMPLATE_PORT plus AC-176, AC-177, AC-179), the skip being the repository-state AC-119 test; `-k "ac176 or ac177 or ac179"` `3 passed`; `check_specs.py` "0 document(s) checked, 0 error(s), 0 warning(s)"; `pre-commit run --all-files`: all 9 hooks passed |
+| AC-184 | Pass | Scratch clone of `sync/ac119-tests`: `init_project.py --name "Port Check" --modules databricks,kafka,mlflow --author Test` printed "Placeholders replaced in 7 file(s)."; then `pytest -q` `124 passed, 1 skipped` (121 at TEMPLATE_PORT plus three); the three fixture tests `3 passed`; `check_specs.py` "0 document(s) checked, 0 error(s), 0 warning(s)"; `ruff check .` "All checks passed!" |
+| AC-185 | Pass | On 61462e2: `check_specs.py` `71 document(s) checked, 0 error(s), 10 warning(s)`; no warning names AC119_EMPTY_ARCHIVE I-01 (`grep -c` gives 0; it was one of the 11 on `main`); `F_AC119_EMPTY_ARCHIVE_01.md` status `Closed` with 8366859; the source row at `CHANGE_AC119_EMPTY_ARCHIVE.md:131` names 8366859; `pre-commit run --all-files`: all hooks passed |
 
 In a `Complete` document `check_specs.py` reports `Fail` and `Not run` as errors. A deliberate
 deferral is written `Deferred: <reason>`: the check accepts it and lists it as a warning, so it
@@ -129,7 +129,7 @@ stays visible without blocking the change. `Deferred` without a reason is an err
 
 | ID | Issue | Severity | Follow-up |
 |---|---|---|---|
-| I-01 | None found before the build | Low | Updated at build |
+| I-01 | The template's `master` stays at d520e24 until the user reviews `sync/ac119-tests`; until then a project created from `master` still lacks the ported tests | Low | Accepted: the user's review moves `master` (fast-forward to 8366859), as for TEMPLATE_PORT; tracked in the follow-up file |
 
 ---
 
@@ -137,5 +137,9 @@ stays visible without blocking the change. `Deferred` without a reason is an err
 
 - **Weak points:** The template has no remote and no CI; the proof is the commands run here.
 - **Risks:** The template drifts again with the next generic change (TEMPLATE_PORT I-02).
-- **What I would do differently:** Filled at build.
-- **Next improvement:** Build, then record the PR number and merge commit with a closure PR.
+- **What I would do differently:** Port a generic test change in the PR that ships it, as
+  TEMPLATE_PORT already recommended; this port was one more step only because AC119_FIXTURE and
+  AC119_EMPTY_ARCHIVE did not include it.
+- **Next improvement:** After the merge, record the PR number and merge commit in
+  `F_AC119_EMPTY_ARCHIVE_01.md` with a closure PR; fast-forward the template's `master` on the
+  user's OK.
