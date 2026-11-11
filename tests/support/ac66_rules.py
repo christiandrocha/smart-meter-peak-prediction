@@ -533,6 +533,18 @@ def _as_run_id(raw: Any) -> int | None:
     return None
 
 
+def _usable(value: Any) -> bool:
+    """G-54 for the first-read gate: a read whose check raises an Exception is unusable.
+
+    A list subclass whose ``__iter__`` raises would otherwise escape the gate with its own text
+    (AC66_FIRST_READ_GATE, AC66_ZERO_NEW_RUNS I-07). A BaseException still propagates.
+    """
+    try:
+        return run_ids(value) is not None
+    except Exception:
+        return False
+
+
 def _read(runs: Callable[[], Any]) -> tuple[Any, Exception | None]:
     """One run-list read; an exception is kept for its class name and as the cause (G-57)."""
     try:
@@ -628,7 +640,7 @@ def run_leg(
         raise AssertionError(precondition(leg, snapshot_ok=False, present={}).message)
     name = LEG_NAMES[leg]
     before, error = _read(runs)  # first read, before any other side effect
-    if run_ids(before) is None:
+    if not _usable(before):
         raise AssertionError(_first_read_message(leg, error)) from error
     snapshot, _ = parse_snapshot(store.read_text(SNAPSHOT_NAME))
     present = dict(exists())

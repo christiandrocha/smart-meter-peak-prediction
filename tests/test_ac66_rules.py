@@ -1023,3 +1023,50 @@ def test_ac168_a_pass_line_that_cannot_be_written_leaves_a_failed_record(
         fakes.call(_store(tmp_path, leg), report=report)
     saved = json.loads((tmp_path / f"{rules.LEG_NAMES[leg]}.json").read_text(encoding="utf-8"))
     assert saved["outcome"] == "failed"
+
+
+# ---------------------------------------------------------------------------- AC66_FIRST_READ_GATE
+class _UnreadableList(list):  # type: ignore[type-arg]
+    """A list whose iteration raises the reader-like error (AC66_ZERO_NEW_RUNS I-07)."""
+
+    def __init__(self, error: BaseException) -> None:
+        super().__init__([3, 2, 1])
+        self.error = error
+
+    def __iter__(self) -> Any:
+        raise self.error
+
+
+@pytest.mark.parametrize("leg", ["rerun", "rebuild"])
+def test_ac186_a_read_that_cannot_be_iterated_stops_at_the_first_read(
+    tmp_path: Path, leg: str
+) -> None:
+    """AC66_FIRST_READ_GATE AC-186: the first-read gate is total for Exception (G-54)."""
+    fakes = Fakes(leg, _present(leg))
+    fakes.replies = {1: _UnreadableList(RuntimeError(str(READER_ERROR)))}
+    store = _logged(tmp_path, leg, fakes)
+    before = _files(tmp_path)
+    with pytest.raises(AssertionError) as caught:
+        fakes.call(store)
+    message = str(caught.value)
+    assert (
+        f"the run list of {JOB} could not be read (first read: not a list of integer run ids)"
+    ) in message
+    assert fakes.calls == ["runs"]
+    assert _files(tmp_path) == before
+    assert caught.value.__cause__ is None
+    _no_secret(message)
+
+
+@pytest.mark.parametrize("leg", ["rerun", "rebuild"])
+def test_ac187_a_base_exception_while_iterating_the_first_read_propagates(
+    tmp_path: Path, leg: str
+) -> None:
+    """AC66_FIRST_READ_GATE AC-187: a BaseException that is not an Exception propagates."""
+    fakes = Fakes(leg, _present(leg))
+    stop = Stop("stop")
+    fakes.replies = {1: _UnreadableList(stop)}
+    with pytest.raises(Stop) as caught:
+        fakes.call(_store(tmp_path, leg))
+    assert caught.value is stop
+    assert fakes.calls == ["runs"]
