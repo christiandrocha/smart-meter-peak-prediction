@@ -14,6 +14,12 @@ Entries are added by `/ship`.
   a correctly prefixed cross-spec citation gives no error; the negative test (AC-177) shows that
   the same citation without its spec prefix gives exactly one rule (c) error. The simulation is
   now exercised between features, when no document is in its final status.
+- AC-119 fixture on an empty archive (AC119_EMPTY_ARCHIVE, CHANGE track, closes AC119_FIXTURE
+  F-01 from AC119_FIXTURE I-01): `fixture_source` in `tests/test_check_specs.py` takes the cited
+  spec from the source's first archived folder, or, when the archive is empty (a new project from
+  the template), generates one valid folder `CITED_AC119` to cite. The new test
+  `test_ac179_fixture_runs_on_an_empty_archive` (AC-179, AC-180) forces that path on every run,
+  so the AC119_FIXTURE tests no longer fail on a project with no archived feature.
 
 ### Unchanged
 

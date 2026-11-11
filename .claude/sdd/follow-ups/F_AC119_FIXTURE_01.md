@@ -91,8 +91,8 @@ Fill when the status becomes `Closed` or `Dropped`, in the same PR that does the
 
 | Item | Value |
 |---|---|
-| **Pull request** | Filled by the closure PR (branch `change/ac119-empty-archive`) |
-| **Merge commit** | Filled by the closure PR |
+| **Pull request** | #70 (branch `change/ac119-empty-archive`), recorded by a closure PR as in `F_AC66_BOTH_LEGS_06.md`; branch removed (remote by GitHub on merge, local with `git branch -d`) |
+| **Merge commit** | cd4b5a9, read with `gh pr view 70 --json state,mergedAt,mergeCommit`: `MERGED`, 2026-11-11T17:11:25Z |
 | **Work done in** | `CHANGE_AC119_EMPTY_ARCHIVE.md` (archived in `archive/AC119_EMPTY_ARCHIVE/`): `fixture_source` in `tests/test_check_specs.py` gives a source with an empty archive one generated folder, `CITED_AC119`, to cite, and `test_ac179_fixture_runs_on_an_empty_archive` forces that path. DC-01 is met: on 2026-11-11 the empty-archive copy of a3e2f5b gives `3 passed` for `-k "ac176 or ac177 or ac179"` (before: AC-176 failed) |
 | **Source rows updated** | `.claude/sdd/archive/AC119_FIXTURE/CHANGE_AC119_FIXTURE.md:139`, Issues row I-01: the Follow-up cell reads "Closed 2026-11-11 by AC119_EMPTY_ARCHIVE"; it never started with `Open`, so rule (b) did not warn on it before |
 | **check_specs.py after the update** | `70 document(s) checked, 0 error(s), 10 warning(s)` on the change branch, as on `main` plus the CHANGE document |
