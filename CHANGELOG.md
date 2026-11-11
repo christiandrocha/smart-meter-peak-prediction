@@ -5,6 +5,8 @@ Entries are added by `/ship`.
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-11-11
+
 ### Added
 
 - AC-119 archive simulation on a fixture feature (AC119_FIXTURE, CHANGE track, closes
