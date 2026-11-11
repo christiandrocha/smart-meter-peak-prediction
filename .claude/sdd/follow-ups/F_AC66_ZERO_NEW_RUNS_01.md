@@ -15,7 +15,7 @@
 | **Source finding** | AC66_ZERO_NEW_RUNS I-07 |
 | **Source documents** | `.claude/sdd/archive/AC66_ZERO_NEW_RUNS/SHIPPED_2026-11-10.md` (Follow-ups row F-01), `.claude/sdd/archive/AC66_ZERO_NEW_RUNS/BUILD_REPORT_AC66_ZERO_NEW_RUNS.md` (Issues row I-07) |
 | **Created** | 2026-11-11 |
-| **Status** | In Progress |
+| **Status** | Closed |
 
 Allowed status values: `Open`, `In Progress`, `Closed`, `Dropped`. `Dropped` needs a reason in
 Closure.
@@ -94,11 +94,11 @@ Fill when the status becomes `Closed` or `Dropped`, in the same PR that does the
 
 | Item | Value |
 |---|---|
-| **Pull request** | Filled by the closure PR |
+| **Pull request** | Filled by the closure PR (branch `change/ac66-first-read-gate`) |
 | **Merge commit** | Filled by the closure PR |
-| **Work done in** | `CHANGE_AC66_FIRST_READ_GATE.md` |
-| **Source rows updated** | Filled when the work is done |
-| **check_specs.py after the update** | Filled when the work is done |
+| **Work done in** | `CHANGE_AC66_FIRST_READ_GATE.md` (archived in `archive/AC66_FIRST_READ_GATE/`): fix 1222e5d adds `_usable` to `tests/support/ac66_rules.py` and gates the first read of `run_leg` with it; `run_ids` and `count_runs` are unchanged. DC-01 is met: `test_ac186_a_read_that_cannot_be_iterated_stops_at_the_first_read` passes for both legs on 1222e5d and fails on f69fc7e |
+| **Source rows updated** | `.claude/sdd/archive/AC66_ZERO_NEW_RUNS/SHIPPED_2026-11-10.md:148`, Follow-ups row F-01: the Target release cell reads "Closed 2026-11-11 by AC66_FIRST_READ_GATE"; `.claude/sdd/archive/AC66_ZERO_NEW_RUNS/BUILD_REPORT_AC66_ZERO_NEW_RUNS.md:167`, Issues row I-07: the Follow-up cell no longer starts with `Open` |
+| **check_specs.py after the update** | `72 document(s) checked, 0 error(s), 9 warning(s)` on the change branch: the rule (b) warning for AC66_ZERO_NEW_RUNS I-07 is gone |
 
 ---
 
@@ -107,4 +107,4 @@ Fill when the status becomes `Closed` or `Dropped`, in the same PR that does the
 - **Weak points:** The input is artificial; the live reader cannot return it.
 - **Risks:** A fix in `run_ids` would look simpler but change a designed result (E4); the fix
   stays in the gate.
-- **Next step:** `CHANGE_AC66_FIRST_READ_GATE.md` to `Ready for Build`.
+- **Next step:** After the merge, record the PR number and merge commit with a closure PR.
