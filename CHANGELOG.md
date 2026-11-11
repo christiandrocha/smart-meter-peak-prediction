@@ -5,6 +5,23 @@ Entries are added by `/ship`.
 
 ## [Unreleased]
 
+### Added
+
+- AC-119 archive simulation on a fixture feature (AC119_FIXTURE, CHANGE track, closes
+  AC66_BOTH_LEGS F-06): two unit tests in `tests/test_check_specs.py` run `simulate_archive` and
+  the archive rules of `scripts/check_specs.py` on a fixture feature `FIXTURE_AC119` built in
+  `tmp_path`, over a copy of the real archive, with no skip. The positive test (AC-176) shows that
+  a correctly prefixed cross-spec citation gives no error; the negative test (AC-177) shows that
+  the same citation without its spec prefix gives exactly one rule (c) error. The simulation is
+  now exercised between features, when no document is in its final status.
+
+### Unchanged
+
+- The repository-state test `test_ac119_final_status_feature_docs_pass_the_archive_rules` is
+  unchanged and still skips when no document of `features/` or `reports/` is in its final
+  status. No production file (`src/`, `resources/`, `notebooks/`, `databricks.yml`), no gate
+  (`scripts/check_specs.py`) and no template changed; the package version stays 0.4.1.
+
 ## [0.7.1] - 2026-11-10
 
 ### Added
