@@ -164,7 +164,7 @@ occurred; `_load_conftest` keeps its `sys.modules` step (DA-59).
 | I-04 | `code-reviewer` Medium: no test of "no second read" on `exists()`, `preflight()` and `run_tasks()` error exits (DA-54) | Medium | Fixed in `3b1d90d` (`test_ac168_error_exits_make_no_second_read`) |
 | I-05 | `code-reviewer` Low: a failing pass line (DA-55) untested | Low | Fixed in `3b1d90d` |
 | I-06 | `code-reviewer` Low: `-rP` on the leg lines unguarded | Low | Fixed in `3b1d90d` (`test_ac172_leg_command_lines_carry_rp`) |
-| I-07 | `code-reviewer` Low: the first-read gate is not total for a list subclass whose `__iter__` raises (raw error instead of the "could not be read" message); `PeakRunner` returns a plain list | Low | Open: accepted, no live impact |
+| I-07 | `code-reviewer` Low: the first-read gate is not total for a list subclass whose `__iter__` raises (raw error instead of the "could not be read" message); `PeakRunner` returns a plain list | Low | Closed 2026-11-11 by AC66_FIRST_READ_GATE (follow-up AC66_ZERO_NEW_RUNS F-01, fix 1222e5d): the first-read gate treats an Exception raised while checking the read as unusable |
 | I-08 | `code-reviewer` Low: `raise ... from error` keeps the reader exception, so pytest prints its text in the terminal although the message does not hold it (G-57, DA-52 specify the cause) | Low | Open: needs `/iterate` on DA-52 if the user wants `from None` |
 | I-09 | `code-reviewer` Low: AC-171 working-tree check is `>=` on assert counts; exact equality only when the tag exists | Low | Accepted trade-off (DA-57) |
 
