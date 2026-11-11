@@ -5,6 +5,23 @@ Entries are added by `/ship`.
 
 ## [Unreleased]
 
+### Fixed
+
+- AC-66 first-read gate (AC66_FIRST_READ_GATE, CHANGE track, closes AC66_ZERO_NEW_RUNS F-01 from
+  AC66_ZERO_NEW_RUNS I-07): `run_leg` in `tests/support/ac66_rules.py` checks the first run-list
+  read with a new private helper, `_usable`, so a read whose check raises an `Exception` (a
+  `list` subclass whose `__iter__` raises) stops the leg with the "could not be read (first read:
+  not a list of integer run ids)" message instead of the raw error and its text. A
+  `BaseException` such as `pytest.fail` still propagates. Unit tests AC-186 and AC-187 in
+  `tests/test_ac66_rules.py`.
+
+### Unchanged
+
+- `run_ids` and `count_runs` are unchanged, so `count_runs` keeps its designed `comparison rule`
+  result for such a read and the AC-165 tests are unchanged. No production file (`src/`,
+  `resources/`, `notebooks/`, `databricks.yml`), no file under `tests/integration/` and no gate
+  changed; the live legs need no new run, and the package version stays 0.4.1.
+
 ## [0.7.2] - 2026-11-11
 
 ### Added

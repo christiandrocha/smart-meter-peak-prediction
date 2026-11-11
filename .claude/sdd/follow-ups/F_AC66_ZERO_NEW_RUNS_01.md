@@ -94,8 +94,8 @@ Fill when the status becomes `Closed` or `Dropped`, in the same PR that does the
 
 | Item | Value |
 |---|---|
-| **Pull request** | Filled by the closure PR (branch `change/ac66-first-read-gate`) |
-| **Merge commit** | Filled by the closure PR |
+| **Pull request** | #75 (branch `change/ac66-first-read-gate`), recorded by a closure PR as in `F_AC119_EMPTY_ARCHIVE_01.md`; branch removed (remote by GitHub on merge, local with `git branch -d`) |
+| **Merge commit** | b601e5d, read with `gh pr view 75 --json state,mergedAt,mergeCommit`: `MERGED`, 2026-11-11T19:31:19Z |
 | **Work done in** | `CHANGE_AC66_FIRST_READ_GATE.md` (archived in `archive/AC66_FIRST_READ_GATE/`): fix 1222e5d adds `_usable` to `tests/support/ac66_rules.py` and gates the first read of `run_leg` with it; `run_ids` and `count_runs` are unchanged. DC-01 is met: `test_ac186_a_read_that_cannot_be_iterated_stops_at_the_first_read` passes for both legs on 1222e5d and fails on f69fc7e |
 | **Source rows updated** | `.claude/sdd/archive/AC66_ZERO_NEW_RUNS/SHIPPED_2026-11-10.md:148`, Follow-ups row F-01: the Target release cell reads "Closed 2026-11-11 by AC66_FIRST_READ_GATE"; `.claude/sdd/archive/AC66_ZERO_NEW_RUNS/BUILD_REPORT_AC66_ZERO_NEW_RUNS.md:167`, Issues row I-07: the Follow-up cell no longer starts with `Open` |
 | **check_specs.py after the update** | `72 document(s) checked, 0 error(s), 9 warning(s)` on the change branch: the rule (b) warning for AC66_ZERO_NEW_RUNS I-07 is gone |
