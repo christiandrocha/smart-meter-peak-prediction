@@ -29,8 +29,8 @@ that the ingestion job and the three peak jobs are idle, and no `main()` test. A
 check and a test for `main()`". PEAK_MODEL_CONCURRENCY F-02: "Reset script: reuse `pipeline_guard`
 for its active-run check".
 
-`scripts/reset_peak_model_outputs.py` drops `silver.weather_hourly`, `gold.features_daily` and
-`gold.labels_daily` with `--confirm`. Measured on main `de5535a`:
+`scripts/reset_peak_model_outputs.py` drops `silver.weather_hourly`, `ml.household_features_daily` and
+`ml.household_labels_daily` with `--confirm`. Measured on main `de5535a`:
 
 1. `main()` builds `Warehouse()` and runs `SELECT current_timezone()` (lines 161-162) before the
    `try` at line 168. A `ResetRefused` raised there (no SQL warehouse, failed SQL) or an SDK error
@@ -41,7 +41,7 @@ for its active-run check".
 3. `tests/test_peak_reset_script.py` has three tests, all on `plan()`; `main()` has no test (the
    exit codes, the dry-run default, the order "check, then drop").
 
-`pipeline_guard._read_job` checks the job name against `INGESTION_JOB` only (line 319), so
+`pipeline_guard._read_job` checks the job name against `INGESTION_JOB` only (line 322), so
 reusing it for the peak jobs needs a change under `src/`.
 
 ---
