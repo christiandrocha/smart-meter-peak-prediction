@@ -72,7 +72,9 @@ minute, at most 120 s measured).
   own pre-check refused never makes the ingestion run fail. See "Concurrency with the peak job" in
   the ingestion runbook (`meter_ingestion.md`).
 - **Training.** Run training only when no daily run is active. The training job fails with a guard
-  error (G-04) if the feature table changes underneath it. It has no pre-check.
+  error (G-04) if the feature table changes underneath it. It has no pre-check. The user-run reset
+  (`scripts/reset_peak_model_outputs.py`, section 9) refuses while a run of the training job or of
+  the daily job is active.
 
 The integration tests need the shared pipeline idle for the whole sequence, even for tasks that skip the pipeline, because they compare against Gold, which must be stable. The ones that start a run (`tests/integration/`) use the same check
 (`pipeline_guard.check`) on the ingestion job and the pipeline first and fail with the same
@@ -251,7 +253,7 @@ Before the reset, the snapshot (`-k "ac66_before"`) and the rerun leg (`-k "ac66
 have passed against the current snapshot (section 8); the verdict needs them in that order.
 
 ```bash
-python scripts/reset_peak_model_outputs.py            # dry run: prints the plan and the counts
+python scripts/reset_peak_model_outputs.py            # dry run: runs every check and prints the plan
 python scripts/reset_peak_model_outputs.py --confirm  # drops the three tables
 pytest -m integration -rP tests/integration/test_peak_data.py -k "ac66_rebuild_leg"  # rebuild leg
 pytest -m integration tests/integration/test_peak_data.py -k "ac66_verdict"      # both legs, in order
@@ -264,6 +266,25 @@ leg. After the rebuild the feature table is a new Delta table with the same cont
 verdict (`-k "ac66_verdict"`) passes only when the rerun leg and the rebuild leg both passed against
 the current snapshot, in that order. The registered model and the predictions are kept. Retrain only
 if you also changed parameters or data.
+
+**Idle check.** Before the first DROP, and in the dry run as well, the reset reads the jobs
+`smart_meter_peak_model` and `smart_meter_peak_model_training` (found by name with the development
+prefix stripped, ADR 0014) and refuses while either has an active run, in any state other than
+`TERMINATED`, `SKIPPED` or `INTERNAL_ERROR`, including a queued run and a run started with `--only`.
+The dry run runs the idle check too, so it predicts `--confirm`; when both jobs are idle it prints
+one line per job with its job id and `0 active runs`. A refusal is one line that starts with
+`refused, nothing dropped: `, names the job, its job id, the run id, the state and the start time
+in UTC, and exits 2: wait until the named run ends, then run the reset again. A job that is not
+found exactly once or cannot be read (permission, API error, a second deployment with the same
+name) refuses the same way and names the cause: fix it, then run the reset again. No flag skips the
+idle check. The idle check is the last read before the first DROP, but a run started in the window
+between the idle check and the first DROP is not seen: start no job run until the reset has ended.
+
+**If the drop phase fails.** A DROP that fails stops the reset with exit code 1 and one line that
+names the tables already dropped, the table whose DROP failed with its error, and the tables not
+attempted. Some tables may be gone: run the rebuild leg only if all three are gone; otherwise a
+full run of `smart_meter_peak_model` restores the missing tables, then start again with the
+snapshot (as for a partial state below).
 
 **If a leg refuses or fails.** A leg refuses before any job run and changes no evidence file; its
 message names the leg, every table in the wrong state and the next step. The rerun leg with the

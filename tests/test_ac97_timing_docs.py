@@ -4,6 +4,11 @@ AC-105 compares the working tree with tag ``v0.4.0`` (the release before AC97_TI
 two golden constants were computed from that tag with the functions of this file (``tree_digest``
 and ``assert_texts`` applied to ``git show v0.4.0:...``), not typed by hand. The tag-based
 comparisons also run when the tag exists only; the constants guard a clone without tags.
+
+RESET_GUARD (DA-68, AC-197) narrows AC-105: ``pipeline_guard.py`` is excluded from the pinned tree
+(RESET_GUARD adds a job-only mode there; its additions-only and behaviour pins are AC-92 and
+RESET_GUARD AC-197) and any release version is accepted in ``__init__.py`` and ``pyproject.toml``
+(at least 0.4.1). ``V040_TREE_SHA256`` was recomputed from tag ``v0.4.0`` over the narrowed tree.
 """
 
 from __future__ import annotations
@@ -25,10 +30,13 @@ AC97 = "test_ac97_check_refuses_while_an_update_is_active_and_the_rerun_succeeds
 TAG = "v0.4.0"
 INIT_REL = "src/smart_meter_peak_prediction/__init__.py"
 ROOTS = ("src/smart_meter_peak_prediction/", "resources/", "notebooks/", "databricks.yml")
-VERSION_LINE_NEW = '__version__ = "0.4.1"'
+VERSION_LINE = re.compile(rb'^__version__ = "\d+\.\d+\.\d+"$', flags=re.MULTILINE)
 VERSION_LINE_OLD = '__version__ = "0.4.0"'
+MIN_VERSION = (0, 4, 1)
+# RESET_GUARD DA-68: the module that feature extends, excluded from this pin.
+SUPERSEDED = ("src/smart_meter_peak_prediction/pipeline_guard.py",)
 
-V040_TREE_SHA256 = "258a24c28e3cf0babd75cd3b19c2eea635985f5ac24cd2a8fe73816e2a771f8c"
+V040_TREE_SHA256 = "86eb7db0c376bc7862006782415e457dc36e5864878e8cc3abe418ecb8a616fc"
 V040_AC97_ASSERTS = [
     "assert _result(check) == 'FAILED'",
     "assert _seconds(check) <= CHECK_BUDGET_SECONDS",
@@ -79,12 +87,12 @@ def tree_paths() -> list[str]:
 
 
 def tree_digest(files: dict[str, bytes]) -> str:
-    """SHA-256 over sorted ``path NUL sha256 LF`` lines; the version line reads 0.4.0."""
+    """SHA-256 over sorted ``path NUL sha256 LF`` lines; any release version line reads 0.4.0."""
     lines = []
     for path in sorted(files):
         data = files[path]
         if path == INIT_REL:
-            data = data.replace(VERSION_LINE_NEW.encode(), VERSION_LINE_OLD.encode())
+            data = VERSION_LINE.sub(VERSION_LINE_OLD.encode(), data)
         lines.append(f"{path}\0{hashlib.sha256(data).hexdigest()}\n")
     return hashlib.sha256("".join(lines).encode()).hexdigest()
 
@@ -189,23 +197,23 @@ def test_ac104_failure_hint_and_note_name_the_evidence_file() -> None:
 
 # ----------------------------------------------------------------------------- AC-105
 def test_ac105_production_files_equal_v040_except_the_version() -> None:
-    paths = tree_paths()
+    paths = [path for path in tree_paths() if path not in SUPERSEDED]
     files = {path: (ROOT / path).read_bytes() for path in paths}
     assert tree_digest(files) == V040_TREE_SHA256
-    init = files[INIT_REL].decode().splitlines()
-    assert init.count(VERSION_LINE_NEW) == 1
-    assert not [
-        line for line in init if line.startswith("__version__") and line != VERSION_LINE_NEW
-    ]
     config = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    assert config["project"]["version"] == "0.4.1"
+    version = config["project"]["version"]
+    version_line = f'__version__ = "{version}"'
+    init = files[INIT_REL].decode().splitlines()
+    assert init.count(version_line) == 1
+    assert not [line for line in init if line.startswith("__version__") and line != version_line]
+    assert tuple(int(part) for part in version.split(".")) >= MIN_VERSION
 
     if tag_exists(TAG):
-        assert paths == tagged_paths(TAG)
+        assert paths == [path for path in tagged_paths(TAG) if path not in SUPERSEDED]
         for path in paths:
             expected = tagged(TAG, path)
             if path == INIT_REL:
-                expected = expected.replace(VERSION_LINE_OLD.encode(), VERSION_LINE_NEW.encode())
+                expected = expected.replace(VERSION_LINE_OLD.encode(), version_line.encode())
             assert files[path] == expected, path
 
 

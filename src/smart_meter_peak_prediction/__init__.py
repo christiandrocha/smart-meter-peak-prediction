@@ -1,3 +1,3 @@
 """Project package. Renamed by scripts/init_project.py."""
 
-__version__ = "0.4.1"
+__version__ = "0.8.0"
