@@ -2,7 +2,7 @@
 
 | Attribute | Value |
 |---|---|
-| **Status** | Proposed |
+| **Status** | Accepted |
 | **Date** | 2026-11-12 |
 | **Deciders** | Christian |
 | **Related** | RESET_GUARD; FR-105 to FR-112, NFR-53 to NFR-56, AC-189 to AC-202; D-104 to D-109; Q-40 to Q-42; OD-51 to OD-53; C-30 to C-33; A-57, A-58, A-60; RESET_GUARD DA-60 to DA-62; follows up PEAK_MODEL F-03 and PEAK_MODEL_CONCURRENCY F-02; reuses ADR 0012 (job identity and active-run rules) and keeps ADR 0013 unchanged |
@@ -75,6 +75,14 @@ state is active). The reads are a new job-only mode of `pipeline_guard`, appende
 shipped line. The check runs after the SQL checks and immediately before the first DROP, also in the
 dry run, and is never skipped. Any case in which the state of a job cannot be established refuses
 with exit code 2 and one line that names the job and the cause.
+
+**Live check (2026-11-12):** AC-202 passed on `dev` from the build branch (RESET_GUARD
+BUILD_REPORT, AC-202 record). The dry run resolved `smart_meter_peak_model` to job id
+324283392483306 and `smart_meter_peak_model_training` to job id 628754932821673, each with 0
+active runs, before listing three `would DROP TABLE` lines and exiting 0. The base-name lookup,
+`jobs.list` and the `Config(profile=...)` client worked with the local SDK (A-57, DA-60, DA-63).
+This record is the one live evidence of the idle path; the busy and unreadable paths are proven
+on fakes only.
 
 This decision applies to the user-run reset only. ADR 0012's rejection of name lookup for the
 in-job pre-check stands: there a bundle reference exists and no person reads the outcome before the
