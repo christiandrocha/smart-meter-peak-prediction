@@ -120,6 +120,12 @@ This decision amends the task graph of ADR 0008; the rest of ADR 0008 stands.
   pipeline (and only the pipeline) before its own `refresh_silver_gold`. Constraint C-08 (the
   ingestion job stays identical to `v0.1.0`) no longer holds for the ingestion job file; it still
   holds for the pipeline and `databricks.yml`. This decision and the peak pre-check are unchanged.
+- **Note (2026-11-12, RESET_GUARD):** the option "identify the job by name, with the
+  development-mode prefix stripped", rejected above for the in-job pre-check, is used by the
+  user-run reset script, which has no bundle reference; there any missing, duplicate or mismatched
+  match refuses ([ADR 0014](0014-user-run-reset-checks-the-peak-jobs-by-base-name-and-fails-closed.md)).
+  The reset reads the jobs through a job-only mode added to `pipeline_guard`; this decision and the
+  peak pre-check are unchanged.
 
 ## Platform probe (spike 06)
 

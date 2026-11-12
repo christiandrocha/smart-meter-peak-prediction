@@ -10,6 +10,12 @@ AC66_ZERO_NEW_RUNS adds AC-170 to AC-172: the two live legs pass a reader bound 
 (AST, AC-170), the v0.7.0 tests, rule constants and reset script are kept (AC-171; constants
 computed from tag ``v0.7.0`` with the functions of this file) and the runbook and the live
 docstring name the run list reads (AC-172).
+
+RESET_GUARD (DA-68, AC-197) narrows AC-161 and AC-171: ``pipeline_guard.py`` and ``__init__.py``
+(the release version) leave the AC-161 tree pin, and ``reset_digest`` covers only the reset parts
+that RESET_GUARD keeps (``ROOT``, ``SNAPSHOT``, ``EXPECTED_ROWS``, ``ResetRefused``, ``Target``,
+``targets``, ``plan``), not ``Warehouse`` or ``main``. ``V060_TREE_SHA256``, ``V060_RESET_SHA256``
+and ``V070_RESET_SHA256`` were recomputed from tags ``v0.6.0`` and ``v0.7.0`` with these functions.
 """
 
 from __future__ import annotations
@@ -32,6 +38,11 @@ RULES_FILE = ROOT / "tests/support/ac66_rules.py"
 RESET_REL = "scripts/reset_peak_model_outputs.py"
 TAG = "v0.6.0"
 ROOTS = ("src", "resources", "notebooks", "databricks.yml")
+# RESET_GUARD DA-68: the module that feature extends and the release version, excluded from AC-161.
+SUPERSEDED = (
+    "src/smart_meter_peak_prediction/__init__.py",
+    "src/smart_meter_peak_prediction/pipeline_guard.py",
+)
 EXTRA = (
     "tests/test_peak_reset_script.py",
     ".claude/sdd/archive/PEAK_MODEL/DEFINE_PEAK_MODEL.md",
@@ -40,8 +51,8 @@ EXTRA = (
 FOUR_NAMES = {rules.SNAPSHOT_TEST, rules.RERUN_TEST, rules.REBUILD_TEST, rules.VERDICT_TEST}
 AC_NAME = re.compile(r"^test_ac(\d{2,3})_")
 
-V060_TREE_SHA256 = "297fb0ca3b57415d59e433d92cfe6a6bd228da52baa881d3d6d16acff21617f2"
-V060_RESET_SHA256 = "7fde3832bb4dbbbaca502b10272eecb90b317b357a32ed8db9001813b92323bd"
+V060_TREE_SHA256 = "b3c8db31e37882a91bb86177c75282b41e79541c025b7424a925d12026eca6bd"
+V060_RESET_SHA256 = "05488e6db0df9a6b449c42d90b7b0e8e0d79b25b2636f6ebe08d18a35a39d304"
 V060_KEPT_AST_SHA256 = "9c3671268db4680190432887012fa3c4327ac7ae966309fc24124f1f15ea08c7"
 
 V070_TAG = "v0.7.0"
@@ -76,7 +87,7 @@ V070_ASSERT_COUNTS = {
     },
 }
 V070_RULE_CONSTANTS_SHA256 = "6adb18da228fe3831b6c2cee8facea54a942ecad56de6092d5107391051d2946"
-V070_RESET_SHA256 = "1c51d65973ab7341308ecd63b4c5710f2abe0a1526fe1f8027e462e7567fa731"
+V070_RESET_SHA256 = "05488e6db0df9a6b449c42d90b7b0e8e0d79b25b2636f6ebe08d18a35a39d304"
 RULE_CONSTANTS = (
     "SNAPSHOT_NAME",
     "LEG_NAMES",
@@ -147,19 +158,11 @@ def _top(source: str, name: str) -> ast.AST:
     raise AssertionError(f"{name} not found")
 
 
-class _BlankStrings(ast.NodeTransformer):
-    def visit_Constant(self, node: ast.Constant) -> ast.AST:  # noqa: N802
-        return ast.copy_location(ast.Constant(""), node) if isinstance(node.value, str) else node
-
-
 def reset_digest(source: str) -> str:
-    """Guard code of the reset script; in ``main`` only the string constants are blanked."""
+    """Reset script parts that RESET_GUARD keeps (DA-68); not ``Warehouse`` or ``main``."""
     parts = []
     for name in ("ROOT", "SNAPSHOT", "EXPECTED_ROWS", "ResetRefused", "Target", "targets", "plan"):
         parts.append(ast.unparse(_top(source, name)))
-    parts.append(ast.unparse(_top(source, "Warehouse")))
-    main = _BlankStrings().visit(_top(source, "main"))
-    parts.append(ast.unparse(ast.fix_missing_locations(main)))
     return _sha("\n".join(parts))
 
 
@@ -380,16 +383,17 @@ def _tree_files(paths: list[str]) -> dict[str, bytes]:
 
 
 def test_ac161_production_files_and_reset_guards_equal_v060() -> None:
-    paths = tree_paths()
+    paths = [path for path in tree_paths() if path not in SUPERSEDED]
     assert tree_digest(_tree_files(paths)) == V060_TREE_SHA256
     reset_source = (ROOT / RESET_REL).read_text(encoding="utf-8")
     assert reset_digest(reset_source) == V060_RESET_SHA256
     if tag_exists(TAG):
-        assert paths == tagged_paths(TAG)
+        kept_paths = [path for path in tagged_paths(TAG) if path not in SUPERSEDED]
+        assert paths == kept_paths
         for path in paths:
             assert (ROOT / path).read_bytes() == tagged(TAG, path), path
         assert reset_digest(tagged(TAG, RESET_REL).decode()) == V060_RESET_SHA256
-        assert tree_digest({p: tagged(TAG, p) for p in tagged_paths(TAG)}) == V060_TREE_SHA256
+        assert tree_digest({p: tagged(TAG, p) for p in kept_paths}) == V060_TREE_SHA256
 
 
 def test_ac161_snapshot_test_and_its_helpers_are_kept() -> None:
@@ -468,14 +472,15 @@ def test_ac171_v070_unit_tests_are_kept_with_their_asserts() -> None:
 
 def test_ac171_rule_constants_and_reset_script_equal_v070() -> None:
     rules_source = RULES_FILE.read_text(encoding="utf-8")
-    reset_bytes = (ROOT / RESET_REL).read_bytes()
+    reset_source = (ROOT / RESET_REL).read_text(encoding="utf-8")
     assert rule_constants_digest(rules_source) == V070_RULE_CONSTANTS_SHA256
-    assert hashlib.sha256(reset_bytes).hexdigest() == V070_RESET_SHA256
+    # guard parts of the reset script, RESET_GUARD DA-68
+    assert reset_digest(reset_source) == V070_RESET_SHA256
     if tag_exists(V070_TAG):
         assert rule_constants_digest(tagged(V070_TAG, RULES_REL).decode()) == (
             V070_RULE_CONSTANTS_SHA256
         )
-        assert reset_bytes == tagged(V070_TAG, RESET_REL)
+        assert reset_digest(tagged(V070_TAG, RESET_REL).decode()) == V070_RESET_SHA256
 
 
 def _flat(text: str) -> str:

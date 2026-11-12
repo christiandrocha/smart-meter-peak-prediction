@@ -14,6 +14,11 @@ Pipeline-only mode (INGESTION_GUARD, ADR 0013): ``check_pipeline``, ``run_pipeli
 ``enforce_pipeline`` serve the check in the ingestion job. They read only the pipeline (one
 ``pipelines.get``) through the same ``_read_pipeline`` and return a ``PipelineReport``; the peak
 mode above is unchanged.
+
+Job-only mode (RESET_GUARD, ADR 0014): ``check_jobs`` finds each named job by base name in one
+page of ``jobs.list`` (development prefix stripped, exactly one match) and reads it with the same
+identity, uniqueness and active-run rules as the peak mode (``_read_named_job``). It calls only
+``JOB_READ_CALLS``; the peak and pipeline-only modes above are unchanged.
 """
 
 from __future__ import annotations
@@ -625,3 +630,175 @@ def enforce_pipeline(report: PipelineReport) -> dict[str, Any]:
     if not report.ok:
         raise PipelineGuardError(report.message())
     return report.exit_value()
+
+
+# ----------------------------------------------------------------------------- job-only mode
+# Job-only mode (RESET_GUARD, ADR 0014). Appended; the modes above are unchanged (additions
+# only: INGESTION_GUARD AC-92, RESET_GUARD AC-197).
+TRAINING_JOB = "smart_meter_peak_model_training"
+# The only client methods this mode calls (RESET_GUARD G-61); a subset of READ_CALLS.
+JOB_READ_CALLS = ("jobs.get", "jobs.list", "jobs.list_runs")
+MAX_JOBS_LISTED = 100  # one page of jobs.list, the API maximum (RESET_GUARD DA-60)
+_ADDRESS = re.compile(r"\S*@\S*")  # an address in an API error (RESET_GUARD DA-71)
+
+
+def redact(text: str) -> str:
+    """Tokens, PATs, URLs and any word holding ``@`` become ``<redacted>``; nothing else."""
+    return _ADDRESS.sub("<redacted>", _REDACT.sub("<redacted>", text))
+
+
+def describe_error(exc: Exception) -> str:
+    """``_describe_error`` (class, API error code, first line, 200 characters), then ``redact``."""
+    return redact(_describe_error(exc))
+
+
+def _job_only_subject(name: str, job_id: str) -> str:
+    return f"job {name} (job id {job_id or 'not resolved'})"
+
+
+@dataclass(frozen=True)
+class JobStatus:
+    """One named job: its active runs, or what could not be read (G-59)."""
+
+    name: str  # base name, development prefix stripped
+    job_id: str  # "" when no unique deployed job was found
+    runs: tuple[ActiveRun, ...] = ()
+    unreadable: tuple[Unreadable, ...] = field(default=())
+
+    @property
+    def ok(self) -> bool:
+        return not (self.runs or self.unreadable)
+
+    def subject(self) -> str:
+        return _job_only_subject(self.name, self.job_id)
+
+    def idle_line(self) -> str:
+        return f"idle check: {self.subject()}: 0 active runs"
+
+    def problems(self) -> list[str]:
+        busy = [
+            f"{self.subject()}: active run {run.run_id}, state {run.state}, "
+            f"started {run.started or 'not started'}"
+            for run in self.runs
+        ]
+        return busy + [f"{item.subject}: {item.read}: {item.error}" for item in self.unreadable]
+
+
+@dataclass(frozen=True)
+class JobsReport:
+    jobs: tuple[JobStatus, ...]
+
+    @property
+    def ok(self) -> bool:
+        return all(job.ok for job in self.jobs)
+
+    @property
+    def blocked(self) -> bool:
+        return any(job.runs for job in self.jobs)
+
+    @property
+    def has_unreadable(self) -> bool:
+        return any(job.unreadable for job in self.jobs)
+
+    def problems(self) -> list[str]:
+        return [text for job in self.jobs for text in job.problems()]
+
+    def idle_lines(self) -> list[str]:
+        return [job.idle_line() for job in self.jobs]
+
+
+def check_jobs(client: Any, names: tuple[str, ...]) -> JobsReport:
+    """Per name: one base-name match (G-60), then the shipped G-14 and G-16 reads (G-59)."""
+    jobs: list[JobStatus] = []
+    for name in names:
+        runs: list[ActiveRun] = []
+        unreadable: list[Unreadable] = []
+        job_id = _find_job_id(client, name, unreadable)
+        if job_id is not None:
+            subject = _job_only_subject(name, str(job_id))
+            _read_named_job(client, job_id, name, subject, runs, unreadable)
+        shown = "" if job_id is None else str(job_id)
+        jobs.append(JobStatus(name, shown, tuple(runs), tuple(unreadable)))
+    return JobsReport(tuple(jobs))
+
+
+def _find_job_id(client: Any, name: str, unreadable: list[Unreadable]) -> int | None:
+    subject = _job_only_subject(name, "")
+    try:
+        listed = list(islice(client.jobs.list(limit=MAX_JOBS_LISTED), MAX_JOBS_LISTED))
+    except Exception as exc:  # noqa: BLE001 - fail closed on any read error (G-18)
+        unreadable.append(Unreadable(subject, "job list", _describe_error(exc)))
+        return None
+    matches = [
+        getattr(job, "job_id", None)
+        for job in listed
+        if strip_dev_prefix(getattr(getattr(job, "settings", None), "name", None)) == name
+    ]
+    if len(listed) >= MAX_JOBS_LISTED:
+        problem = (
+            f"{len(listed)} jobs listed, the page is full: {name!r} cannot be shown to be unique"
+        )
+    elif not matches:
+        problem = f"no deployed job named {name!r} (development prefix stripped)"
+    elif len(matches) > 1:
+        problem = f"{name!r} is not unique (job ids: {', '.join(str(i) for i in matches)})"
+    elif not _POSITIVE_INT.match(str(matches[0])):
+        problem = f"the job id {str(matches[0])[:80]!r} is not a positive integer"
+    else:
+        return int(str(matches[0]))
+    unreadable.append(Unreadable(subject, "job list", problem))
+    return None
+
+
+def _read_named_job(
+    client: Any,
+    job_id: int,
+    name: str,
+    subject: str,
+    runs: list[ActiveRun],
+    unreadable: list[Unreadable],
+) -> str | None:
+    """``_read_job`` with the expected base name as a parameter (G-14, G-16).
+
+    The body equals ``_read_job`` with ``INGESTION_JOB`` replaced by ``name``; a unit test
+    proves both give the same result (RESET_GUARD DA-61).
+    """
+    try:
+        job = client.jobs.get(job_id=job_id)
+        deployed = getattr(getattr(job, "settings", None), "name", None) or ""
+    except Exception as exc:  # noqa: BLE001 - fail closed on any read error (G-18)
+        unreadable.append(Unreadable(subject, "job", _describe_error(exc)))
+        return None
+    if strip_dev_prefix(deployed) != name:
+        unreadable.append(
+            Unreadable(subject, "job", f"the id names another job: {deployed or 'no name'!r}")
+        )
+        return deployed or None
+    try:
+        same_name = [j.job_id for j in islice(client.jobs.list(name=deployed), MAX_JOBS_READ)]
+    except Exception as exc:  # noqa: BLE001
+        unreadable.append(Unreadable(subject, "job name list", _describe_error(exc)))
+        return deployed
+    if len(same_name) != 1:
+        found = ", ".join(str(i) for i in same_name) or "none"
+        unreadable.append(
+            Unreadable(subject, "job name list", f"{deployed!r} is not unique (job ids: {found})")
+        )
+        return deployed
+    try:
+        listed = list(islice(client.jobs.list_runs(job_id=job_id, active_only=True), MAX_RUNS_READ))
+    except Exception as exc:  # noqa: BLE001
+        unreadable.append(Unreadable(subject, "active runs", _describe_error(exc)))
+        return deployed
+    for run in listed:
+        state = _enum_text(getattr(getattr(run, "state", None), "life_cycle_state", None))
+        if state in TERMINAL_RUN_STATES:
+            continue  # listed, but already over (list race)
+        runs.append(
+            ActiveRun(
+                run_id=run.run_id,
+                state=state or "UNKNOWN",
+                started=utc_text(getattr(run, "start_time", None)),
+            )
+        )
+    return deployed

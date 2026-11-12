@@ -19,3 +19,4 @@ Records are never deleted; a reversed decision is marked `Superseded by NNNN`.
 | 0011 | [Dense ML tables written by change-only MERGE; training sets kept as run artifacts, not tables](0011-dense-ml-tables-and-run-artifact-training-sets.md) | Accepted | 2026-10-21 |
 | 0012 | [A read-only pre-check before the shared pipeline task in the daily peak job, failing fast and closed](0012-read-only-pipeline-pre-check-in-the-daily-peak-job.md) | Accepted | 2026-10-22 |
 | 0013 | [A read-only, pipeline-only pre-check before the pipeline task of the ingestion job, and no platform retry of the Kafka task](0013-pipeline-only-pre-check-in-the-ingestion-job.md) | Accepted | 2026-10-23 |
+| 0014 | [The user-run reset finds the two peak jobs by base name and refuses unless both are idle, failing closed](0014-user-run-reset-checks-the-peak-jobs-by-base-name-and-fails-closed.md) | Proposed | 2026-11-12 |
