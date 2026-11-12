@@ -9,13 +9,13 @@
 | **Feature** | RESET_GUARD |
 | **Date** | 2026-11-12 |
 | **Source** | DESIGN_RESET_GUARD.md |
-| **Status** | In Progress |
+| **Status** | Complete |
 
 Allowed status values: `In Progress`, `Blocked`, `Complete`.
 
-Status stays `In Progress` until AC-202 (live dry run on `dev`, user-run, C-31) is pasted below.
-Manifest entries 1 to 13 (the build PR) are done; entries 14 to 19 belong to `/ship`. Nothing was
-committed, pushed or run against Databricks.
+AC-202 (live dry run on `dev`, user-run, C-31) passed on 2026-11-12; the record is below.
+Manifest entries 1 to 13 (the build PR) are done; entries 14 to 19 belong to `/ship`. The only
+Databricks contact was the read-only AC-202 dry run (no `--confirm`, nothing dropped).
 
 ---
 
@@ -26,7 +26,7 @@ reset script now builds one injectable workspace client, runs every check (time 
 idle check as the last read) before the first DROP, prints each refusal as one
 `refused, nothing dropped: ...` line with exit 2, and exits 1 on a failed DROP. About 100 unit
 cases on fakes cover `main()` without the SDK; three shipped pins were narrowed per DA-68; version
-0.8.0. The live dry run (AC-202) is pending the user.
+0.8.0. The live dry run (AC-202) passed on `dev`: both peak jobs idle, three planned DROPs, exit 0.
 
 ---
 
@@ -72,13 +72,25 @@ Not modified: `tests/test_pipeline_guard.py`, `tests/test_ingestion_guard.py`, `
 | AC-199 | Pass | `test_ac199_two_runs_give_equal_output_and_change_nothing` |
 | AC-200 | Pass | `test_ac200_idle_check_reads_at_most_4_calls_per_job_and_never_sleeps`, `..._runs_read_are_capped_at_25_per_job`, `..._client_is_built_with_the_shipped_limits`; library `test_ac200_job_only_mode_reads_one_page_and_25_runs` |
 | AC-201 | Pass | `test_reset_guard_docs.py::test_ac201_runbook_and_docstring_state_the_idle_check` |
-| AC-202 | Not run | Live, user-run (C-31, Q-42). After `databricks bundle validate -t dev -p dev` and `databricks bundle deploy -t dev -p dev` from this branch, with both peak jobs idle, the three tables at expected counts and `out/evidence/ac66_before_rebuild.json` present, run `DATABRICKS_CONFIG_PROFILE=dev python scripts/reset_peak_model_outputs.py` (no `--confirm`), then `echo $?`. Paste the full output and exit code here. Expected: exit 0, two `idle check: job ... (job id <id>): 0 active runs` lines, three `would DROP TABLE smart_meter_dev...` lines, the `dry run:` line |
+| AC-202 | Pass (2026-11-12, user-run) | Live, user-run (C-31, Q-42). After `databricks bundle validate -t dev -p dev` and `databricks bundle deploy -t dev -p dev` from this branch, with both peak jobs idle, the three tables at expected counts and `out/evidence/ac66_before_rebuild.json` present, run `DATABRICKS_CONFIG_PROFILE=dev python scripts/reset_peak_model_outputs.py` (no `--confirm`), then `echo $?`. Paste the full output and exit code here. Expected: exit 0, two `idle check: job ... (job id <id>): 0 active runs` lines, three `would DROP TABLE smart_meter_dev...` lines, the `dry run:` line |
 
-### AC-202 live record (pending)
+### AC-202 live record (2026-11-12)
+
+User-run from `build/reset-guard` (03bdc31) with `DATABRICKS_CONFIG_PROFILE=dev .venv/bin/python
+scripts/reset_peak_model_outputs.py; echo "exit $?"` (project venv interpreter; no `--confirm`).
 
 ```text
-(user pastes output and exit code)
+idle check: job smart_meter_peak_model (job id 324283392483306): 0 active runs
+idle check: job smart_meter_peak_model_training (job id 628754932821673): 0 active runs
+would DROP TABLE smart_meter_dev.silver.weather_hourly
+would DROP TABLE smart_meter_dev.ml.household_features_daily
+would DROP TABLE smart_meter_dev.ml.household_labels_daily
+dry run: pass --confirm to drop these tables
+exit 0
 ```
+
+Matches the expected shape: exit 0, two idle-check lines with resolved job ids (ADR 0014 base-name
+lookup and `jobs.list` exercised live), three `would DROP` lines, the `dry run:` line.
 
 ---
 
@@ -108,7 +120,7 @@ Full default run: `915 passed, 92 deselected, 1 xfailed, 9 warnings in 413.19s (
 
 | ID | Issue | Severity | Follow-up |
 |---|---|---|---|
-| I-01 | AC-202 needs the user's live dry run (gate for `/ship`, Q-42) | High (gate) | Open: command in the AC table |
+| I-01 | AC-202 needs the user's live dry run (gate for `/ship`, Q-42) | High (gate) | Closed 2026-11-12: AC-202 passed on `dev` (record above) |
 | I-02 | `code-reviewer` Medium: failed count statement printed without the `row counts:` label | Medium | Fixed in this build (`test_ac192_a_failed_count_query_is_labelled_row_counts`) |
 | I-03 | `code-reviewer` Medium: AC-196 failed once from a stale `.pyc` (same-second edit, same size) | Medium | Closed: `__pycache__` cleared, rerun green; fresh checkouts unaffected |
 | I-04 | `code-reviewer` Low: `assert code in (0, 1, 2)` in AC-198 test is loose | Low | Accepted: exit codes are asserted in the AC-189 to AC-196 tests |
@@ -123,13 +135,13 @@ No High finding from the review.
 
 ## Self-Review
 
-- **Weak points:** AC-202 is not yet shown; the busy and unreadable paths are proven on fakes only. `_read_named_job` is a copy kept honest by the parity test. The re-pinned tests no longer catch accidental changes to `pipeline_guard.py`/`Warehouse`/`main`; AC-197 and AC-92 cover that.
-- **Risks:** `jobs.list(limit=100)` and `Config(profile=...)` with the local SDK are first exercised live by AC-202 (A-57, DA-60, DA-63). A stale `.pyc` can hide edits made in the same second.
+- **Weak points:** AC-202 shows only the idle path live; the busy and unreadable paths are proven on fakes only. `_read_named_job` is a copy kept honest by the parity test. The re-pinned tests no longer catch accidental changes to `pipeline_guard.py`/`Warehouse`/`main`; AC-197 and AC-92 cover that.
+- **Risks:** `jobs.list(limit=100)` and `Config(profile=...)` with the local SDK are exercised live by AC-202 (A-57, DA-60, DA-63) and worked. A stale `.pyc` can hide edits made in the same second.
 - **What I would do differently:** run the full suite once before the live gate on a clean `__pycache__` and keep the mutation checks as tests.
-- **Next improvement:** the user runs AC-202; then record it here, set status `Complete`, and `/ship`.
+- **Next improvement:** merge the build PR, then `/ship RESET_GUARD`.
 
 ---
 
 ## Next Step
 
-User runs AC-202, then `/ship RESET_GUARD`.
+Merge build PR #79 (needs user OK), then `/ship RESET_GUARD`.
