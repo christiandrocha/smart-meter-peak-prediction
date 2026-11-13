@@ -12,7 +12,7 @@
 | **Date** | 2026-11-13 |
 | **Author** | christiandrocha (with Claude Code) |
 | **Branch** | `change/venv-commands` |
-| **Status** | Ready for Build |
+| **Status** | Complete |
 | **Source** | Follow-up RESET_COMMAND_VENV F-01 (`.claude/sdd/follow-ups/F_RESET_COMMAND_VENV_01.md`, from RESET_COMMAND_VENV I-01; triage: every criterion `Yes`) |
 
 Allowed status values: `Draft`, `Ready for Build`, `Complete`.
@@ -43,14 +43,14 @@ Every criterion must hold for the files the PR changes. Result: `Yes` (E8 may al
 
 | ID | Criterion | Result | Evidence |
 |---|---|---|---|
-| E1 | No production file: nothing under `src/`, `resources/`, `notebooks/`, `pipelines/`, nor `databricks.yml` (`git diff --name-only origin/main...HEAD`) | Yes | Predicted, filled from `git diff --name-status` at build |
-| E2 | No contract change: nothing under `docs/contracts/` (same output) | Yes | Predicted, filled at build |
-| E3 | No new ADR: no added `docs/adr/NNNN-*.md` (`git diff --name-status origin/main...HEAD`) | Yes | Predicted, filled at build |
-| E4 | No change to an archived DEFINE or DESIGN, which is `/iterate`; annotating archived BUILD_REPORT or SHIPPED rows is allowed (same output) | Yes | Predicted, filled at build |
-| E5 | No change to the gates: neither `scripts/check_specs.py` nor a template that the script or the tests read (same output) | Yes | Predicted, filled at build |
-| E6 | No change under `tests/integration/` (same output) | Yes | Predicted, filled at build |
-| E7 | No change to the runtime `dependencies` of `pyproject.toml`; the `dev` extra may change (`git diff origin/main...HEAD -- pyproject.toml`) | Yes | Predicted, filled at build |
-| E8 | Agent rules (`docs/conventions/git.md` and the rules for agents in `CLAUDE.md`) change only under a gate. Hardening is `Yes`; relaxing is `Relaxing` and needs a Rule Changes section. In doubt, it is relaxing (`git diff origin/main...HEAD -- docs/conventions/git.md CLAUDE.md`) | Yes | Predicted, filled at build |
+| E1 | No production file: nothing under `src/`, `resources/`, `notebooks/`, `pipelines/`, nor `databricks.yml` (`git diff --name-only origin/main...HEAD`) | Yes | `git diff --name-status origin/main...HEAD` on c5b49a1: `M` the five agent and command files under `.claude/agents/` and `.claude/commands/workflow/`, `.claude/sdd/README.md`, `.claude/sdd/archive/RESET_COMMAND_VENV/CHANGE_RESET_COMMAND_VENV.md`, `CLAUDE.md`, `README.md`, `docs/runbooks/meter_ingestion.md`, `docs/runbooks/peak_model.md`, `scripts/prepare_sample.py`, `scripts/profile_data.py`, `scripts/reset_peak_model_outputs.py`, the three `tests/local_data/` files, `tests/test_ac66_legs_docs.py`; `A` `.claude/sdd/features/CHANGE_VENV_COMMANDS.md`, `.claude/sdd/follow-ups/F_RESET_COMMAND_VENV_01.md`, `tests/test_venv_commands.py`: nothing under `src/`, `resources/`, `notebooks/`, `pipelines/`, nor `databricks.yml` |
+| E2 | No contract change: nothing under `docs/contracts/` (same output) | Yes | Same output: nothing under `docs/contracts/` |
+| E3 | No new ADR: no added `docs/adr/NNNN-*.md` (`git diff --name-status origin/main...HEAD`) | Yes | Same output: `A` only for this document, the follow-up file and the new unit test; no `docs/adr/` file |
+| E4 | No change to an archived DEFINE or DESIGN, which is `/iterate`; annotating archived BUILD_REPORT or SHIPPED rows is allowed (same output) | Yes | Same output: under `archive/` only the Issues row RESET_COMMAND_VENV I-01 of the archived CHANGE document (line 140), one line; no archived DEFINE or DESIGN |
+| E5 | No change to the gates: neither `scripts/check_specs.py` nor a template that the script or the tests read (same output) | Yes | Same output: neither `scripts/check_specs.py` nor any file under `.claude/sdd/templates/` |
+| E6 | No change under `tests/integration/` (same output) | Yes | Same output: nothing under `tests/integration/` |
+| E7 | No change to the runtime `dependencies` of `pyproject.toml`; the `dev` extra may change (`git diff origin/main...HEAD -- pyproject.toml`) | Yes | `git diff origin/main...HEAD -- pyproject.toml`: empty (0 lines) |
+| E8 | Agent rules (`docs/conventions/git.md` and the rules for agents in `CLAUDE.md`) change only under a gate. Hardening is `Yes`; relaxing is `Relaxing` and needs a Rule Changes section. In doubt, it is relaxing (`git diff origin/main...HEAD -- docs/conventions/git.md CLAUDE.md`) | Yes | `git diff origin/main...HEAD -- docs/conventions/git.md`: empty. `git diff -U0 origin/main...HEAD -- CLAUDE.md`: hunks `@@ -49,4 +49,4 @@` and `@@ -54 +54 @@`, both inside the Commands block (lines 48 to 55); the golden rules (lines 29 to 44) are unchanged, so no agent rule changes |
 
 ---
 
@@ -126,7 +126,7 @@ Every criterion must hold for the files the PR changes. Result: `Yes` (E8 may al
 
 ## Evidence
 
-Evidence commit: pending
+Evidence commit: c5b49a1
 
 Process rule D-91 (not checked by the script): the evidence commit is the last commit of the PR
 that touches files other than this document. The final commit touches only this document (status
@@ -135,9 +135,9 @@ the final head and its output goes in the PR description.
 
 | AC | Result | Evidence |
 |---|---|---|
-| AC-207 | Not run | Filled at build |
-| AC-208 | Not run | Filled at build |
-| AC-209 | Not run | Filled at build |
+| AC-207 | Pass | `pytest -q tests/test_venv_commands.py`: `2 passed`. The same file on a copy of `main` (10c283a, `git archive`) gives `2 failed`; on `main` the scan finds 59 lines in 16 in-scope files |
+| AC-208 | Pass | Same run: `README.md` and `docs/runbooks/meter_ingestion.md` create the environment with `python3 -m venv .venv` and install with `.venv/bin/pip install -e`; no `python -m venv` |
+| AC-209 | Pass | Full `pytest -q -rs` on the build tree: `919 passed, 1 skipped, 92 deselected, 1 xfailed` (917 on `main` plus the two new tests; the skip is the repository-state test of `test_check_specs.py`). `ruff check .`: `All checks passed!`; `ruff format --check .`: `134 files already formatted`. `.venv/bin/python scripts/check_specs.py`: `79 document(s) checked, 0 error(s), 9 warning(s)` before the archive move. `git diff -U0 origin/main...HEAD -- tests/test_ac66_legs_docs.py scripts/`: `tests/test_ac66_legs_docs.py` one hunk `@@ -517 +517,2 @@` (the AC-172 filter, split in two lines for the line length); `scripts/prepare_sample.py` `@@ -3 +3,2 @@` and `@@ -9,3 +10,4 @@` (docstring); `scripts/profile_data.py` `@@ -18 +18 @@`, `@@ -21 +21 @@` (docstring) and `@@ -37 +37 @@` (the install hint string); `scripts/reset_peak_model_outputs.py` `@@ -318 +318 @@` (the printed next line) |
 
 ---
 
