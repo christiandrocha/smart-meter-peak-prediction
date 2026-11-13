@@ -75,7 +75,7 @@ It does not read the git history. These process rules are therefore yours to fol
   `docs/conventions/git.md` or `CLAUDE.md` (E8 `Relaxing`).
 - The `Evidence commit` is the last commit of the PR that touches files other than the CHANGE
   document. The final commit touches only the CHANGE document (status `Complete` and the move to
-  `archive/{FEATURE}/`). Run `python scripts/check_specs.py` again on the final head and put its
+  `archive/{FEATURE}/`). Run `.venv/bin/python scripts/check_specs.py` again on the final head and put its
   output in the PR description.
 
 A change folder in `archive/` holds only `CHANGE_{FEATURE}.md` with status `Complete`, and no

@@ -315,7 +315,7 @@ def main(
             _say(_drop_failure(statements, done, exc))
             return 1
     _say(
-        "done. Next (rebuild leg): pytest -m integration "
+        "done. Next (rebuild leg): .venv/bin/pytest -m integration "
         "tests/integration/test_peak_data.py -k ac66_rebuild_leg"
     )
     _say(

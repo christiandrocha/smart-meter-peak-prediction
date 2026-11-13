@@ -161,21 +161,23 @@ features (brainstorm, define, design, build report and the ship record) in
 
 ## Getting started
 
-Local development (unit tests run on local Spark and need Java 17):
+Local development (unit tests run on local Spark and need Java 17). Commands name the tools in
+`.venv/bin/`, so they work without activating the environment and on a system with no bare
+`python`:
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
-pre-commit install
+python3 -m venv .venv
+.venv/bin/pip install -e ".[dev]"
+.venv/bin/pre-commit install
 cp .env.example .env   # fill in locally; never commit
-pytest
+.venv/bin/pytest
 ```
 
 Generate the sample (needs the Kaggle raw files in `data/raw`, which git ignores):
 
 ```bash
-pip install -e ".[sample]"
-python scripts/prepare_sample.py build --out data/sample/seed42
+.venv/bin/pip install -e ".[sample]"
+.venv/bin/python scripts/prepare_sample.py build --out data/sample/seed42
 ```
 
 Deploy, load and verify on Databricks: follow the
@@ -192,8 +194,8 @@ excluded from the default run and from CI. Some are before/after pairs that need
 in between, so run them per step as listed in the runbook ("Evidence order"):
 
 ```bash
-pip install -e ".[dev,integration]"
-pytest -m integration tests/integration/<file>::<test>
+.venv/bin/pip install -e ".[dev,integration]"
+.venv/bin/pytest -m integration tests/integration/<file>::<test>
 ```
 
 ## Repository layout

@@ -9,4 +9,4 @@ Input: $ARGUMENTS
 
 Write `.claude/sdd/features/DEFINE_{FEATURE}.md` from
 `.claude/sdd/templates/DEFINE_TEMPLATE.md`. Keep the `{FEATURE}` name of the brainstorm when
-one exists. When done, run `python scripts/check_specs.py` and report the result.
+one exists. When done, run `.venv/bin/python scripts/check_specs.py` and report the result.

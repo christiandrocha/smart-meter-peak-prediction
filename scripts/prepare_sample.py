@@ -1,14 +1,16 @@
 """Prepare the stratified seed-42 sample of the London smart meter dataset.
 
-Thin CLI over ``smart_meter_peak_prediction.sampling`` (install with ``pip install -e .[sample]``).
+Thin CLI over ``smart_meter_peak_prediction.sampling`` (install with
+``.venv/bin/pip install -e .[sample]``).
 
   plan   recompute the block choice and fail if it differs from the committed plan
   build  write historical/, stream/, dimensions/ and manifest.json from the planned blocks
 
 Examples:
-  python scripts/prepare_sample.py plan  --raw-dir data/raw --plan config/sample_plan.json
-  python scripts/prepare_sample.py build --raw-dir data/raw --plan config/sample_plan.json \\
-      --out data/sample/seed42 --set cutoff="2013-11-01 00:00:00"
+  .venv/bin/python scripts/prepare_sample.py plan  --raw-dir data/raw \\
+      --plan config/sample_plan.json
+  .venv/bin/python scripts/prepare_sample.py build --raw-dir data/raw \\
+      --plan config/sample_plan.json --out data/sample/seed42 --set cutoff="2013-11-01 00:00:00"
 
 Any plan field can be overridden with ``--set key=value`` (seed, blocks_per_group,
 households_per_group, period_start, period_end, cutoff, max_zero_ratio, min_coverage).

@@ -46,12 +46,12 @@ This project follows Spec-Driven Development. Read `.claude/sdd/README.md`.
 ## Commands
 
 ```bash
-ruff check . && ruff format --check .   # lint
-pytest                                  # tests
-python scripts/check_specs.py           # SDD gates, AC traceability, ADRs, data contracts
-python scripts/profile_data.py <files> --key ... --time ... --grid 30min \
+.venv/bin/ruff check . && .venv/bin/ruff format --check .   # lint
+.venv/bin/pytest                                            # tests
+.venv/bin/python scripts/check_specs.py                     # SDD gates, AC traceability, ADRs, data contracts
+.venv/bin/python scripts/profile_data.py <files> --key ... --time ... --grid 30min \
     --out docs/profiling/<dataset>.md   # F-NN findings for BRAINSTORM
-pre-commit run --all-files              # everything above plus hygiene hooks
+.venv/bin/pre-commit run --all-files                        # everything above plus hygiene hooks
 ```
 
 ## Enabled modules
