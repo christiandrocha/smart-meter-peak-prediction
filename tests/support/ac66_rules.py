@@ -28,7 +28,7 @@ SNAPSHOT_TEST = "test_ac66_before_rebuild_snapshot"
 RERUN_TEST = "test_ac66_rerun_leg_ac163_ac164_merges_nothing_and_checksums_equal"
 REBUILD_TEST = "test_ac66_rebuild_leg_ac162_ac164_inserts_the_snapshot_rows_and_checksums_equal"
 VERDICT_TEST = "test_ac66_verdict_ac163_ac164_both_legs_passed_against_the_current_snapshot"
-RESET_COMMAND = "python scripts/reset_peak_model_outputs.py --confirm"
+RESET_COMMAND = ".venv/bin/python scripts/reset_peak_model_outputs.py --confirm"
 TABLES = (  # snapshot key, table shown in messages (SNAPSHOT_TABLES order)
     ("silver_weather", "silver.weather_hourly"),
     ("features", "ml.household_features_daily"),

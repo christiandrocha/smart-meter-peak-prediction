@@ -35,9 +35,9 @@ Credentials come from the Databricks CLI profile or the standard ``DATABRICKS_*`
 variables, as in ``tests/integration/conftest.py``. Nothing secret is read from a file or printed:
 the output holds table names and row counts only.
 
-Usage (runbook "Reset"):
-  python scripts/reset_peak_model_outputs.py                 # dry run
-  python scripts/reset_peak_model_outputs.py --confirm       # drop; then -k ac66_rebuild_leg
+Usage (runbook "Reset"), with the project interpreter (the system may have no bare ``python``):
+  .venv/bin/python scripts/reset_peak_model_outputs.py; echo "exit $?"  # dry run
+  .venv/bin/python scripts/reset_peak_model_outputs.py --confirm  # drop; then -k ac66_rebuild_leg
 Optional: DATABRICKS_CONFIG_PROFILE, DATABRICKS_WAREHOUSE_ID, SMART_METER_<FIELD> (as the tests).
 """
 
