@@ -137,7 +137,7 @@ again on the final head and its output goes in the PR description.
 
 | ID | Issue | Severity | Follow-up |
 |---|---|---|---|
-| I-01 | Other commands still name the bare `python`: `python scripts/check_specs.py` (`CLAUDE.md`, `README.md`, `.claude/sdd/README.md`, the CHANGE template), `python scripts/prepare_sample.py` and `python scripts/profile_data.py`. Changing `CLAUDE.md` touches the agent rules file (E8) and the CHANGE template is read by the tests (E5), so it is a separate change | Low | Open: candidate follow-up, not scheduled |
+| I-01 | Other commands still name the bare `python`: `python scripts/check_specs.py` (`CLAUDE.md`, `README.md`, `.claude/sdd/README.md`, the CHANGE template), `python scripts/prepare_sample.py` and `python scripts/profile_data.py`. Changing `CLAUDE.md` touches the agent rules file (E8) and the CHANGE template is read by the tests (E5), so it is a separate change | Low | Closed 2026-11-13 by VENV_COMMANDS (follow-up RESET_COMMAND_VENV F-01): every copyable project command outside the archive names `.venv/bin/<tool>` and the setup uses `python3 -m venv .venv`; what the CHANGE track cannot change is carried as VENV_COMMANDS I-01 |
 
 ---
 

@@ -15,7 +15,7 @@
 | **Source finding** | RESET_COMMAND_VENV I-01 |
 | **Source documents** | `.claude/sdd/archive/RESET_COMMAND_VENV/CHANGE_RESET_COMMAND_VENV.md` (Issues row I-01, line 140; a CHANGE folder has no SHIPPED document) |
 | **Created** | 2026-11-13 |
-| **Status** | In Progress |
+| **Status** | Closed |
 
 Allowed status values: `Open`, `In Progress`, `Closed`, `Dropped`. `Dropped` needs a reason in
 Closure.
@@ -86,8 +86,8 @@ Fill when the status becomes `Closed` or `Dropped`, in the same PR that does the
 | **Pull request** | pending (the PR of `change/venv-commands`; a closure PR records its number after the merge) |
 | **Merge commit** | pending |
 | **Work done in** | `CHANGE_VENV_COMMANDS.md` |
-| **Source rows updated** | pending |
-| **check_specs.py after the update** | pending |
+| **Source rows updated** | `.claude/sdd/archive/RESET_COMMAND_VENV/CHANGE_RESET_COMMAND_VENV.md:140`, Issues row I-01: the Follow-up cell starts with "Closed 2026-11-13 by VENV_COMMANDS", so rule (b) no longer warns for it |
+| **check_specs.py after the update** | `79 document(s) checked, 0 error(s), 9 warning(s)` on the change branch with this document still in `features/`: the RESET_COMMAND_VENV I-01 warning is gone. Once `CHANGE_VENV_COMMANDS.md` is archived, its own open VENV_COMMANDS I-01 adds one warning |
 
 ---
 
@@ -97,4 +97,4 @@ Fill when the status becomes `Closed` or `Dropped`, in the same PR that does the
   unusual form (for example after a `$ ` prompt) is not caught.
 - **Risks:** a person who activates the environment now types longer commands than needed; the
   commands still work.
-- **Next step:** build the CHANGE document, then close this file in the same PR.
+- **Next step:** after the merge, a closure PR records the PR number and merge commit above (read with `gh pr view`). VENV_COMMANDS I-01 holds what the CHANGE track could not change.
