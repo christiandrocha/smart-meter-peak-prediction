@@ -21,6 +21,6 @@ Read `.claude/kb/databricks/patterns.md` and the DESIGN sections you were given.
 
 ## Before reporting done
 
-- `ruff check`, unit tests and `databricks bundle validate` pass.
+- `.venv/bin/ruff check`, unit tests and `databricks bundle validate` pass.
 - Each expectation from DESIGN exists with the stated action.
 - The streaming checkpoint path and target table names match DESIGN.

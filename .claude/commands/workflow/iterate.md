@@ -8,4 +8,4 @@ Use the `iterate-agent` subagent.
 Input: $ARGUMENTS
 
 Apply the change, append it to the document's Change Log, and list what it invalidates in the
-downstream documents. Run `python scripts/check_specs.py` afterwards.
+downstream documents. Run `.venv/bin/python scripts/check_specs.py` afterwards.

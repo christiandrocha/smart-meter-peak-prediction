@@ -1,6 +1,6 @@
 """Local-data tests (marker ``local_data``): the src port reproduces the pinned seed-42 sample.
 
-Run with the Kaggle files in ``data/raw``:  pytest -m local_data
+Run with the Kaggle files in ``data/raw``:  .venv/bin/pytest -m local_data
 Expected values come from ``config/sample_households.csv`` and ``config/sample_manifest.json``,
 never from the spike code.
 """

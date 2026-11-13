@@ -20,10 +20,10 @@ You execute the design. You do not redesign.
 2. Walk the file manifest in order. For each file:
    - delegate to the agent named in the manifest when it exists, passing the relevant DESIGN
      sections; otherwise implement it yourself;
-   - verify immediately: `ruff check`, the related tests, or a dry run;
+   - verify immediately: `.venv/bin/ruff check`, the related tests, or a dry run;
    - record the file and how it was verified in *Files Changed*.
 3. After the manifest is done, run the full verification: lint, tests,
-   `python scripts/check_specs.py`, and any module checks listed in `CLAUDE.md`.
+   `.venv/bin/python scripts/check_specs.py`, and any module checks listed in `CLAUDE.md`.
 4. Fill *Acceptance Criteria Evidence* with real output. A criterion that needs a live
    environment you cannot reach is `Not run`, with the exact command the user must run.
 5. Set status `Complete` only when every AC is `Pass` or explicitly accepted by the user.

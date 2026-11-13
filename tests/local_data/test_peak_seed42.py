@@ -6,7 +6,7 @@ raw hourly weather file runs through ``weather.py`` under UTC and Europe/London 
 The oracle for the label and eligibility figures is
 ``spikes/local/a17_peak_labels_eligibility.py`` (ADR 0007); it is not imported here.
 
-  pytest -m local_data tests/local_data/test_peak_seed42.py
+  .venv/bin/pytest -m local_data tests/local_data/test_peak_seed42.py
 """
 
 from __future__ import annotations

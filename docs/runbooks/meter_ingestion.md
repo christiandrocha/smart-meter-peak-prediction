@@ -89,7 +89,7 @@ Bronze is ingested whether or not the pipeline is busy.
 | Item | Notes |
 |---|---|
 | Databricks CLI, authenticated | `databricks auth login --host <workspace-url> --profile dev` (OAuth). Commands below use `-p dev` |
-| Python 3.11 and the project | `python -m venv .venv && source .venv/bin/activate && pip install -e ".[dev,sample,producer,integration]"` |
+| Python 3.11 and the project | `python3 -m venv .venv && .venv/bin/pip install -e ".[dev,sample,producer,integration]"`; commands below name the tools in `.venv/bin/` |
 | Docker | For the replay producer |
 | Kaggle raw files in `data/raw` | Needed only to regenerate the sample (git-ignored) |
 | Aiven Kafka service | Free tier; powers off after inactivity |
@@ -120,8 +120,8 @@ Local `.env`: copy `.env.example` to `.env` and fill it in (`KAFKA_BOOTSTRAP`, `
 `SAMPLE_STREAM_FILE`, `DATABRICKS_WAREHOUSE_ID`). Write `KEY=value` without quotes: Docker's
 `--env-file` keeps quotes literally.
 
-Verify the repository is clean of credentials: `pre-commit run --all-files` and
-`pytest tests/test_secrets_hygiene.py`.
+Verify the repository is clean of credentials: `.venv/bin/pre-commit run --all-files` and
+`.venv/bin/pytest tests/test_secrets_hygiene.py`.
 
 ## 2. Sample generation and upload
 
@@ -129,7 +129,7 @@ The seed-42 sample (60 households, 1,432,405 historical rows, 247,569 stream row
 locally and checked against `config/sample_manifest.json` and `config/sample_households.csv`.
 
 ```bash
-python scripts/prepare_sample.py build --out data/sample/seed42
+.venv/bin/python scripts/prepare_sample.py build --out data/sample/seed42
 ```
 
 Upload the historical files and the household file to the landing Volume. The Volume exists after
@@ -156,7 +156,7 @@ Aiven does **not** create topics automatically, and the free service powers off 
 
 ```bash
 set -a; . ./.env; set +a
-python - <<'PY'
+.venv/bin/python - <<'PY'
 import os
 from confluent_kafka import KafkaException
 from confluent_kafka.admin import AdminClient, NewTopic
@@ -254,7 +254,7 @@ command reads the connection settings from your `.env` and prints no credential:
 
 ```bash
 set -a; . ./.env; set +a
-python - <<'PY'
+.venv/bin/python - <<'PY'
 import json
 import os
 
@@ -316,7 +316,7 @@ Counts are table totals, queryable at any time after an update. Print the SQL an
 editor:
 
 ```bash
-python -c "from smart_meter_peak_prediction import config, metrics; \
+.venv/bin/python -c "from smart_meter_peak_prediction import config, metrics; \
 print(metrics.rule_counts_sql(config.Settings().table('silver', 'meter_readings_evaluated')))"
 ```
 
@@ -337,7 +337,7 @@ CLI profile; no secret is read from a file.
 
 ```bash
 export DATABRICKS_CONFIG_PROFILE=dev       # and DATABRICKS_WAREHOUSE_ID if not the first warehouse
-pytest -m integration tests/integration/<file>::<test>
+.venv/bin/pytest -m integration tests/integration/<file>::<test>
 ```
 
 AC-25 reads the per-household facts from the local `data/sample/seed42/manifest.json` (or
@@ -514,7 +514,7 @@ databricks jobs submit -p dev --json '{
     "base_parameters": {"src_path": "FILES/src", "secret_scope": "smart_meter_redaction_test"}}}]}'
 databricks jobs get-run <run_id> -p dev -o json     # take tasks[0].run_id
 REDACTION_RUN_ID=<task run id> REDACTION_SENTINELS=redaction-sentinel-user,redaction-sentinel-password \
-  pytest -m integration tests/integration/test_bronze_ingestion.py::test_ac29_failed_stream_error_does_not_leak_credentials
+  .venv/bin/pytest -m integration tests/integration/test_bronze_ingestion.py::test_ac29_failed_stream_error_does_not_leak_credentials
 databricks secrets delete-scope smart_meter_redaction_test -p dev
 ```
 

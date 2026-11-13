@@ -99,7 +99,7 @@ attempts of one task, read the first attempt's error, not the last.
 |---|---|
 | METER_INGESTION deployed, catalog and schemas exist | ADR 0003. The Gold tables must have been built once |
 | Databricks CLI authenticated | `databricks auth login --host <workspace-url> --profile dev`; commands use `-p dev` |
-| Project installed | `pip install -e ".[dev,integration]"` (the integration extra holds the SDK, MLflow and pyarrow) |
+| Project installed | `.venv/bin/pip install -e ".[dev,integration]"` (the integration extra holds the SDK, MLflow and pyarrow) |
 | Weather file | `data/raw/weather_hourly_darksky.csv` (git-ignored; 21,165 rows, header names as in the source) |
 | Clean working tree | `git status --porcelain` prints nothing, so the commit the training run logs is the code that runs |
 
@@ -193,36 +193,36 @@ rebuild is the reset below followed by a daily run.
 
 ## 8. Evidence order (integration tests)
 
-The integration tests are user-run (`pytest -m integration`, credentials from the CLI profile
+The integration tests are user-run (`.venv/bin/pytest -m integration`, credentials from the CLI profile
 or `DATABRICKS_*` variables; see `tests/integration/conftest.py`). Keep each before/after pair
 back to back and follow this order, with the ingestion job idle. After a redeploy, retrain before
 `test_ac54` (it compares the run's commit with the deployed one):
 
 ```bash
 export DATABRICKS_CONFIG_PROFILE=dev
-pytest -m integration tests/integration/test_peak_data.py -k "ac36 or ac37 or ac39 or ac40 or ac41 or ac44 or ac47 or ac64"
-pytest -m integration tests/integration/test_peak_data.py -k "ac63"      # before, then after (starts build_labels)
-pytest -m integration tests/integration/test_peak_data.py -k "ac66_before"       # snapshot, tables present
-pytest -m integration -rP tests/integration/test_peak_data.py -k "ac66_rerun_leg"    # rerun leg: MERGE 0 / 0 / 0
+.venv/bin/pytest -m integration tests/integration/test_peak_data.py -k "ac36 or ac37 or ac39 or ac40 or ac41 or ac44 or ac47 or ac64"
+.venv/bin/pytest -m integration tests/integration/test_peak_data.py -k "ac63"      # before, then after (starts build_labels)
+.venv/bin/pytest -m integration tests/integration/test_peak_data.py -k "ac66_before"       # snapshot, tables present
+.venv/bin/pytest -m integration -rP tests/integration/test_peak_data.py -k "ac66_rerun_leg"    # rerun leg: MERGE 0 / 0 / 0
 .venv/bin/python scripts/reset_peak_model_outputs.py; echo "exit $?"              # user only: dry run
 .venv/bin/python scripts/reset_peak_model_outputs.py --confirm                    # user only: drops the three tables
-pytest -m integration -rP tests/integration/test_peak_data.py -k "ac66_rebuild_leg"  # rebuild leg: starts the four data tasks
-pytest -m integration tests/integration/test_peak_data.py -k "ac66_verdict"      # green only with both legs
-pytest -m integration tests/integration/test_peak_training.py            # needs two training runs
-pytest -m integration tests/integration/test_peak_scoring.py -k "ac58 or ac59 or ac56"
-pytest -m integration tests/integration/test_peak_scoring.py -k "ac57"   # before, then after
-pytest -m integration tests/integration/test_peak_scoring.py -k "ac60"
-pytest -m integration tests/integration/test_peak_deployment.py          # after a full daily run
+.venv/bin/pytest -m integration -rP tests/integration/test_peak_data.py -k "ac66_rebuild_leg"  # rebuild leg: starts the four data tasks
+.venv/bin/pytest -m integration tests/integration/test_peak_data.py -k "ac66_verdict"      # green only with both legs
+.venv/bin/pytest -m integration tests/integration/test_peak_training.py            # needs two training runs
+.venv/bin/pytest -m integration tests/integration/test_peak_scoring.py -k "ac58 or ac59 or ac56"
+.venv/bin/pytest -m integration tests/integration/test_peak_scoring.py -k "ac57"   # before, then after
+.venv/bin/pytest -m integration tests/integration/test_peak_scoring.py -k "ac60"
+.venv/bin/pytest -m integration tests/integration/test_peak_deployment.py          # after a full daily run
 ```
 
 The pre-check tests (PEAK_MODEL_CONCURRENCY) start jobs on `dev`. Deploy first, then run them in
 this order, one at a time (AC-77 needs the snapshots of AC-76 and AC-74; AC-75 last):
 
 ```bash
-pytest -m integration tests/integration/test_peak_concurrency.py -k "ac76"   # full run, idle
-pytest -m integration tests/integration/test_peak_concurrency.py -k "ac74"   # starts smart_meter_ingestion; Aiven Kafka service on
-pytest -m integration tests/integration/test_peak_concurrency.py -k "ac77"   # rerun after the refusal
-pytest -m integration tests/integration/test_peak_concurrency.py -k "ac75"   # one no-op pipeline update
+.venv/bin/pytest -m integration tests/integration/test_peak_concurrency.py -k "ac76"   # full run, idle
+.venv/bin/pytest -m integration tests/integration/test_peak_concurrency.py -k "ac74"   # starts smart_meter_ingestion; Aiven Kafka service on
+.venv/bin/pytest -m integration tests/integration/test_peak_concurrency.py -k "ac77"   # rerun after the refusal
+.venv/bin/pytest -m integration tests/integration/test_peak_concurrency.py -k "ac75"   # one no-op pipeline update
 ```
 
 The Aiven Kafka service must be on for AC-74, so the started ingestion run reaches its own
@@ -239,7 +239,7 @@ files into the build report.
 Snapshots go to `out/evidence/` (git-ignored); copy the output into the build report. AC-61
 (missing alias) is not run live because it would delete the alias of the shared model; the
 bootstrap order above shows the same failure when no model exists yet. AC-65 is
-`pre-commit run --all-files`.
+`.venv/bin/pre-commit run --all-files`.
 
 ## 9. Reset (user-run, AC-66)
 
@@ -259,8 +259,8 @@ for the plan, `2` for a refusal.
 ```bash
 .venv/bin/python scripts/reset_peak_model_outputs.py; echo "exit $?"   # dry run: runs every check and prints the plan
 .venv/bin/python scripts/reset_peak_model_outputs.py --confirm         # drops the three tables
-pytest -m integration -rP tests/integration/test_peak_data.py -k "ac66_rebuild_leg"  # rebuild leg
-pytest -m integration tests/integration/test_peak_data.py -k "ac66_verdict"      # both legs, in order
+.venv/bin/pytest -m integration -rP tests/integration/test_peak_data.py -k "ac66_rebuild_leg"  # rebuild leg
+.venv/bin/pytest -m integration tests/integration/test_peak_data.py -k "ac66_verdict"      # both legs, in order
 ```
 
 The script prints table names and row counts only. The rebuild leg (`-k "ac66_rebuild_leg"`) starts

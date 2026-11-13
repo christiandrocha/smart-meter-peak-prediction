@@ -1,12 +1,12 @@
 """Local-data tests (marker ``local_data``): the library over the real seed-42 sample.
 
 Runs the Silver and Gold functions on local Spark over ``data/sample/seed42`` (build it with
-``python scripts/prepare_sample.py build --out data/sample/seed42``), with the Bronze tables
-simulated from the CSV files and a Kafka payload built like the producer does. It is not a
+``.venv/bin/python scripts/prepare_sample.py build --out data/sample/seed42``), with the Bronze
+tables simulated from the CSV files and a Kafka payload built like the producer does. It is not a
 substitute for the integration tests on the workspace (PR 3), but it checks the figures of
 AC-11, AC-34, AC-18, AC-21, AC-22, AC-25 and AC-35 against the pinned sample without Databricks.
 
-  pytest -m local_data tests/local_data/test_pipeline_seed42.py
+  .venv/bin/pytest -m local_data tests/local_data/test_pipeline_seed42.py
 """
 
 from __future__ import annotations

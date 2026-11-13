@@ -514,7 +514,8 @@ def test_ac172_leg_command_lines_carry_rp() -> None:
     seen = 0
     for heading in ("## 8. Evidence order (integration tests)", "## 9. Reset (user-run, AC-66)"):
         for line in _section(text, heading).splitlines():
-            if line.startswith("pytest ") and re.search(r"ac66_(rerun|rebuild)_leg", line):
+            is_pytest = line.startswith(".venv/bin/pytest ")
+            if is_pytest and re.search(r"ac66_(rerun|rebuild)_leg", line):
                 seen += 1
                 assert "-rP" in line, line
     assert seen == 3

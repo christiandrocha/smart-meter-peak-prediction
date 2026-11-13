@@ -15,10 +15,10 @@ can be pasted into the "Profiling findings" table of a BRAINSTORM document. Ever
 carries numbers; the implication column is a starting suggestion to review, not a decision.
 
 Examples:
-  python scripts/profile_data.py data/readings/*.csv --key household_id,reading_ts \\
+  .venv/bin/python scripts/profile_data.py data/readings/*.csv --key household_id,reading_ts \\
       --time reading_ts --entity household_id --value energy_kwh --grid 30min \\
       --out docs/profiling/readings.md
-  python scripts/profile_data.py data/households.csv --key LCLid --start-id 10
+  .venv/bin/python scripts/profile_data.py data/households.csv --key LCLid --start-id 10
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ from pathlib import Path
 try:
     import pandas as pd
 except ImportError:  # pragma: no cover - exercised only without the optional dependency
-    sys.exit("profile_data.py needs pandas: pip install -e '.[profile]'")
+    sys.exit("profile_data.py needs pandas: .venv/bin/pip install -e '.[profile]'")
 
 NULL_TOKENS = {"", "null", "none", "nan", "na", "n/a", "nil", "-"}
 UNSAFE_NAME = re.compile(r"[ ,;{}()\n\t=]")
