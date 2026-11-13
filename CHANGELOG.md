@@ -5,6 +5,22 @@ Entries are added by `/ship`.
 
 ## [Unreleased]
 
+### Fixed
+
+- Reset commands name the project interpreter (RESET_COMMAND_VENV, CHANGE track, closes
+  RESET_GUARD F-01): the reset commands in `docs/runbooks/peak_model.md` (sections 8 and 9) and in
+  the docstring of `scripts/reset_peak_model_outputs.py`, and `RESET_COMMAND` in
+  `tests/support/ac66_rules.py` (printed by the AC-66 refusals), name `.venv/bin/python` instead of
+  a bare `python`, which the user's machine does not have. Each dry run ends with
+  `; echo "exit $?"`. Unit tests AC-203 to AC-205 in `tests/test_reset_command_venv.py`.
+
+### Unchanged
+
+- No line of the reset script's code changed, only its docstring. The AC-202 text in the archived
+  RESET_GUARD DEFINE and DESIGN stays as shipped. The shipped AC66_BOTH_LEGS AC-160 test changes
+  only the filter that finds the docstring's `--confirm` line. No production file, no file under
+  `tests/integration/` and no gate changed; the package version stays 0.8.0.
+
 ## [0.8.0] - 2026-11-12
 
 ### Added
