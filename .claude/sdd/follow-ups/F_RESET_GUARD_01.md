@@ -87,8 +87,8 @@ Fill when the status becomes `Closed` or `Dropped`, in the same PR that does the
 
 | Item | Value |
 |---|---|
-| **Pull request** | pending (the PR of `change/reset-command-venv`; a closure PR records its number after the merge) |
-| **Merge commit** | pending |
+| **Pull request** | #82 (branch `change/reset-command-venv`, `MERGED` 2026-11-13T19:46:23Z, read with `gh pr view 82 --json state,mergedAt,headRefName,mergeCommit`; remote branch removed by GitHub on merge, local removed with `git branch -d`). This closure PR records it |
+| **Merge commit** | 0a844f0 (full SHA 0a844f0aabeaf241be82ade160fbf5098f258646) |
 | **Work done in** | `CHANGE_RESET_COMMAND_VENV.md` |
 | **Source rows updated** | `.claude/sdd/archive/RESET_GUARD/SHIPPED_2026-11-12.md:142`, Follow-ups row F-01: the item text ends with the bold "Closed 2026-11-13 by RESET_COMMAND_VENV" sentence and the target reads "Closed (next release)". The SHIPPED Follow-ups table has no Follow-up cell, so the row was never a rule (b) warning |
 | **check_specs.py after the update** | `78 document(s) checked, 0 error(s), 9 warning(s)` on the change branch, the same nine warnings as on `main` (other archived documents); none names RESET_GUARD |
@@ -102,4 +102,4 @@ Fill when the status becomes `Closed` or `Dropped`, in the same PR that does the
   `python`; they are out of scope here and recorded as an issue of the CHANGE document.
 - **Risks:** `.venv/bin/python` assumes the virtual environment is at the repository root, which
   is where the project creates it.
-- **Next step:** after the merge, a closure PR records the PR number and merge commit above (read with `gh pr view`). RESET_COMMAND_VENV I-01 holds the remaining bare `python` commands.
+- **Next step:** closure complete: #82 merged (0a844f0). RESET_COMMAND_VENV I-01 holds the remaining bare `python` commands.
