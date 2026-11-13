@@ -204,8 +204,8 @@ pytest -m integration tests/integration/test_peak_data.py -k "ac36 or ac37 or ac
 pytest -m integration tests/integration/test_peak_data.py -k "ac63"      # before, then after (starts build_labels)
 pytest -m integration tests/integration/test_peak_data.py -k "ac66_before"       # snapshot, tables present
 pytest -m integration -rP tests/integration/test_peak_data.py -k "ac66_rerun_leg"    # rerun leg: MERGE 0 / 0 / 0
-python scripts/reset_peak_model_outputs.py                                        # user only: dry run
-python scripts/reset_peak_model_outputs.py --confirm                              # user only: drops the three tables
+.venv/bin/python scripts/reset_peak_model_outputs.py; echo "exit $?"              # user only: dry run
+.venv/bin/python scripts/reset_peak_model_outputs.py --confirm                    # user only: drops the three tables
 pytest -m integration -rP tests/integration/test_peak_data.py -k "ac66_rebuild_leg"  # rebuild leg: starts the four data tasks
 pytest -m integration tests/integration/test_peak_data.py -k "ac66_verdict"      # green only with both legs
 pytest -m integration tests/integration/test_peak_training.py            # needs two training runs
@@ -252,9 +252,13 @@ and the AC-66 snapshot exists.
 Before the reset, the snapshot (`-k "ac66_before"`) and the rerun leg (`-k "ac66_rerun_leg"`) must
 have passed against the current snapshot (section 8); the verdict needs them in that order.
 
+The commands name the project interpreter `.venv/bin/python` (the virtual environment of
+`README.md`), because the system may have no bare `python`. The dry run prints its exit code: `0`
+for the plan, `2` for a refusal.
+
 ```bash
-python scripts/reset_peak_model_outputs.py            # dry run: runs every check and prints the plan
-python scripts/reset_peak_model_outputs.py --confirm  # drops the three tables
+.venv/bin/python scripts/reset_peak_model_outputs.py; echo "exit $?"   # dry run: runs every check and prints the plan
+.venv/bin/python scripts/reset_peak_model_outputs.py --confirm         # drops the three tables
 pytest -m integration -rP tests/integration/test_peak_data.py -k "ac66_rebuild_leg"  # rebuild leg
 pytest -m integration tests/integration/test_peak_data.py -k "ac66_verdict"      # both legs, in order
 ```

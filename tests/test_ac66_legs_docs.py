@@ -341,7 +341,7 @@ def test_ac160_runbook_docstring_and_script_state_the_order() -> None:
     script = (ROOT / RESET_REL).read_text(encoding="utf-8")
     usage = ast.get_docstring(ast.parse(script)) or ""
     confirm_lines = [
-        ln for ln in usage.splitlines() if ln.strip().startswith("python") and "--confirm" in ln
+        ln for ln in usage.splitlines() if "scripts/reset_peak_model_outputs.py --confirm" in ln
     ]
     assert len(confirm_lines) == 1
     assert "daily job" not in confirm_lines[0]
