@@ -83,8 +83,8 @@ Fill when the status becomes `Closed` or `Dropped`, in the same PR that does the
 
 | Item | Value |
 |---|---|
-| **Pull request** | pending (the PR of `change/venv-commands`; a closure PR records its number after the merge) |
-| **Merge commit** | pending |
+| **Pull request** | #84 (branch `change/venv-commands`, `MERGED` 2026-11-13T20:20:22Z, read with `gh pr view 84 --json state,mergedAt,headRefName,mergeCommit`; remote branch removed by GitHub on merge, local removed with `git branch -d`). This closure PR records it |
+| **Merge commit** | 94ac012 (full SHA 94ac0123e65ead1d761b38b274b0cf548ad54e98) |
 | **Work done in** | `CHANGE_VENV_COMMANDS.md` |
 | **Source rows updated** | `.claude/sdd/archive/RESET_COMMAND_VENV/CHANGE_RESET_COMMAND_VENV.md:140`, Issues row I-01: the Follow-up cell starts with "Closed 2026-11-13 by VENV_COMMANDS", so rule (b) no longer warns for it |
 | **check_specs.py after the update** | `79 document(s) checked, 0 error(s), 9 warning(s)` on the change branch with this document still in `features/`: the RESET_COMMAND_VENV I-01 warning is gone. Once `CHANGE_VENV_COMMANDS.md` is archived, its own open VENV_COMMANDS I-01 adds one warning |
@@ -97,4 +97,4 @@ Fill when the status becomes `Closed` or `Dropped`, in the same PR that does the
   unusual form (for example after a `$ ` prompt) is not caught.
 - **Risks:** a person who activates the environment now types longer commands than needed; the
   commands still work.
-- **Next step:** after the merge, a closure PR records the PR number and merge commit above (read with `gh pr view`). VENV_COMMANDS I-01 holds what the CHANGE track could not change.
+- **Next step:** closure complete: #84 merged (94ac012). VENV_COMMANDS I-01 holds what the CHANGE track could not change.

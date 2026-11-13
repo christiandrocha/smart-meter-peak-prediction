@@ -13,6 +13,15 @@ Entries are added by `/ship`.
   `tests/support/ac66_rules.py` (printed by the AC-66 refusals), name `.venv/bin/python` instead of
   a bare `python`, which the user's machine does not have. Each dry run ends with
   `; echo "exit $?"`. Unit tests AC-203 to AC-205 in `tests/test_reset_command_venv.py`.
+- Project commands name the tools in `.venv/bin/` (VENV_COMMANDS, CHANGE track, closes
+  RESET_COMMAND_VENV F-01 from RESET_COMMAND_VENV I-01): every copyable `python`, `pytest`, `ruff`,
+  `pre-commit` and `pip` command in `CLAUDE.md` (Commands block), `README.md`, both runbooks,
+  `.claude/sdd/README.md`, the workflow agent and command files, the usage text of
+  `scripts/prepare_sample.py` and `scripts/profile_data.py`, the "next" line printed by
+  `scripts/reset_peak_model_outputs.py` and the local-data test docstrings names `.venv/bin/<tool>`,
+  so it works on a system with no bare `python` and in a shell that never activates the
+  environment. The setup creates the environment with `python3 -m venv .venv`. Unit tests AC-207
+  and AC-208 in `tests/test_venv_commands.py`.
 
 ### Unchanged
 
@@ -20,6 +29,11 @@ Entries are added by `/ship`.
   RESET_GUARD DEFINE and DESIGN stays as shipped. The shipped AC66_BOTH_LEGS AC-160 test changes
   only the filter that finds the docstring's `--confirm` line. No production file, no file under
   `tests/integration/` and no gate changed; the package version stays 0.8.0.
+- VENV_COMMANDS: no agent rule in `CLAUDE.md` changed, only its Commands block. The shipped
+  AC66_ZERO_NEW_RUNS AC-172 test changes only the filter that finds the leg command lines.
+  `scripts/check_specs.py`, the SDD templates, `src/` and `tests/integration/` keep their bare
+  commands (VENV_COMMANDS I-01, needs the full cycle); `ci.yml` and `.pre-commit-config.yaml` work
+  as they are.
 
 ## [0.8.0] - 2026-11-12
 
