@@ -15,7 +15,7 @@
 | **Source finding** | none (PEAK_MODEL BUILD_REPORT Issues row, Low: "Reset script: connection outside the `try`, no active-run check, no `main()` test") |
 | **Source documents** | `.claude/sdd/archive/PEAK_MODEL/SHIPPED_2026-10-22.md` (Follow-ups row F-03, line 193), `.claude/sdd/archive/PEAK_MODEL/BUILD_REPORT_PEAK_MODEL.md` (Issues row, line 269), `.claude/sdd/archive/PEAK_MODEL_CONCURRENCY/SHIPPED_2026-10-22.md` (Follow-ups row F-02, line 160) |
 | **Created** | 2026-11-12 |
-| **Status** | In Progress |
+| **Status** | Closed |
 
 Allowed status values: `Open`, `In Progress`, `Closed`, `Dropped`. `Dropped` needs a reason in
 Closure.
@@ -96,11 +96,11 @@ Fill when the status becomes `Closed` or `Dropped`, in the same PR that does the
 
 | Item | Value |
 |---|---|
-| **Pull request** | #{N} |
-| **Merge commit** | {SHA, read with `gh pr view {N} --json state,mergeCommit` after the merge} |
-| **Work done in** | the spec `RESET_GUARD` |
-| **Source rows updated** | `{file}:{line}`; the Follow-up cell no longer starts with `Open` (for example "Closed in #{N}") |
-| **check_specs.py after the update** | {summary line; the rule (b) warning for this finding is gone} |
+| **Pull request** | #79 carries the work (build of RESET_GUARD, branch `build/reset-guard`, `MERGED` 2026-11-12T19:33:02Z, read with `gh pr view 79 --json state,mergedAt,mergeCommit`). The ship PR that records this closure is pending; a closure PR records its number after its merge, as in `F_PEAK_MODEL_15.md` |
+| **Merge commit** | 11b7b87 (full SHA 11b7b875fbe5d8370f612cdce7420232788bc179) for #79 |
+| **Work done in** | the spec RESET_GUARD (`.claude/sdd/archive/RESET_GUARD/`, release v0.8.0, CHANGELOG `[0.8.0]`, ADR 0014 Accepted). DC-01 (a running or unreadable peak job refuses with exit 2 and no DROP) is met by AC-189 and AC-190 on fakes, and the idle path live by AC-202 on `dev` (2026-11-12). DC-02 (a failed warehouse or time-zone step prints one refusal line, exit 2, no traceback) is met by AC-192. DC-03 (fakes and `main()` tests that name their AC, including the order "every check before the first DROP") is met by AC-191, AC-193 to AC-196. The Problem's table names were already `ml.household_*_daily`, so nothing needed correcting |
+| **Source rows updated** | `.claude/sdd/archive/PEAK_MODEL/SHIPPED_2026-10-22.md:193`, Follow-ups row F-03: the item text ends with the bold "Closed 2026-11-12 by RESET_GUARD (v0.8.0, ADR 0014)" sentence and the target reads "Closed (v0.8.0)". `.claude/sdd/archive/PEAK_MODEL_CONCURRENCY/SHIPPED_2026-10-22.md:160`, Follow-ups row F-02: the same, with the same target. The SHIPPED Follow-ups tables have no Follow-up cell, and rule (b) reads only the BUILD_REPORT and CHANGE tables, so neither row was ever a rule (b) warning |
+| **check_specs.py after the update** | `77 document(s) checked, 0 error(s), 9 warning(s)` on the ship branch. The nine warnings are the same as before the ship (other archived BUILD_REPORT and CHANGE rows); none names RESET_GUARD or these two rows |
 
 ---
 
@@ -111,4 +111,4 @@ Fill when the status becomes `Closed` or `Dropped`, in the same PR that does the
   the pipeline. DEFINE must fix the exact set.
 - **Risks:** a check that fails closed can block a legitimate reset when the API is slow or a
   permission is missing; DEFINE should say whether an override flag is allowed.
-- **Next step:** `/define RESET_GUARD`.
+- **Next step:** After the ship PR merges, a closure PR records its number and merge commit in the Closure table (read with `gh pr view`). RESET_GUARD F-01 (the bare `python` in the live command) is the open item from the live gate.

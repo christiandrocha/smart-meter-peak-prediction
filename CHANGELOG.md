@@ -5,6 +5,39 @@ Entries are added by `/ship`.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-12
+
+### Added
+
+- Active-run check for the user-run reset (RESET_GUARD, closes PEAK_MODEL F-03 and
+  PEAK_MODEL_CONCURRENCY F-02, ADR 0014): `scripts/reset_peak_model_outputs.py` reads the two
+  peak jobs, `smart_meter_peak_model` and `smart_meter_peak_model_training`, before the first DROP,
+  in the dry run too, and refuses unless both are idle. Each job is found by base name in one page
+  of `jobs.list` (development prefix stripped); no match, two matches or a full page refuses.
+  `--confirm` has no option or variable that skips the check.
+- Job-only mode of `pipeline_guard` (`check_jobs`, appended to the module without changing a
+  shipped line): one active-run and identity check per named job, with the shipped rules.
+- Unit tests on fakes for the reset script's `main()` and for the job-only mode:
+  `tests/test_reset_guard.py`, `tests/test_reset_guard_library.py`, `tests/support/reset_fakes.py`,
+  and the docs test `tests/test_reset_guard_docs.py`.
+
+### Changed
+
+- Every refusal before the first DROP prints one line, `refused, nothing dropped: ...`, and exits
+  2. The time-zone refusal takes the same prefix. A failed DROP stops the loop and exits 1.
+- The reset's warehouse statements wait 20 s, and its Jobs API client uses the shipped limits.
+- Three shipped test pins are narrowed, each keeping its name and assert count (DA-68, in
+  `tests/test_ac97_timing_docs.py` and `tests/test_ac66_legs_docs.py`), because the version and the
+  reset script changed by design.
+- The runbook (`docs/runbooks/peak_model.md`, sections 8 and 9) states the idle check.
+- Package version 0.8.0 (`pyproject.toml`, `src/smart_meter_peak_prediction/__init__.py`).
+
+### Unchanged
+
+- The peak and pipeline-only modes of `pipeline_guard` are byte-equal to v0.7.3, and the plan of
+  the reset script is unchanged. No bundle file (`resources/`, `databricks.yml`, `notebooks/`,
+  `pipelines/`) and no dependency changed.
+
 ## [0.7.3] - 2026-11-11
 
 ### Fixed
